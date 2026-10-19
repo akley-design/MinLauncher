@@ -27,6 +27,7 @@ ml-core.workspace = true
 ml-storage.workspace = true
 ml-minecraft.workspace = true
 ml-launch.workspace = true
+ml-bench.workspace = true
 tauri.workspace = true
 tauri-plugin-store.workspace = true
 tauri-plugin-updater.workspace = true
@@ -45,3 +46,6 @@ once_cell.workspace = true
 parking_lot.workspace = true
 chrono.workspace = true
 dirs.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

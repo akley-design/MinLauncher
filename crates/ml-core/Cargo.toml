@@ -21,6 +21,7 @@ once_cell.workspace = true
 regex.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+md-5.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winreg.workspace = true

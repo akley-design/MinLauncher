@@ -19,7 +19,7 @@ pub mod rules;
 pub mod sys;
 pub mod version;
 
-pub use account::{Account, AccountSecrets, AccountType};
+pub use account::{Account, AccountSecrets, AccountType, offline_uuid};
 pub use config::{DownloadConfig, JvmConfig, LauncherConfig};
 pub use error::{Error, Result};
 pub use paths::{APP_DIR_NAME, AppPaths};

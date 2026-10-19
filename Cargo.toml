@@ -24,6 +24,7 @@ ml-core = { path = "crates/ml-core", version = "0.1.0" }
 ml-storage = { path = "crates/ml-storage", version = "0.1.0" }
 ml-minecraft = { path = "crates/ml-minecraft", version = "0.1.0" }
 ml-launch = { path = "crates/ml-launch", version = "0.1.0" }
+ml-bench = { path = "crates/ml-bench", version = "0.1.0" }
 
 # --- errors & logging ---
 thiserror = "2.0.21"
@@ -54,6 +55,7 @@ url = "2"
 bytes = "1"
 sha1 = "0.10"
 sha2 = "0.11"
+md-5 = "0.10"
 hex = "0.4"
 
 # --- storage ---
@@ -116,6 +118,10 @@ must_use_candidate = "allow"
 cast_possible_truncation = "allow"
 cast_precision_loss = "allow"
 struct_excessive_bools = "allow"
+# A Tauri command receives its arguments deserialised into owned values,
+# so the arguments of a command are `String` and not `&str` even when the
+# body of the command only reads them.
+needless_pass_by_value = "allow"
 
 [profile.release]
 opt-level = 3
