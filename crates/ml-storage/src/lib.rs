@@ -107,6 +107,30 @@ impl Storage {
         &self.database
     }
 
+    /// Build a storage layer around an already open database.
+    ///
+    /// The settings and the secrets are not touched: the caller is
+    /// responsible for them. It is the way the benchmark harness works
+    /// with a database it opened itself.
+    #[must_use]
+    pub fn from_database(database: Database) -> Self {
+        let pool = database.pool().clone();
+
+        Self {
+            versions: VersionRepo::new(pool.clone()),
+            accounts: AccountRepo::new(pool.clone()),
+            assets: AssetRepo::new(pool.clone()),
+            libraries: LibraryRepo::new(pool.clone()),
+            downloads: DownloadRepo::new(pool.clone()),
+            jres: JreRepo::new(pool.clone()),
+            instances: InstanceRepo::new(pool.clone()),
+            benchmarks: BenchmarkRepo::new(pool),
+            settings: JsonStore::new(std::path::PathBuf::from("settings.json")),
+            secrets: SecretsStore::new(std::path::PathBuf::from("secrets.json")),
+            database,
+        }
+    }
+
     /// Repository of known Minecraft versions.
     #[must_use]
     pub fn versions(&self) -> &VersionRepo {
