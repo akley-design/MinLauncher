@@ -1,0 +1,33 @@
+# MinLauncher cargo configuration.
+#
+# The toolchain (including the host triple) is pinned in `rust-toolchain.toml`;
+# the target triple follows the host, so it is not repeated here.
+
+[build]
+# The build directory is deliberately kept on an ASCII-only path.
+#
+# The GNU toolchain's linker (`ld.exe` from MSYS2 / MinGW-w64) resolves file
+# names through the Windows ANSI code page, not through UTF-8. When the
+# project lives under a path that contains non-ASCII characters — the home
+# directory of this machine contains Cyrillic — the linker cannot open the
+# intermediate object files and fails with "cannot find ... .rcgu.o: No such
+# file or directory" even though the files exist.
+#
+# The Rust compiler itself is unaffected (it is UTF-8 clean), so relocating
+# the *build* directory is enough. Override this with the `CARGO_TARGET_DIR`
+# environment variable, or drop this section once the toolchain is MSVC-based
+# (MSVC's `link.exe` is Unicode-clean).
+#
+# One path cannot be relocated this way: the Windows import library that the
+# `windows` crate pulls in lives inside the Cargo registry, below `$CARGO_HOME`.
+# The build script of `ml-desktop` copies that library into the build
+# directory, so it is reached through an ASCII-only path as well.
+target-dir = "C:/Users/Public/minlaucher-target"
+
+[term]
+color = "always"
+
+[profile.dev]
+# Keep debug builds fast to link: debug info is what makes link times
+# explode, and the launcher is not the place where we profile.
+debug = 1

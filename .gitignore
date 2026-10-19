@@ -1,0 +1,51 @@
+# --- Rust ---
+/target/
+**/*.rs.bk
+*.pdb
+*.dll
+*.exe
+!/scripts/*.exe
+
+# --- Node / frontend ---
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+
+# --- Tauri ---
+/crates/ml-desktop/gen/
+/apps/ui/src-tauri/target/
+/apps/ui/src-tauri/gen/
+
+# --- Local data (never commit user state) ---
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+/local/
+/data/
+/bench-results/
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# --- Editors / OS ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Logs ---
+*.log
+/logs/

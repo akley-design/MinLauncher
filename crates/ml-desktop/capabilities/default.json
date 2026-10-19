@@ -1,0 +1,31 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities granted to the main launcher window.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-focus",
+    "core:webview:allow-internal-toggle-devtools",
+    "dialog:default",
+    "dialog:allow-message",
+    "shell:allow-open",
+    "process:allow-restart",
+    "updater:default",
+    {
+      "identifier": "fs:allow-read",
+      "allow": [
+        { "path": "$APPDATA/MinLauncher/**" },
+        { "path": "$LOCALAPPDATA/MinLauncher/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write",
+      "allow": [
+        { "path": "$APPDATA/MinLauncher/**" },
+        { "path": "$LOCALAPPDATA/MinLauncher/**" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+[toolchain]
+# The GNU host toolchain is pinned deliberately.
+#
+# Build scripts and procedural macros are always compiled for the *host*, not
+# for the `--target` triple, so a `x86_64-pc-windows-msvc` host requires the
+# Windows 10/11 SDK (the `kernel32.lib` / `ucrt.lib` import libraries) plus
+# the "Desktop development with C++" workload of Visual Studio. Without the
+# SDK, MSVC host builds fail at link time even for crates that contain no
+# platform code at all.
+#
+# The GNU toolchain is self-contained: it ships its own CRT and import
+# libraries and only needs a GNU C compiler (MSYS2 `mingw-w64-x86_64-gcc`).
+#
+# To switch the project to MSVC, install the Windows SDK and replace the
+# channel below with "stable-x86_64-pc-windows-msvc".
+channel = "stable-x86_64-pc-windows-gnu"
+components = ["rustfmt", "clippy"]
+profile = "default"

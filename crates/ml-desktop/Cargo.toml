@@ -1,0 +1,47 @@
+[package]
+name = "ml-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Tauri shell: IPC commands, application state and plugin wiring"
+
+[lints]
+workspace = true
+
+[lib]
+name = "ml_desktop"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "minlaucher"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+ml-core.workspace = true
+ml-storage.workspace = true
+ml-minecraft.workspace = true
+ml-launch.workspace = true
+tauri.workspace = true
+tauri-plugin-store.workspace = true
+tauri-plugin-updater.workspace = true
+tauri-plugin-process.workspace = true
+tauri-plugin-shell.workspace = true
+tauri-plugin-single-instance.workspace = true
+tauri-plugin-dialog.workspace = true
+tauri-plugin-fs.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+once_cell.workspace = true
+parking_lot.workspace = true
+chrono.workspace = true
+dirs.workspace = true

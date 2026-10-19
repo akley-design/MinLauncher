@@ -1,0 +1,32 @@
+[package]
+name = "ml-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Benchmark harness that measures launcher and game start-up performance"
+
+[lints]
+workspace = true
+
+[dependencies]
+ml-core.workspace = true
+ml-minecraft.workspace = true
+ml-launch.workspace = true
+ml-storage.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+tempfile.workspace = true
+
+[[bench]]
+name = "scenarios"
+harness = false
