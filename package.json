@@ -13,7 +13,9 @@
     "test": "npm run test --workspace @minlaucher/ui",
     "test:run": "npm run test:run --workspace @minlaucher/ui",
     "lint": "npm run lint --workspace @minlaucher/ui",
+    "typecheck": "npm run typecheck --workspace @minlaucher/ui",
     "format": "npm run format --workspace @minlaucher/ui",
+    "format:check": "npm run format:check --workspace @minlaucher/ui",
     "tauri": "tauri",
     "tauri:dev": "cd crates/ml-desktop && tauri dev",
     "tauri:build": "cd crates/ml-desktop && tauri build"

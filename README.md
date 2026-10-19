@@ -1,0 +1,151 @@
+# MinLauncher
+
+A Minecraft launcher that starts **at least 20 % faster** than TLauncher, and
+optimises the game itself on the way.
+
+The speed promise is not a slogan — it is measured. The metrics are fixed in
+advance, the protocol of the measurement is written down, and every result
+carries the metadata of the machine it was taken on, so that it can be
+reproduced. See [`docs/PLAN.md`](docs/PLAN.md) for the metrics and the
+protocol.
+
+---
+
+## What is in here
+
+```
+crates/
+  ml-core        shared types, the error taxonomy, the path layout, the rules
+  ml-storage     SQLite + JSON persistence
+  ml-minecraft   Mojang metadata, versions, libraries, assets, the Fabric loader
+  ml-launch      JVM discovery, argument construction, process supervision
+  ml-desktop     the Tauri shell: IPC commands, state, plugins
+  ml-bench       the measurement harness and the comparison protocol
+apps/
+  ui             React 19 + TypeScript + Vite
+  java/
+    agent        a `-javaagent` that measures the start-up and the frames
+    mod          a Fabric mod that makes the game itself faster
+```
+
+The launcher is written in Rust, the interface in TypeScript, and the part
+that touches the game is Java: one piece is a Java agent that measures, the
+other is a Fabric mod that changes the game.
+
+## The two halves of the speed promise
+
+**The launcher starts faster.** The whole CPU path of a launch fits in about
+0.2 ms, so the win cannot come from the computations — it comes from what the
+launcher *waits* for: the network, the disk, and the start of the JVM. The
+launcher therefore caches the parsed version document, keeps its library store
+content-addressed so that a second version reuses what the first one
+downloaded, and does not pay for a round trip over IPC that it does not need.
+
+**The game itself runs faster.** The agent measures how long the game took to
+start and how it behaves while it runs. The mod changes the game: it turns off
+the expensive effects that are on by default, tunes the renderer, and reads its
+settings from a file the launcher writes, so the user keeps the last choice
+between launches.
+
+## The Fabric loader, and why it is in the way
+
+To change the game, the launcher puts the Fabric loader in front of it. The
+contract of that loader was established by reading the bytecode of
+`fabric-loader-0.19.5.jar` with `javap -p -c`, not by reading documentation
+that may not match the version in use. The launcher therefore knows exactly
+which system properties the loader reads, how it finds the game jar, and where
+it looks for the mods.
+
+Two things about that are worth knowing, because both of them break a launch
+in a way no unit test can show:
+
+* The loader refuses to start when two jars on the classpath carry the same
+  class. The game of 1.21.4 carries ASM 9.6 and the loader carries ASM 9.10.1,
+  so the library of the loader has to *replace* the library of the game with
+  the same identity, not stand next to it.
+* The path of a library is written down in the version document, and reading
+  it back from the coordinate alone is not always the same thing: a version of
+  two pieces, like `9.6`, reads as a version and an extension. Eight of the
+  libraries of 1.21.4 are like that.
+
+There is a test that proves the whole chain against the real game — it
+downloads Minecraft, the loader and the mod, builds the command the launcher
+builds, and starts the game:
+
+```bash
+MINLAUNCHER_E2E=1 cargo test -p ml-desktop --test fabric_end_to_end -- --nocapture
+```
+
+It needs the network and a few hundred megabytes, so it does not run by
+itself. What it asserts is simple and was not obvious before the game was
+actually running:
+
+```
+Loading Minecraft 1.21.4 with Fabric Loader 0.19.5
+Loading 5 mods:
+	- fabricloader 0.19.5
+	- java 26
+	- minecraft 1.21.4
+	- minlaucher-optimisations 0.1.0
+```
+
+## Building it
+
+The Rust side needs a Rust toolchain; the pinned one is in
+`rust-toolchain.toml`.
+
+```bash
+cargo build --workspace          # the launcher
+cargo test --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+```
+
+The interface:
+
+```bash
+npm ci
+npm run typecheck
+npm run lint
+npm run format:check
+npm run test:run
+```
+
+The Java part needs a JDK 21 and Gradle:
+
+```bash
+cd apps/java
+./gradlew build
+```
+
+### A note on the paths of this machine
+
+This project is developed on a machine whose home directory contains Cyrillic
+characters, and two tools do not cope with that:
+
+* `ld.exe` of MSYS2 decodes its command line through the Windows ANSI code
+  page, not through UTF-8. The build directory is therefore moved to an
+  ASCII-only path (`.cargo/config.toml`).
+* The Gradle wrapper fails the same way, and the build directory of the Java
+  part is moved for the same reason (`apps/java/gradle.properties`).
+
+Neither of these is a property of the project — on a machine with an ASCII
+path both lines can go away.
+
+## Tests
+
+| Part | Tests |
+|------|-------|
+| Rust | 340 |
+| Java agent | 23 |
+| Java mod | 18 |
+| Interface | 26 |
+| **Total** | **407** |
+
+Plus the end-to-end test against the real game, which is switched on by hand.
+
+## The plan
+
+[`docs/PLAN.md`](docs/PLAN.md) holds the metrics, the architecture, the
+phases, and the record of what was checked against the real data — including
+the things that turned out to be wrong and had to be fixed.

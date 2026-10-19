@@ -1,0 +1,127 @@
+# The continuous integration of MinLauncher.
+#
+# Three parts are checked, and each of them fails the build on its own:
+#
+# * the Rust core — the launcher itself;
+# * the interface — TypeScript, React and the tests of the interface;
+# * the Java part — the agent and the mod, the two pieces that make the
+#   game itself faster.
+#
+# The whole run must stay green, but a failure of one part does not
+# hide the failure of another: they are separate jobs, and the report
+# of the run says which of them broke.
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # The build directory is kept on an ASCII-only path, for the reason
+  # that is written down in `apps/java/gradle.properties`.
+  GRADLE_USER_HOME: /tmp/gradle-home
+  # `.cargo/config.toml` moves the build directory off the path of the
+  # project, because the linker of this machine cannot read a path with
+  # Cyrillic characters in it. On the runner the path is plain ASCII and
+  # the workaround is not needed — and the cache of the build works much
+  # better when the build stays inside the project.
+  CARGO_TARGET_DIR: target
+
+concurrency:
+  # A new push makes the run of the old push pointless.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: The launcher (Rust)
+    # The toolchain is pinned in `rust-toolchain.toml`, and it is a Windows
+    # one: the GNU host, because a MSVC host needs the Windows SDK, which
+    # the runner does not have. The GNU toolchain needs a GNU C compiler,
+    # and the runner has one in its MSYS2.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Put the GNU compiler on the path
+        run: echo "C:\msys64\mingw64\bin" >> "$GITHUB_PATH"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Check the formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --all-targets
+
+  interface:
+    name: The interface (TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install the dependencies
+        run: npm ci
+
+      - name: Check the types
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check the formatting
+        run: npm run format:check
+
+      - name: Test
+        run: npm run test:run
+
+  java:
+    name: The game (Java)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Test
+        working-directory: apps/java
+        run: ./gradlew build
+
+      - name: Check that the jars were built
+        # The launcher looks for these two names, and not for any other:
+        # the agent is the fat jar, because it carries the classes of the
+        # libraries it weaves into.
+        run: |
+          test -f agent/build/libs/minlaucher-agent-*.jar
+          test -f mod/build/libs/mod-*.jar
