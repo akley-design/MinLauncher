@@ -29,7 +29,13 @@ pub struct Coordinate {
     pub version: String,
     /// Classifier, e.g. `natives-windows`; empty for plain libraries.
     pub classifier: String,
-    /// File extension, `jar` unless the file says otherwise.
+    /// File extension of the artifact, `jar` for everything Mojang and
+    /// Fabric publish.
+    ///
+    /// The extension is never taken from the version. A version of two
+    /// pieces is a version — `org.ow2.asm:asm:9.6` is the version 9.6 —
+    /// and reading its last piece as an extension puts the jar under the
+    /// wrong path, where the library server never put it.
     pub extension: String,
 }
 
@@ -52,23 +58,12 @@ impl Coordinate {
             )));
         }
 
-        // A version may carry its own extension, e.g. `1.0:natives`.
-        let (version, extension) = match version.split_once('.') {
-            Some((stem, extension))
-                if !extension.is_empty()
-                    && extension.chars().all(|c| c.is_ascii_alphanumeric()) =>
-            {
-                (stem.to_string(), extension.to_string())
-            }
-            _ => (version.to_string(), "jar".to_string()),
-        };
-
         Ok(Self {
             group: group.to_string(),
             artifact: artifact.to_string(),
-            version,
+            version: version.to_string(),
             classifier: classifier.to_string(),
-            extension,
+            extension: "jar".to_string(),
         })
     }
 
@@ -95,6 +90,24 @@ impl Coordinate {
     #[must_use]
     pub fn is_native(&self) -> bool {
         Classifier::parse(&self.classifier).natives
+    }
+
+    /// The identity of the artifact, without its version.
+    ///
+    /// Two coordinates with the same identity are two versions of the
+    /// same artifact, and only one of them may be on the classpath: the
+    /// classes of the newer one have to win, or the game breaks.
+    ///
+    /// The identity is the group, the artifact and the classifier. The
+    /// extension is not part of it, because the same artifact may be
+    /// published both as a jar and as something else.
+    #[must_use]
+    pub fn identity(&self) -> String {
+        if self.classifier.is_empty() {
+            format!("{}:{}", self.group, self.artifact)
+        } else {
+            format!("{}:{}:{}", self.group, self.artifact, self.classifier)
+        }
     }
 }
 
@@ -304,25 +317,35 @@ impl ResolvedLibrary {
 
     /// The path of the main jar relative to the library store.
     ///
+    /// The path of the document wins over the one built from the
+    /// coordinate: Mojang's own server puts the file under that path,
+    /// and the coordinate of some libraries cannot be read back into
+    /// the same path — `org.ow2.asm:asm:9.6` is the one that shows it.
+    ///
     /// Returns `None` for a library that has no main artifact.
     #[must_use]
     pub fn artifact_path(&self) -> Option<String> {
-        self.artifact
-            .as_ref()
-            .map(|_| self.coordinate.artifact_path())
+        let artifact = self.artifact.as_ref()?;
+        if artifact.path.is_empty() {
+            Some(self.coordinate.artifact_path())
+        } else {
+            Some(artifact.path.clone())
+        }
     }
 
     /// The path of a native jar relative to the library store.
+    ///
+    /// The path of the document wins here as well, for the same reason.
     #[must_use]
     pub fn native_path(&self, classifier: &str) -> Option<String> {
-        self.natives
-            .iter()
-            .find(|(name, _)| name == classifier)
-            .map(|_| {
-                let mut coordinate = self.coordinate.clone();
-                coordinate.classifier = classifier.to_string();
-                coordinate.artifact_path()
-            })
+        let (_, download) = self.natives.iter().find(|(name, _)| name == classifier)?;
+        if download.path.is_empty() {
+            let mut coordinate = self.coordinate.clone();
+            coordinate.classifier = classifier.to_string();
+            Some(coordinate.artifact_path())
+        } else {
+            Some(download.path.clone())
+        }
     }
 
     /// The jar that carries the native code of this library.
@@ -488,6 +511,34 @@ mod tests {
     }
 
     #[test]
+    fn a_version_of_two_pieces_is_a_version() {
+        // The game of 1.21.4 carries eight libraries whose version has
+        // two pieces, `org.ow2.asm:asm:9.6` among them. Reading the
+        // last piece as an extension puts the jar under a path the
+        // library server never uses.
+        let coordinate = Coordinate::parse("org.ow2.asm:asm:9.6").unwrap();
+        assert_eq!(coordinate.version, "9.6");
+        assert_eq!(coordinate.extension, "jar");
+        assert_eq!(
+            coordinate.artifact_path(),
+            "org/ow2/asm/asm/9.6/asm-9.6.jar"
+        );
+    }
+
+    #[test]
+    fn the_identity_of_a_coordinate_has_no_version() {
+        let old = Coordinate::parse("org.ow2.asm:asm:9.6").unwrap();
+        let new = Coordinate::parse("org.ow2.asm:asm:9.10.1").unwrap();
+        assert_eq!(old.identity(), new.identity());
+
+        // The classifier is part of the identity: the natives of a
+        // library are a different artifact from the library itself.
+        let native = Coordinate::parse("org.lwjgl:lwjgl:3.4.3:natives-windows").unwrap();
+        let plain = Coordinate::parse("org.lwjgl:lwjgl:3.4.3").unwrap();
+        assert_ne!(native.identity(), plain.identity());
+    }
+
+    #[test]
     fn broken_coordinate_is_rejected() {
         assert!(Coordinate::parse("nonsense").is_err());
         assert!(Coordinate::parse("a:b").is_err());
@@ -514,6 +565,7 @@ mod tests {
             name: "org.lwjgl:lwjgl:3.4.3:natives-windows".into(),
             downloads: LibraryDownloads {
                 artifact: Some(FileDownload {
+                    path: String::new(),
                     sha1: "abc".into(),
                     size: 178_848,
                     url: "https://libraries.minecraft.net/org/lwjgl/lwjgl/3.4.3/lwjgl-3.4.3-natives-windows.jar".into(),
@@ -541,6 +593,7 @@ mod tests {
         classifiers.insert(
             "natives-windows".to_string(),
             FileDownload {
+                path: String::new(),
                 sha1: "abc".into(),
                 size: 1,
                 url: "https://example.invalid/native.jar".into(),
@@ -566,11 +619,63 @@ mod tests {
     }
 
     #[test]
+    fn the_path_of_the_document_wins_over_the_coordinate() {
+        // Mojang says where the file is, and the library server serves
+        // it under that path. The coordinate alone is not always enough
+        // to find it again.
+        let library = Library {
+            name: "org.ow2.asm:asm:9.6".into(),
+            downloads: LibraryDownloads {
+                artifact: Some(FileDownload {
+                    path: "org/ow2/asm/asm/9.6/asm-9.6.jar".into(),
+                    sha1: "abc".into(),
+                    size: 1,
+                    url: "https://libraries.minecraft.net/org/ow2/asm/asm/9.6/asm-9.6.jar".into(),
+                }),
+                classifiers: BTreeMap::new(),
+            },
+            rules: Vec::new(),
+        };
+
+        let resolved = ResolvedLibrary::from_library(&library, platform(), Some("26.3"));
+
+        assert_eq!(
+            resolved.artifact_path().as_deref(),
+            Some("org/ow2/asm/asm/9.6/asm-9.6.jar")
+        );
+    }
+
+    #[test]
+    fn the_coordinate_is_the_fallback_when_the_document_has_no_path() {
+        let library = Library {
+            name: "com.google.code.gson:gson:2.14.0".into(),
+            downloads: LibraryDownloads {
+                artifact: Some(FileDownload {
+                    path: String::new(),
+                    sha1: "abc".into(),
+                    size: 1,
+                    url: "https://example.invalid/gson.jar".into(),
+                }),
+                classifiers: BTreeMap::new(),
+            },
+            rules: Vec::new(),
+        };
+
+        let resolved = ResolvedLibrary::from_library(&library, platform(), Some("26.3"));
+
+        assert_eq!(
+            resolved.artifact_path().as_deref(),
+            Some("com/google/code/gson/gson/2.14.0/gson-2.14.0.jar")
+        );
+    }
+
+    #[test]
     fn a_plain_library_has_no_natives() {
         let library = Library {
             name: "com.google.code.gson:gson:2.14.0".into(),
             downloads: LibraryDownloads {
                 artifact: Some(FileDownload {
+                    path: String::new(),
                     sha1: "abc".into(),
                     size: 1,
                     url: "https://example.invalid/gson.jar".into(),
@@ -594,6 +699,7 @@ mod tests {
             name: "org.lwjgl:lwjgl:3.4.3:natives-linux".into(),
             downloads: LibraryDownloads {
                 artifact: Some(FileDownload {
+                    path: String::new(),
                     sha1: "abc".into(),
                     size: 1,
                     url: "https://example.invalid/lwjgl.jar".into(),
@@ -656,6 +762,7 @@ mod tests {
             name: "org.lwjgl:lwjgl:3.4.3:natives-windows-arm64".into(),
             downloads: LibraryDownloads {
                 artifact: Some(FileDownload {
+                    path: String::new(),
                     sha1: "abc".into(),
                     size: 152_235,
                     url: "https://example.invalid/lwjgl-arm64.jar".into(),

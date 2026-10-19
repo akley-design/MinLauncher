@@ -14,7 +14,7 @@
 //! The user arguments come first so that the version's own flags win:
 //! a user who passes `-Xmx8G` gets `8G`, not the `4G` of the version.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use ml_core::{Error, FeatureSet, Platform, Result};
@@ -75,25 +75,45 @@ impl LaunchRequest {
     /// The libraries of the loader come first, when there is a loader:
     /// the loader reads the game out of the classpath, and it has to
     /// find its own classes before the game is touched at all.
+    ///
+    /// A library of the loader *replaces* the library of the game with
+    /// the same identity, instead of standing next to it. The loader
+    /// refuses to start when two jars on the classpath carry the same
+    /// class, and the game and the loader do not agree on the version of
+    /// ASM: the game of 1.21.4 carries ASM 9.6 and the loader carries
+    /// ASM 9.10.1. Both of them have to be on the classpath, and only
+    /// one of them may be there, so the one of the loader wins — it is
+    /// the newer one, and it is the one the loader needs.
     #[must_use]
     pub fn classpath_entries(&self) -> Vec<PathBuf> {
         let mut entries = Vec::new();
+        let mut taken = HashSet::new();
 
         if let Some(loader) = &self.loader {
-            entries.extend(loader.libraries.iter().filter_map(|library| {
-                library.artifact.as_ref().map(|_| {
+            for library in &loader.libraries {
+                if library.artifact.is_none() {
+                    continue;
+                }
+                taken.insert(library.coordinate.identity());
+                entries.push(
                     self.library_directory
-                        .join(library.coordinate.artifact_path())
-                })
-            }));
+                        .join(library.coordinate.artifact_path()),
+                );
+            }
         }
 
-        entries.extend(self.libraries.iter().filter_map(|library| {
-            library.artifact.as_ref().map(|_| {
+        for library in &self.libraries {
+            if library.artifact.is_none() {
+                continue;
+            }
+            if !taken.insert(library.coordinate.identity()) {
+                continue;
+            }
+            entries.push(
                 self.library_directory
-                    .join(library.coordinate.artifact_path())
-            })
-        }));
+                    .join(library.coordinate.artifact_path()),
+            );
+        }
 
         entries
     }
@@ -157,17 +177,16 @@ pub fn build_command(
 ) -> Result<LaunchCommand> {
     // The loader goes in front of the game, so it is the loader's class
     // that is started, not the class of the version.
-    let main_class = match &request.loader {
-        Some(loader) => loader.main_class.clone(),
-        None => {
-            let Some(main_class) = request.version.main_class.as_ref() else {
-                return Err(Error::InvalidInput(format!(
-                    "version `{}` has no main class",
-                    request.version.id
-                )));
-            };
-            main_class.clone()
-        }
+    let main_class = if let Some(loader) = &request.loader {
+        loader.main_class.clone()
+    } else {
+        let Some(main_class) = request.version.main_class.as_ref() else {
+            return Err(Error::InvalidInput(format!(
+                "version `{}` has no main class",
+                request.version.id
+            )));
+        };
+        main_class.clone()
     };
 
     let mut session = request.session.clone();
@@ -552,6 +571,7 @@ mod tests {
             name: "com.google.code.gson:gson:2.14.0".into(),
             downloads: ml_minecraft::version::LibraryDownloads {
                 artifact: Some(ml_minecraft::version::FileDownload {
+                    path: String::new(),
                     sha1: "abc".into(),
                     size: 1,
                     url: "https://example.invalid/gson.jar".into(),
@@ -574,6 +594,7 @@ mod tests {
             name: "org.lwjgl:lwjgl:3.4.3:natives-windows".into(),
             downloads: ml_minecraft::version::LibraryDownloads {
                 artifact: Some(ml_minecraft::version::FileDownload {
+                    path: String::new(),
                     sha1: "abc".into(),
                     size: 1,
                     url: "https://example.invalid/lwjgl.jar".into(),
@@ -669,6 +690,71 @@ mod tests {
             .position(|entry| entry.ends_with("fabric-loader-0.19.5.jar"))
             .unwrap();
         assert_eq!(loader, 0);
+    }
+
+    #[test]
+    fn the_library_of_the_loader_replaces_the_one_of_the_game() {
+        // The game of 1.21.4 carries ASM 9.6 and the loader carries
+        // ASM 9.10.1. Both of them have to be on the classpath, and
+        // only one of them may be there: the loader refuses to start
+        // when two jars carry the same class.
+        let mut request = loader_request();
+        request.version.libraries = vec![
+            Library {
+                name: "org.ow2.asm:asm:9.6".into(),
+                downloads: ml_minecraft::version::LibraryDownloads {
+                    artifact: Some(ml_minecraft::version::FileDownload {
+                        path: String::new(),
+                        sha1: "abc".into(),
+                        size: 1,
+                        url: "https://example.invalid/asm-9.6.jar".into(),
+                    }),
+                    classifiers: BTreeMap::default(),
+                },
+                rules: Vec::new(),
+            },
+            Library {
+                name: "org.ow2.asm:asm:9.10.1".into(),
+                downloads: ml_minecraft::version::LibraryDownloads {
+                    artifact: Some(ml_minecraft::version::FileDownload {
+                        path: String::new(),
+                        sha1: "abc".into(),
+                        size: 1,
+                        url: "https://example.invalid/asm-9.10.1.jar".into(),
+                    }),
+                    classifiers: BTreeMap::default(),
+                },
+                rules: Vec::new(),
+            },
+        ];
+        request.libraries = request.version.resolve_libraries(platform(), Some("26.3"));
+
+        // The loader carries ASM too, and it has to be the one that
+        // stays: the game does not know about it.
+        let profile = ml_minecraft::fabric::FabricProfile::parse(
+            br#"{
+              "id": "fabric-loader-0.19.5-1.21.4",
+              "mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
+              "libraries": [
+                { "name": "org.ow2.asm:asm:9.10.1", "url": "https://maven.fabricmc.net/" }
+              ]
+            }"#,
+        )
+        .unwrap();
+        request.loader = Some(ml_minecraft::fabric::FabricLaunch::from_profile(
+            "1.21.4", "0.19.5", &profile,
+        ));
+
+        let entries = request.classpath_entries();
+
+        // Exactly one ASM on the classpath, and it is the one of the
+        // loader.
+        let asm: Vec<&PathBuf> = entries
+            .iter()
+            .filter(|entry| entry.to_string_lossy().contains("/asm/"))
+            .collect();
+        assert_eq!(asm.len(), 1, "{entries:?}");
+        assert!(asm[0].ends_with("asm-9.10.1.jar"), "{asm:?}");
     }
 
     #[test]

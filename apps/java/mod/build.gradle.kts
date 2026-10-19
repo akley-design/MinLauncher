@@ -23,7 +23,6 @@ plugins {
 val modVersion: String by project
 val minecraftVersion: String by project
 val loaderVersion: String by project
-val fabricApiVersion: String by project
 
 val yarnMappings: String = "1.21.4+build.8"
 
@@ -31,7 +30,6 @@ dependencies {
     minecraft("com.mojang:minecraft:$minecraftVersion")
     mappings("net.fabricmc:yarn:$yarnMappings:v2")
     modImplementation("net.fabricmc:fabric-loader:$loaderVersion")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -53,7 +51,6 @@ tasks.processResources {
         "version" to modVersion,
         "minecraft_version" to minecraftVersion,
         "loader_version" to loaderVersion,
-        "fabric_version" to fabricApiVersion,
         "java_version" to "21",
     )
     inputs.properties(properties)

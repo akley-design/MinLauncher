@@ -198,6 +198,19 @@ pub struct FileDownload {
     pub size: i64,
     /// Absolute URL.
     pub url: String,
+    /// The path of the file inside the library store.
+    ///
+    /// Mojang's documents carry it, and it is the truth: the library
+    /// server serves the file under exactly that path, and a path built
+    /// from the coordinate alone can differ from it — the coordinate of
+    /// `org.ow2.asm:asm:9.6` has two pieces that look like a version
+    /// and an extension, and the naive reading puts the jar under
+    /// `asm/9/asm-9.6` instead of `asm/9.6/asm-9.6.jar`.
+    ///
+    /// It is empty when the document does not carry it, and then the
+    /// path is built from the coordinate.
+    #[serde(default)]
+    pub path: String,
 }
 
 /// The `downloads` block of a version JSON.

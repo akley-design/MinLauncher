@@ -41,7 +41,7 @@
 //! the link search path. The linker then resolves the library through an
 //! ASCII-only path.
 //!
-//! # Why the WebView2 loader is copied next to the test binaries
+//! # Why the `WebView2` loader is copied next to the test binaries
 //!
 //! `WebView2Loader.dll` is loaded at run time, not at link time. Windows
 //! looks for it in the directory of the executable first. The application
@@ -84,7 +84,7 @@ const IMPORT_LIBRARY: &str = "libwindows.0.53.0.a";
 /// The crate that owns the import library.
 const IMPORT_LIBRARY_CRATE: &str = "windows_x86_64_gnu";
 
-/// The loader of WebView2, loaded at run time.
+/// The loader of `WebView2`, loaded at run time.
 const WEBVIEW2_LOADER: &str = "WebView2Loader.dll";
 
 /// The crate that ships the loader.
@@ -190,7 +190,7 @@ fn stage_import_library(out_dir: &Path) -> Result<PathBuf, String> {
     Ok(target_dir)
 }
 
-/// Copy the WebView2 loader next to the test binaries.
+/// Copy the `WebView2` loader next to the test binaries.
 ///
 /// The loader is loaded at run time, and Windows looks for it in the
 /// directory of the executable. The test binaries of the workspace live

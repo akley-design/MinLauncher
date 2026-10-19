@@ -67,6 +67,8 @@ fn request() -> LaunchRequest {
         extra_jvm_args: Vec::new(),
         agent_jar: None,
         agent_report: None,
+        loader: None,
+        mod_jars: Vec::new(),
     }
 }
 

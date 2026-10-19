@@ -194,6 +194,7 @@ impl FabricProfile {
                     coordinate,
                     is_native: false,
                     artifact: Some(FileDownload {
+                        path: relative.clone(),
                         url,
                         sha1: library.sha1.clone().unwrap_or_default(),
                         size: library.size.unwrap_or(0),
