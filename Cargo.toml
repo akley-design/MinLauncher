@@ -83,6 +83,9 @@ chrono = { version = "0.4", features = ["serde"] }
 semver = "1"
 regex = "1"
 
+# --- windows ---
+winreg = "0.56.0"
+
 # --- testing ---
 tempfile = "3"
 criterion = "0.8.2"

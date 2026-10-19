@@ -22,5 +22,8 @@ regex.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+winreg.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true

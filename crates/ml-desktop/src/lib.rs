@@ -1,4 +1,4 @@
-//! Tauri shell for MinLauncher.
+//! Tauri shell for `MinLauncher`.
 //!
 //! This crate owns everything that is specific to the desktop application:
 //! the shared state, the IPC commands, the plugin wiring and the tray

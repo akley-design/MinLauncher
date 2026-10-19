@@ -2731,6 +2731,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "uuid",
+ "winreg",
 ]
 
 [[package]]
@@ -2780,23 +2781,18 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "winreg",
+ "zip 9.0.5",
 ]
 
 [[package]]
 name = "ml-minecraft"
 version = "0.1.0"
 dependencies = [
- "bytes",
- "chrono",
- "flate2",
  "futures",
- "futures-util",
  "hex",
  "ml-core",
  "ml-storage",
- "once_cell",
- "parking_lot",
- "rayon",
  "reqwest",
  "serde",
  "serde_json",
@@ -2804,12 +2800,9 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
- "tokio-util",
  "tracing",
- "url",
  "walkdir",
  "zip 9.0.5",
- "zstd",
 ]
 
 [[package]]

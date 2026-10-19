@@ -58,12 +58,12 @@ impl LibraryRepo {
         let mut conn = self.conn()?;
         let tx = conn
             .transaction()
-            .map_err(|e| storage_error("cannot start transaction", e))?;
+            .map_err(|e| storage_error("cannot start transaction", &e))?;
         tx.execute(
             "DELETE FROM libraries WHERE version_id = ?1",
             params![version_id],
         )
-        .map_err(|e| storage_error("cannot clear libraries", e))?;
+        .map_err(|e| storage_error("cannot clear libraries", &e))?;
         for entry in entries {
             tx.execute(
                 "INSERT INTO libraries (
@@ -81,10 +81,10 @@ impl LibraryRepo {
                     entry.rules_json,
                 ],
             )
-            .map_err(|e| storage_error("cannot insert library", e))?;
+            .map_err(|e| storage_error("cannot insert library", &e))?;
         }
         tx.commit()
-            .map_err(|e| storage_error("cannot commit transaction", e))?;
+            .map_err(|e| storage_error("cannot commit transaction", &e))?;
         Ok(())
     }
 
@@ -97,12 +97,12 @@ impl LibraryRepo {
                  FROM libraries WHERE version_id = ?1
                  ORDER BY is_native ASC, name ASC, classifier ASC",
             )
-            .map_err(|e| storage_error("cannot prepare statement", e))?;
+            .map_err(|e| storage_error("cannot prepare statement", &e))?;
         let rows = stmt
             .query_map(params![version_id], row_to_entry)
-            .map_err(|e| storage_error("cannot query libraries", e))?;
+            .map_err(|e| storage_error("cannot query libraries", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| storage_error("cannot read libraries", e))
+            .map_err(|e| storage_error("cannot read libraries", &e))
     }
 
     /// Number of libraries of a version.
@@ -113,7 +113,7 @@ impl LibraryRepo {
             params![version_id],
             |row| row.get(0),
         )
-        .map_err(|e| storage_error("cannot count libraries", e))
+        .map_err(|e| storage_error("cannot count libraries", &e))
     }
 
     /// Forget the library set of a version.
@@ -123,7 +123,7 @@ impl LibraryRepo {
             "DELETE FROM libraries WHERE version_id = ?1",
             params![version_id],
         )
-        .map_err(|e| storage_error("cannot clear libraries", e))
+        .map_err(|e| storage_error("cannot clear libraries", &e))
     }
 }
 

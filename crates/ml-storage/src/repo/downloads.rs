@@ -2,7 +2,7 @@
 //!
 //! The queue is persisted so that an interrupted installation resumes
 //! instead of starting over — a meaningful part of the "faster than
-//! TLauncher" promise, since a fresh install is dominated by downloads.
+//! `TLauncher`" promise, since a fresh install is dominated by downloads.
 
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -120,7 +120,7 @@ impl DownloadRepo {
                 now_iso8601(),
             ],
         )
-        .map_err(|e| storage_error("cannot enqueue download", e))?;
+        .map_err(|e| storage_error("cannot enqueue download", &e))?;
         Ok(())
     }
 
@@ -131,7 +131,7 @@ impl DownloadRepo {
             "UPDATE downloads SET bytes_done = ?2, updated_at = ?3 WHERE url = ?1",
             params![url, bytes_done, now_iso8601()],
         )
-        .map_err(|e| storage_error("cannot update download progress", e))?;
+        .map_err(|e| storage_error("cannot update download progress", &e))?;
         Ok(())
     }
 
@@ -142,7 +142,7 @@ impl DownloadRepo {
             "UPDATE downloads SET state = ?2, error = ?3, updated_at = ?4 WHERE url = ?1",
             params![url, state.as_db_str(), error, now_iso8601()],
         )
-        .map_err(|e| storage_error("cannot update download state", e))?;
+        .map_err(|e| storage_error("cannot update download state", &e))?;
         Ok(())
     }
 
@@ -153,7 +153,7 @@ impl DownloadRepo {
             "UPDATE downloads SET attempts = attempts + 1, updated_at = ?2 WHERE url = ?1",
             params![url, now_iso8601()],
         )
-        .map_err(|e| storage_error("cannot update download attempts", e))?;
+        .map_err(|e| storage_error("cannot update download attempts", &e))?;
         Ok(())
     }
 
@@ -168,7 +168,7 @@ impl DownloadRepo {
                 row_to_entry,
             )
             .optional()
-            .map_err(|e| storage_error("cannot read download", e))?;
+            .map_err(|e| storage_error("cannot read download", &e))?;
         Ok(row)
     }
 
@@ -182,26 +182,26 @@ impl DownloadRepo {
                  WHERE (?1 IS NULL OR state = ?1)
                  ORDER BY updated_at ASC, url ASC",
             )
-            .map_err(|e| storage_error("cannot prepare statement", e))?;
+            .map_err(|e| storage_error("cannot prepare statement", &e))?;
         let rows = stmt
             .query_map(params![state.map(DownloadState::as_db_str)], row_to_entry)
-            .map_err(|e| storage_error("cannot query downloads", e))?;
+            .map_err(|e| storage_error("cannot query downloads", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| storage_error("cannot read downloads", e))
+            .map_err(|e| storage_error("cannot read downloads", &e))
     }
 
     /// Remove every completed entry and report how many were removed.
     pub fn clear_completed(&self) -> Result<usize> {
         let conn = self.conn()?;
         conn.execute("DELETE FROM downloads WHERE state = 'completed'", [])
-            .map_err(|e| storage_error("cannot clear completed downloads", e))
+            .map_err(|e| storage_error("cannot clear completed downloads", &e))
     }
 
     /// Remove every failed entry and report how many were removed.
     pub fn clear_failed(&self) -> Result<usize> {
         let conn = self.conn()?;
         conn.execute("DELETE FROM downloads WHERE state = 'failed'", [])
-            .map_err(|e| storage_error("cannot clear failed downloads", e))
+            .map_err(|e| storage_error("cannot clear failed downloads", &e))
     }
 
     /// Remove an entry from the queue.
@@ -209,7 +209,7 @@ impl DownloadRepo {
         let conn = self.conn()?;
         let changed = conn
             .execute("DELETE FROM downloads WHERE url = ?1", params![url])
-            .map_err(|e| storage_error("cannot remove download", e))?;
+            .map_err(|e| storage_error("cannot remove download", &e))?;
         Ok(changed > 0)
     }
 }

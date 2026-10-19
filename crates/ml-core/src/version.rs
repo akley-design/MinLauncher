@@ -22,9 +22,9 @@ impl VersionKind {
     pub fn from_manifest(raw: &str) -> Self {
         match raw {
             "release" => Self::Release,
-            "snapshot" => Self::Snapshot,
             "old_beta" => Self::OldBeta,
             "old_alpha" => Self::OldAlpha,
+            // "snapshot" and anything the launcher does not know.
             _ => Self::Snapshot,
         }
     }
@@ -90,13 +90,14 @@ impl JavaRuntime {
     /// version JSON; this table only avoids a network round-trip.
     #[must_use]
     pub fn fallback_for(version_id: &str) -> Self {
-        let key = comparable(version_id);
         const BOUNDARIES: &[((u64, u64, u64), &str, u32)] = &[
             ((1, 17, 0), components::ALPHA, 16),
             ((1, 18, 0), components::GAMMA, 17),
             ((1, 20, 5), components::DELTA, 21),
             ((26, 1, 0), components::EPSILON, 25),
         ];
+
+        let key = comparable(version_id);
 
         let mut chosen = (components::LEGACY, 8u32);
         for (boundary, component, major) in BOUNDARIES {

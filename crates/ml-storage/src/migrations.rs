@@ -22,7 +22,7 @@ pub struct Migration {
 pub const MIGRATIONS: &[Migration] = &[Migration {
     version: 1,
     name: "core_schema",
-    sql: r#"
+    sql: r"
     -- Generic key/value store for launcher state that does not deserve a
     -- table of its own (last selected version, cached manifest ETag, ...).
     CREATE TABLE app_meta (
@@ -171,7 +171,7 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
     );
     CREATE INDEX idx_benchmarks_metric ON benchmarks(metric, scenario);
     CREATE INDEX idx_benchmarks_created ON benchmarks(created_at);
-    "#,
+    ",
 }];
 
 /// The schema version a freshly created database ends up at.
@@ -186,14 +186,12 @@ mod tests {
 
     #[test]
     fn migrations_are_contiguous_and_ordered() {
-        let mut expected = 1;
-        for migration in MIGRATIONS {
+        for (expected, migration) in (1..).zip(MIGRATIONS.iter()) {
             assert_eq!(
                 migration.version, expected,
                 "migration `{}` is out of order",
                 migration.name
             );
-            expected += 1;
         }
     }
 

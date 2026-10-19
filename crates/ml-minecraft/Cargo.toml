@@ -17,7 +17,6 @@ ml-storage.workspace = true
 reqwest.workspace = true
 tokio.workspace = true
 futures.workspace = true
-futures-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -26,15 +25,6 @@ sha1.workspace = true
 hex.workspace = true
 walkdir.workspace = true
 zip.workspace = true
-flate2.workspace = true
-zstd.workspace = true
-rayon.workspace = true
-tokio-util.workspace = true
-bytes.workspace = true
-url.workspace = true
-once_cell.workspace = true
-parking_lot.workspace = true
-chrono.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

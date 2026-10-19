@@ -1,6 +1,6 @@
 //! Repository for benchmark results.
 //!
-//! Measurements are kept so that the "at least 20% faster than TLauncher"
+//! Measurements are kept so that the "at least 20% faster than `TLauncher`"
 //! claim can be re-checked on demand instead of being a one-off assertion
 //! in a pull request description.
 
@@ -127,7 +127,7 @@ impl BenchmarkRepo {
                 record.meta_json,
             ],
         )
-        .map_err(|e| storage_error("cannot insert benchmark", e))?;
+        .map_err(|e| storage_error("cannot insert benchmark", &e))?;
         Ok(())
     }
 
@@ -140,12 +140,12 @@ impl BenchmarkRepo {
                  FROM benchmarks WHERE metric = ?1 AND scenario = ?2
                  ORDER BY created_at DESC, id ASC",
             )
-            .map_err(|e| storage_error("cannot prepare statement", e))?;
+            .map_err(|e| storage_error("cannot prepare statement", &e))?;
         let rows = stmt
             .query_map(params![metric, scenario], row_to_record)
-            .map_err(|e| storage_error("cannot query benchmarks", e))?;
+            .map_err(|e| storage_error("cannot query benchmarks", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| storage_error("cannot read benchmarks", e))
+            .map_err(|e| storage_error("cannot read benchmarks", &e))
     }
 
     /// The most recent series recorded for a metric and scenario.
@@ -160,7 +160,7 @@ impl BenchmarkRepo {
                 row_to_record,
             )
             .optional()
-            .map_err(|e| storage_error("cannot read benchmark", e))?;
+            .map_err(|e| storage_error("cannot read benchmark", &e))?;
         Ok(row)
     }
 
@@ -173,9 +173,9 @@ impl BenchmarkRepo {
                      SELECT id FROM benchmarks WHERE metric = ?1
                      ORDER BY created_at DESC, id ASC LIMIT -1 OFFSET ?2
                  )",
-                params![metric, keep as i64],
+                params![metric, i64::try_from(keep).unwrap_or(i64::MAX)],
             )
-            .map_err(|e| storage_error("cannot prune benchmarks", e))?;
+            .map_err(|e| storage_error("cannot prune benchmarks", &e))?;
         Ok(removed)
     }
 }

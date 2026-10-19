@@ -5,6 +5,8 @@
 //! evaluator is used to pick libraries *and* to filter JVM arguments, so the
 //! two can never disagree about what "this platform" means.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde::{Deserialize, Serialize};
 
 /// The operating systems Mojang distinguishes.
@@ -40,7 +42,7 @@ impl OsName {
 pub enum OsArch {
     /// 32-bit x86.
     X86,
-    /// 64-bit x86_64.
+    /// 64-bit `x86_64`.
     X86_64,
     /// 64-bit ARM.
     Arm64,
@@ -70,9 +72,36 @@ pub struct Platform {
     pub arch: OsArch,
     /// JVM bitness that Mojang uses in the `arch` rule (`x86` / `x86_64`).
     pub jvm_bits: u32,
+    /// The operating system's version, e.g. `10.0.22621` on Windows.
+    ///
+    /// Mojang matches this against the `os.version` regex and the
+    /// `os.versionRange` bounds, so it has to be the *full* version and
+    /// not just the build number.
+    pub os_version: Option<&'static str>,
 }
 
 impl Platform {
+    /// A platform with the given operating system and architecture.
+    ///
+    /// The OS version is left unset, which means rules that constrain the
+    /// version cannot fire.
+    #[must_use]
+    pub fn new(os: OsName, arch: OsArch) -> Self {
+        Self {
+            os,
+            arch,
+            jvm_bits: if arch == OsArch::X86 { 32 } else { 64 },
+            os_version: None,
+        }
+    }
+
+    /// Set the operating system version.
+    #[must_use]
+    pub fn with_os_version(mut self, version: Option<&'static str>) -> Self {
+        self.os_version = version;
+        self
+    }
+
     /// Detect the host platform.
     #[must_use]
     pub fn current() -> Self {
@@ -104,19 +133,69 @@ impl Platform {
             } else {
                 32
             },
+            os_version: crate::sys::os_version(),
         }
     }
 }
 
+/// A range of operating system versions, e.g. `10.0.17134`.
+///
+/// Mojang uses this to distinguish Windows builds: the launcher has to know
+/// whether the host is newer or older than a given build, because the
+/// garbage collector flags differ between them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OsVersionRange {
+    /// The lowest version that matches, inclusive.
+    #[serde(default)]
+    pub min: Option<String>,
+    /// The highest version that matches, inclusive.
+    #[serde(default)]
+    pub max: Option<String>,
+}
+
 /// The `os` or `arch` half of a rule.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Mojang uses three different spellings inside the `os` block:
+///
+/// * `name` — the operating system (`windows`, `osx`, `linux`),
+/// * `version` — a *regular expression* matched against the OS version
+///   (Windows only, e.g. `^10\.` for Windows 10 and newer),
+/// * `arch` — the CPU architecture, occasionally combined with the OS,
+/// * `versionRange` — inclusive `min`/`max` bounds on the OS version.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OsCondition {
     /// Name of the OS / architecture to match.
     #[serde(rename = "name")]
     pub name: Option<String>,
-    /// Alternative OS / architecture to match.
+    /// A regular expression matched against the OS version.
     #[serde(rename = "version")]
     pub version: Option<String>,
+    /// The architecture, when the condition names one.
+    #[serde(rename = "arch")]
+    pub arch: Option<String>,
+    /// Inclusive bounds on the OS version.
+    #[serde(default, rename = "versionRange")]
+    pub version_range: Option<OsVersionRange>,
+}
+
+impl OsCondition {
+    /// A condition that names an operating system.
+    #[must_use]
+    pub fn named(name: impl Into<String>) -> Self {
+        Self {
+            name: Some(name.into()),
+            ..Self::default()
+        }
+    }
+
+    /// A condition that names an architecture.
+    #[must_use]
+    pub fn of_arch(name: impl Into<String>) -> Self {
+        Self {
+            arch: Some(name.into()),
+            ..Self::default()
+        }
+    }
 }
 
 /// A rule: an action plus the conditions under which it applies.
@@ -133,6 +212,13 @@ pub struct Rule {
     /// Version conditions.
     #[serde(default)]
     pub version: Option<String>,
+    /// Feature conditions.
+    ///
+    /// A rule with a feature condition only fires when *every* named
+    /// feature is enabled. This is what keeps `--demo` and the quick-play
+    /// flags out of a normal launch.
+    #[serde(default)]
+    pub features: Option<BTreeMap<String, bool>>,
 }
 
 /// What a [`Rule`] does when it matches.
@@ -293,12 +379,35 @@ impl RuleOutcome {
 ///
 /// The last matching rule wins, which is what the vanilla launcher does and
 /// what every third-party launcher has to replicate for the game to boot.
+///
+/// An *empty* rule list means "no conditions", so the value applies. That is
+/// how a library without a `rules` block ends up in every installation, and
+/// how the `default-user-jvm` block carries memory settings that are not
+/// tied to a platform.
 #[must_use]
 pub fn evaluate(rules: &[Rule], platform: Platform, version: Option<&str>) -> RuleOutcome {
+    evaluate_with_features(rules, platform, version, &FeatureSet::default())
+}
+
+/// Evaluate a list of rules, taking the enabled features into account.
+///
+/// # Panics
+/// Never.
+#[must_use]
+pub fn evaluate_with_features(
+    rules: &[Rule],
+    platform: Platform,
+    version: Option<&str>,
+    features: &FeatureSet,
+) -> RuleOutcome {
+    if rules.is_empty() {
+        return RuleOutcome::Allowed;
+    }
+
     let mut outcome = RuleOutcome::Unmatched;
 
     for rule in rules {
-        if !rule_matches(rule, platform, version) {
+        if !rule_matches(rule, platform, version, features) {
             continue;
         }
         outcome = match rule.action {
@@ -310,16 +419,75 @@ pub fn evaluate(rules: &[Rule], platform: Platform, version: Option<&str>) -> Ru
     outcome
 }
 
-fn rule_matches(rule: &Rule, platform: Platform, version: Option<&str>) -> bool {
-    if let Some(os) = &rule.os {
-        if !condition_matches(os, platform.os.as_str(), platform.arch.as_str()) {
-            return false;
+/// The set of launcher features that are enabled for a launch.
+///
+/// Mojang gates a few game arguments behind features — `--demo` for a demo
+/// account, the quick-play flags for a quick-play session. The launcher
+/// decides which of them are on; the rule engine then keeps the matching
+/// arguments out of the command line.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FeatureSet {
+    /// The enabled features, by name.
+    pub enabled: BTreeSet<String>,
+}
+
+impl FeatureSet {
+    /// An empty feature set: nothing is enabled.
+    #[must_use]
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// A feature set with the given features enabled.
+    #[must_use]
+    pub fn of<I, S>(features: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self {
+            enabled: features.into_iter().map(Into::into).collect(),
         }
     }
-    if let Some(arch) = &rule.arch {
-        if !condition_matches(arch, platform.arch.as_str(), platform.os.as_str()) {
-            return false;
-        }
+
+    /// Enable a feature.
+    pub fn enable(&mut self, feature: impl Into<String>) {
+        self.enabled.insert(feature.into());
+    }
+
+    /// Whether a feature is enabled.
+    #[must_use]
+    pub fn is_enabled(&self, feature: &str) -> bool {
+        self.enabled.contains(feature)
+    }
+
+    /// Whether the set satisfies a rule's feature condition.
+    ///
+    /// Every feature the condition names has to be enabled, and a feature
+    /// the condition names as `false` has to be disabled.
+    #[must_use]
+    pub fn satisfies(&self, condition: &BTreeMap<String, bool>) -> bool {
+        condition
+            .iter()
+            .all(|(name, expected)| self.is_enabled(name) == *expected)
+    }
+}
+
+fn rule_matches(
+    rule: &Rule,
+    platform: Platform,
+    version: Option<&str>,
+    features: &FeatureSet,
+) -> bool {
+    if let Some(os) = &rule.os
+        && !os_condition_matches(os, platform)
+    {
+        return false;
+    }
+    if let Some(arch) = &rule.arch
+        && !arch_condition_matches(arch, platform)
+    {
+        return false;
     }
     if let Some(range) = &rule.version {
         let Some(version) = version else { return false };
@@ -330,21 +498,106 @@ fn rule_matches(rule: &Rule, platform: Platform, version: Option<&str>) -> bool 
             return false;
         }
     }
+    if let Some(condition) = &rule.features
+        && !features.satisfies(condition)
+    {
+        return false;
+    }
     true
 }
 
-fn condition_matches(condition: &OsCondition, primary: &str, fallback: &str) -> bool {
-    if let Some(name) = &condition.name {
-        if name == primary || name == fallback {
-            return true;
+/// Whether an `os` condition holds on this platform.
+///
+/// The condition can name the operating system, constrain the version with a
+/// regular expression, constrain the version with inclusive bounds, and name
+/// an architecture. All of the constraints that are present have to hold.
+fn os_condition_matches(condition: &OsCondition, platform: Platform) -> bool {
+    if let Some(name) = &condition.name
+        && name != platform.os.as_str()
+    {
+        return false;
+    }
+
+    if let Some(arch) = &condition.arch
+        && arch != platform.arch.as_str()
+    {
+        return false;
+    }
+
+    if condition.version.is_some() || condition.version_range.is_some() {
+        let Some(os_version) = platform.os_version else {
+            // The host version is unknown, so a version-constrained rule
+            // cannot be satisfied. Mojang's own launcher behaves the same
+            // way when it cannot determine the version.
+            return false;
+        };
+
+        if let Some(pattern) = &condition.version
+            && !version_regex_matches(pattern, os_version)
+        {
+            return false;
+        }
+
+        if let Some(range) = &condition.version_range
+            && !version_range_matches(range, os_version)
+        {
+            return false;
         }
     }
-    if let Some(version) = &condition.version {
-        if version == primary || version == fallback {
-            return true;
+
+    true
+}
+
+/// Whether an `arch` condition holds on this platform.
+fn arch_condition_matches(condition: &OsCondition, platform: Platform) -> bool {
+    if let Some(name) = &condition.name
+        && name != platform.arch.as_str()
+    {
+        return false;
+    }
+    if let Some(arch) = &condition.arch
+        && arch != platform.arch.as_str()
+    {
+        return false;
+    }
+    true
+}
+
+/// Match an OS version against Mojang's regular expression syntax.
+///
+/// Mojang writes these as `^10\.` and `^10\.5\.\d$`. The `regex` crate
+/// understands that syntax directly, but a pattern that does not compile
+/// must not take the launcher down — it simply does not match.
+fn version_regex_matches(pattern: &str, version: &str) -> bool {
+    match regex::Regex::new(pattern) {
+        Ok(regex) => regex.is_match(version),
+        Err(error) => {
+            tracing::warn!(pattern, %error, "ignoring an unparsable os.version pattern");
+            false
         }
     }
-    false
+}
+
+/// Match an OS version against inclusive `min` / `max` bounds.
+///
+/// The versions are compared segment by segment as numbers, so `10.0.17134`
+/// is *older* than `10.0.22621` and *newer* than `10.0.19045`.
+fn version_range_matches(range: &OsVersionRange, version: &str) -> bool {
+    let actual = VersionBound::segments_of(version);
+
+    if let Some(min) = &range.min {
+        let min = VersionBound::segments_of(min);
+        if actual < min {
+            return false;
+        }
+    }
+    if let Some(max) = &range.max {
+        let max = VersionBound::segments_of(max);
+        if actual > max {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -356,6 +609,17 @@ mod tests {
             os: OsName::Windows,
             arch: OsArch::X86_64,
             jvm_bits: 64,
+            os_version: Some("10.0.26300"),
+        }
+    }
+
+    fn rule(action: RuleAction, os: Option<OsCondition>) -> Rule {
+        Rule {
+            action,
+            os,
+            arch: None,
+            version: None,
+            features: None,
         }
     }
 
@@ -377,36 +641,15 @@ mod tests {
     #[test]
     fn disallow_wins_when_it_is_last() {
         let rules = vec![
-            Rule {
-                action: RuleAction::Allow,
-                os: None,
-                arch: None,
-                version: None,
-            },
-            Rule {
-                action: RuleAction::Disallow,
-                os: Some(OsCondition {
-                    name: Some("windows".into()),
-                    version: None,
-                }),
-                arch: None,
-                version: None,
-            },
+            rule(RuleAction::Allow, None),
+            rule(RuleAction::Disallow, Some(OsCondition::named("windows"))),
         ];
         assert_eq!(evaluate(&rules, platform(), None), RuleOutcome::Disallowed);
     }
 
     #[test]
     fn os_rule_matches_windows() {
-        let rules = vec![Rule {
-            action: RuleAction::Allow,
-            os: Some(OsCondition {
-                name: Some("windows".into()),
-                version: None,
-            }),
-            arch: None,
-            version: None,
-        }];
+        let rules = vec![rule(RuleAction::Allow, Some(OsCondition::named("windows")))];
         assert_eq!(evaluate(&rules, platform(), None), RuleOutcome::Allowed);
     }
 
@@ -415,19 +658,32 @@ mod tests {
         let rules = vec![Rule {
             action: RuleAction::Allow,
             os: None,
-            arch: Some(OsCondition {
-                name: Some("x86_64".into()),
-                version: None,
-            }),
+            arch: Some(OsCondition::named("x86_64")),
             version: None,
+            features: None,
         }];
         assert_eq!(evaluate(&rules, platform(), None), RuleOutcome::Allowed);
     }
 
     #[test]
     fn unmatched_is_not_allowed() {
-        assert_eq!(evaluate(&[], platform(), None), RuleOutcome::Unmatched);
+        let rules = vec![rule(RuleAction::Allow, Some(OsCondition::named("linux")))];
+        assert_eq!(evaluate(&rules, platform(), None), RuleOutcome::Unmatched);
         assert!(!RuleOutcome::Unmatched.is_allowed());
+    }
+
+    #[test]
+    fn an_empty_rule_list_allows_the_value() {
+        // A library without a `rules` block belongs to every installation.
+        assert_eq!(evaluate(&[], platform(), None), RuleOutcome::Allowed);
+    }
+
+    #[test]
+    fn an_unconditional_rule_matches() {
+        // `{"action": "allow"}` — the idiom Mojang uses to allow by
+        // default and then disallow on a specific platform.
+        let rules = vec![rule(RuleAction::Allow, None)];
+        assert_eq!(evaluate(&rules, platform(), None), RuleOutcome::Allowed);
     }
 
     #[test]
@@ -439,5 +695,214 @@ mod tests {
         assert!(r.matches("1.21.11"));
         assert!(r.matches("26.3"));
         assert!(!r.matches("1.16.5"));
+    }
+
+    #[test]
+    fn os_version_regex_matches_windows_ten_and_newer() {
+        let rules = vec![rule(
+            RuleAction::Allow,
+            Some(OsCondition {
+                name: Some("windows".into()),
+                version: Some(r"^10\.".into()),
+                ..OsCondition::default()
+            }),
+        )];
+        assert_eq!(evaluate(&rules, platform(), None), RuleOutcome::Allowed);
+    }
+
+    #[test]
+    fn os_version_regex_that_does_not_match_is_skipped() {
+        let rules = vec![rule(
+            RuleAction::Allow,
+            Some(OsCondition {
+                name: Some("osx".into()),
+                version: Some(r"^10\.5\.\d$".into()),
+                ..OsCondition::default()
+            }),
+        )];
+        assert_eq!(evaluate(&rules, platform(), None), RuleOutcome::Unmatched);
+    }
+
+    #[test]
+    fn a_version_constraint_needs_a_known_os_version() {
+        let rules = vec![rule(
+            RuleAction::Allow,
+            Some(OsCondition {
+                name: Some("windows".into()),
+                version_range: Some(OsVersionRange {
+                    min: Some("10.0.17134".into()),
+                    max: None,
+                }),
+                ..OsCondition::default()
+            }),
+        )];
+
+        let unknown = Platform {
+            os_version: None,
+            ..platform()
+        };
+        assert_eq!(evaluate(&rules, unknown, None), RuleOutcome::Unmatched);
+    }
+
+    #[test]
+    fn a_minimum_version_range_excludes_older_builds() {
+        let rules = vec![rule(
+            RuleAction::Allow,
+            Some(OsCondition {
+                name: Some("windows".into()),
+                version_range: Some(OsVersionRange {
+                    min: Some("10.0.17134".into()),
+                    max: None,
+                }),
+                ..OsCondition::default()
+            }),
+        )];
+
+        // Windows 11 is newer than the bound.
+        assert_eq!(evaluate(&rules, platform(), None), RuleOutcome::Allowed);
+
+        // Windows 10 1803 is exactly the bound and therefore matches.
+        let at_bound = Platform {
+            os_version: Some("10.0.17134"),
+            ..platform()
+        };
+        assert_eq!(evaluate(&rules, at_bound, None), RuleOutcome::Allowed);
+
+        // Windows 10 1709 is older and does not.
+        let below = Platform {
+            os_version: Some("10.0.16299"),
+            ..platform()
+        };
+        assert_eq!(evaluate(&rules, below, None), RuleOutcome::Unmatched);
+    }
+
+    #[test]
+    fn a_maximum_version_range_excludes_newer_builds() {
+        let rules = vec![rule(
+            RuleAction::Allow,
+            Some(OsCondition {
+                name: Some("windows".into()),
+                version_range: Some(OsVersionRange {
+                    min: None,
+                    max: Some("10.0.17134".into()),
+                }),
+                ..OsCondition::default()
+            }),
+        )];
+
+        // The legacy G1GC flags must not be applied on Windows 11.
+        assert_eq!(evaluate(&rules, platform(), None), RuleOutcome::Unmatched);
+
+        let old = Platform {
+            os_version: Some("10.0.16299"),
+            ..platform()
+        };
+        assert_eq!(evaluate(&rules, old, None), RuleOutcome::Allowed);
+    }
+
+    #[test]
+    fn the_two_garbage_collector_rules_are_mutually_exclusive() {
+        // This is the exact pair Mojang ships in `default-user-jvm`: the
+        // ZGC flags for modern Windows, the legacy G1GC flags for the
+        // builds before it. Applying both at once would break the game.
+        let zgc = rule(
+            RuleAction::Allow,
+            Some(OsCondition {
+                name: Some("windows".into()),
+                version_range: Some(OsVersionRange {
+                    min: Some("10.0.17134".into()),
+                    max: None,
+                }),
+                ..OsCondition::default()
+            }),
+        );
+        let g1gc = rule(
+            RuleAction::Allow,
+            Some(OsCondition {
+                name: Some("windows".into()),
+                version_range: Some(OsVersionRange {
+                    min: None,
+                    max: Some("10.0.17134".into()),
+                }),
+                ..OsCondition::default()
+            }),
+        );
+
+        let modern = platform();
+        assert!(evaluate(std::slice::from_ref(&zgc), modern, None).is_allowed());
+        assert!(!evaluate(std::slice::from_ref(&g1gc), modern, None).is_allowed());
+
+        let legacy = Platform {
+            os_version: Some("10.0.16299"),
+            ..platform()
+        };
+        assert!(!evaluate(&[zgc], legacy, None).is_allowed());
+        assert!(evaluate(&[g1gc], legacy, None).is_allowed());
+    }
+
+    #[test]
+    fn a_feature_rule_only_fires_when_the_feature_is_enabled() {
+        let rules = vec![Rule {
+            action: RuleAction::Allow,
+            os: None,
+            arch: None,
+            version: None,
+            features: Some(BTreeMap::from([("is_demo_user".to_string(), true)])),
+        }];
+
+        // Without the feature the argument stays out of the command line.
+        assert_eq!(
+            evaluate_with_features(&rules, platform(), None, &FeatureSet::none()),
+            RuleOutcome::Unmatched
+        );
+
+        let demo = FeatureSet::of(["is_demo_user"]);
+        assert_eq!(
+            evaluate_with_features(&rules, platform(), None, &demo),
+            RuleOutcome::Allowed
+        );
+    }
+
+    #[test]
+    fn a_feature_rule_can_require_a_feature_to_be_off() {
+        let rules = vec![Rule {
+            action: RuleAction::Allow,
+            os: None,
+            arch: None,
+            version: None,
+            features: Some(BTreeMap::from([("is_demo_user".to_string(), false)])),
+        }];
+
+        assert_eq!(
+            evaluate_with_features(&rules, platform(), None, &FeatureSet::none()),
+            RuleOutcome::Allowed
+        );
+
+        let demo = FeatureSet::of(["is_demo_user"]);
+        assert_eq!(
+            evaluate_with_features(&rules, platform(), None, &demo),
+            RuleOutcome::Unmatched
+        );
+    }
+
+    #[test]
+    fn an_os_condition_can_name_the_architecture() {
+        let rules = vec![rule(
+            RuleAction::Allow,
+            Some(OsCondition {
+                name: Some("windows".into()),
+                arch: Some("x86".into()),
+                ..OsCondition::default()
+            }),
+        )];
+        assert_eq!(evaluate(&rules, platform(), None), RuleOutcome::Unmatched);
+    }
+
+    #[test]
+    fn the_feature_set_reports_what_is_enabled() {
+        let mut features = FeatureSet::none();
+        assert!(!features.is_enabled("is_demo_user"));
+        features.enable("is_demo_user");
+        assert!(features.is_enabled("is_demo_user"));
     }
 }

@@ -21,7 +21,7 @@ use ml_core::Error;
 ///
 /// Keeping the context at the call site is what makes a storage failure
 /// diagnosable from a log line alone.
-pub(crate) fn storage_error(context: &str, source: SqliteError) -> Error {
+pub(crate) fn storage_error(context: &str, source: &SqliteError) -> Error {
     Error::Storage(format!("{context}: {source}"))
 }
 

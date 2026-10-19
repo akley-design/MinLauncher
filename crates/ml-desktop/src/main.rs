@@ -1,4 +1,4 @@
-//! Entry point of the MinLauncher desktop application.
+//! Entry point of the `MinLauncher` desktop application.
 //!
 //! The Tauri application itself lives in [`ml_desktop`]; this binary only
 //! starts it.

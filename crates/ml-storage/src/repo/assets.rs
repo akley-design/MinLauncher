@@ -84,7 +84,7 @@ impl AssetRepo {
                 index.object_count,
             ],
         )
-        .map_err(|e| storage_error("cannot upsert asset index", e))?;
+        .map_err(|e| storage_error("cannot upsert asset index", &e))?;
         Ok(())
     }
 
@@ -99,7 +99,7 @@ impl AssetRepo {
                 row_to_index,
             )
             .optional()
-            .map_err(|e| storage_error("cannot read asset index", e))?;
+            .map_err(|e| storage_error("cannot read asset index", &e))?;
         Ok(row)
     }
 
@@ -121,7 +121,7 @@ impl AssetRepo {
                 now_iso8601()
             ],
         )
-        .map_err(|e| storage_error("cannot record asset object", e))?;
+        .map_err(|e| storage_error("cannot record asset object", &e))?;
         Ok(())
     }
 
@@ -134,7 +134,7 @@ impl AssetRepo {
                 params![version_id, hash],
                 |row| row.get(0),
             )
-            .map_err(|e| storage_error("cannot query asset object", e))?;
+            .map_err(|e| storage_error("cannot query asset object", &e))?;
         Ok(count > 0)
     }
 
@@ -146,12 +146,12 @@ impl AssetRepo {
                 "SELECT version_id, hash, size, local_path, verified_at
                  FROM asset_objects WHERE version_id = ?1 ORDER BY hash ASC",
             )
-            .map_err(|e| storage_error("cannot prepare statement", e))?;
+            .map_err(|e| storage_error("cannot prepare statement", &e))?;
         let rows = stmt
             .query_map(params![version_id], row_to_object)
-            .map_err(|e| storage_error("cannot query asset objects", e))?;
+            .map_err(|e| storage_error("cannot query asset objects", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| storage_error("cannot read asset objects", e))
+            .map_err(|e| storage_error("cannot read asset objects", &e))
     }
 
     /// Total number of recorded objects of a version.
@@ -162,7 +162,7 @@ impl AssetRepo {
             params![version_id],
             |row| row.get(0),
         )
-        .map_err(|e| storage_error("cannot count asset objects", e))
+        .map_err(|e| storage_error("cannot count asset objects", &e))
     }
 
     /// Forget every object recorded for a version.
@@ -172,7 +172,7 @@ impl AssetRepo {
             "DELETE FROM asset_objects WHERE version_id = ?1",
             params![version_id],
         )
-        .map_err(|e| storage_error("cannot clear asset objects", e))
+        .map_err(|e| storage_error("cannot clear asset objects", &e))
     }
 }
 

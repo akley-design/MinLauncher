@@ -83,7 +83,7 @@ impl InstanceRepo {
                 if instance.created_at.is_empty() { now_iso8601() } else { instance.created_at.clone() },
             ],
         )
-        .map_err(|e| storage_error("cannot upsert instance", e))?;
+        .map_err(|e| storage_error("cannot upsert instance", &e))?;
         Ok(())
     }
 
@@ -98,7 +98,7 @@ impl InstanceRepo {
                 row_to_instance,
             )
             .optional()
-            .map_err(|e| storage_error("cannot read instance", e))?;
+            .map_err(|e| storage_error("cannot read instance", &e))?;
         Ok(row)
     }
 
@@ -110,12 +110,12 @@ impl InstanceRepo {
                 "SELECT id, version_id, name, game_dir, java_path, jvm_args, created_at
                  FROM instances ORDER BY created_at ASC, name ASC",
             )
-            .map_err(|e| storage_error("cannot prepare statement", e))?;
+            .map_err(|e| storage_error("cannot prepare statement", &e))?;
         let rows = stmt
             .query_map([], row_to_instance)
-            .map_err(|e| storage_error("cannot query instances", e))?;
+            .map_err(|e| storage_error("cannot query instances", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| storage_error("cannot read instances", e))
+            .map_err(|e| storage_error("cannot read instances", &e))
     }
 
     /// Delete an instance and its mods.
@@ -123,7 +123,7 @@ impl InstanceRepo {
         let conn = self.conn()?;
         let changed = conn
             .execute("DELETE FROM instances WHERE id = ?1", params![id])
-            .map_err(|e| storage_error("cannot delete instance", e))?;
+            .map_err(|e| storage_error("cannot delete instance", &e))?;
         Ok(changed > 0)
     }
 
@@ -145,7 +145,7 @@ impl InstanceRepo {
                 mod_entry.source,
             ],
         )
-        .map_err(|e| storage_error("cannot upsert mod", e))?;
+        .map_err(|e| storage_error("cannot upsert mod", &e))?;
         Ok(())
     }
 
@@ -157,12 +157,12 @@ impl InstanceRepo {
                 "SELECT instance_id, mod_id, version, enabled, source
                  FROM instance_mods WHERE instance_id = ?1 ORDER BY mod_id ASC",
             )
-            .map_err(|e| storage_error("cannot prepare statement", e))?;
+            .map_err(|e| storage_error("cannot prepare statement", &e))?;
         let rows = stmt
             .query_map(params![instance_id], row_to_mod)
-            .map_err(|e| storage_error("cannot query mods", e))?;
+            .map_err(|e| storage_error("cannot query mods", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| storage_error("cannot read mods", e))
+            .map_err(|e| storage_error("cannot read mods", &e))
     }
 
     /// Remove a mod from an instance.
@@ -173,7 +173,7 @@ impl InstanceRepo {
                 "DELETE FROM instance_mods WHERE instance_id = ?1 AND mod_id = ?2",
                 params![instance_id, mod_id],
             )
-            .map_err(|e| storage_error("cannot remove mod", e))?;
+            .map_err(|e| storage_error("cannot remove mod", &e))?;
         Ok(changed > 0)
     }
 }
@@ -265,6 +265,6 @@ mod tests {
         .unwrap();
 
         assert!(repo.delete("a").unwrap());
-        assert!(repo.list_mods("a").unwrap().is_empty());
+        assert_eq!(repo.list_mods("a").unwrap().len(), 0);
     }
 }

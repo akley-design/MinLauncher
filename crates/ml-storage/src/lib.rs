@@ -1,4 +1,4 @@
-//! Persistence layer for MinLauncher.
+//! Persistence layer for `MinLauncher`.
 //!
 //! Two storage mechanisms are used side by side:
 //!

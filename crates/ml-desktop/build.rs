@@ -1,4 +1,4 @@
-//! Build script for the MinLauncher desktop shell.
+//! Build script for the `MinLauncher` desktop shell.
 //!
 //! Tauri needs a build script to embed the application metadata and to
 //! validate `tauri.conf.json` against the enabled Cargo features.

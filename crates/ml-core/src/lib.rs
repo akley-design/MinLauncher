@@ -1,4 +1,4 @@
-//! Shared domain model for MinLauncher.
+//! Shared domain model for `MinLauncher`.
 //!
 //! This crate is the vocabulary layer: every other crate speaks in the types
 //! defined here so that the launcher, the storage engine and the UI can never
@@ -16,6 +16,7 @@ pub mod config;
 pub mod error;
 pub mod paths;
 pub mod rules;
+pub mod sys;
 pub mod version;
 
 pub use account::{Account, AccountSecrets, AccountType};
@@ -23,7 +24,8 @@ pub use config::{DownloadConfig, JvmConfig, LauncherConfig};
 pub use error::{Error, Result};
 pub use paths::{APP_DIR_NAME, AppPaths};
 pub use rules::{
-    OsArch, OsCondition, OsName, Platform, Rule, RuleAction, RuleOutcome, VersionRange, evaluate,
+    FeatureSet, OsArch, OsCondition, OsName, OsVersionRange, Platform, Rule, RuleAction,
+    RuleOutcome, VersionRange, evaluate, evaluate_with_features,
 };
 pub use version::{JavaRuntime, VersionKind, VersionMeta, comparable, components};
 

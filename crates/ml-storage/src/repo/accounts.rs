@@ -53,7 +53,7 @@ impl AccountRepo {
                 Option::<String>::None,
             ],
         )
-        .map_err(|e| storage_error("cannot upsert account", e))?;
+        .map_err(|e| storage_error("cannot upsert account", &e))?;
         Ok(())
     }
 
@@ -68,7 +68,7 @@ impl AccountRepo {
                 row_to_account,
             )
             .optional()
-            .map_err(|e| storage_error("cannot read account", e))?;
+            .map_err(|e| storage_error("cannot read account", &e))?;
         Ok(row)
     }
 
@@ -81,12 +81,12 @@ impl AccountRepo {
                  FROM accounts
                  ORDER BY last_used IS NULL, last_used DESC, username ASC",
             )
-            .map_err(|e| storage_error("cannot prepare statement", e))?;
+            .map_err(|e| storage_error("cannot prepare statement", &e))?;
         let rows = stmt
             .query_map([], row_to_account)
-            .map_err(|e| storage_error("cannot query accounts", e))?;
+            .map_err(|e| storage_error("cannot query accounts", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| storage_error("cannot read accounts", e))
+            .map_err(|e| storage_error("cannot read accounts", &e))
     }
 
     /// The account the user has selected, if any.
@@ -100,7 +100,7 @@ impl AccountRepo {
                 row_to_account,
             )
             .optional()
-            .map_err(|e| storage_error("cannot read selected account", e))?;
+            .map_err(|e| storage_error("cannot read selected account", &e))?;
         Ok(row)
     }
 
@@ -109,17 +109,17 @@ impl AccountRepo {
         let mut conn = self.conn()?;
         let tx = conn
             .transaction()
-            .map_err(|e| storage_error("cannot start transaction", e))?;
+            .map_err(|e| storage_error("cannot start transaction", &e))?;
         tx.execute("UPDATE accounts SET selected = 0", [])
-            .map_err(|e| storage_error("cannot clear selection", e))?;
+            .map_err(|e| storage_error("cannot clear selection", &e))?;
         let changed = tx
             .execute(
                 "UPDATE accounts SET selected = 1, last_used = ?2 WHERE id = ?1",
                 params![id, now_iso8601()],
             )
-            .map_err(|e| storage_error("cannot select account", e))?;
+            .map_err(|e| storage_error("cannot select account", &e))?;
         tx.commit()
-            .map_err(|e| storage_error("cannot commit transaction", e))?;
+            .map_err(|e| storage_error("cannot commit transaction", &e))?;
         if changed == 0 {
             return Err(Error::UnknownVersion(id.to_string()));
         }
@@ -133,7 +133,7 @@ impl AccountRepo {
             "UPDATE accounts SET last_used = ?2 WHERE id = ?1",
             params![id, now_iso8601()],
         )
-        .map_err(|e| storage_error("cannot update last used", e))?;
+        .map_err(|e| storage_error("cannot update last used", &e))?;
         Ok(())
     }
 
@@ -142,7 +142,7 @@ impl AccountRepo {
         let conn = self.conn()?;
         let changed = conn
             .execute("DELETE FROM accounts WHERE id = ?1", params![id])
-            .map_err(|e| storage_error("cannot delete account", e))?;
+            .map_err(|e| storage_error("cannot delete account", &e))?;
         Ok(changed > 0)
     }
 
@@ -150,7 +150,7 @@ impl AccountRepo {
     pub fn count(&self) -> Result<i64> {
         let conn = self.conn()?;
         conn.query_row("SELECT COUNT(*) FROM accounts", [], |row| row.get(0))
-            .map_err(|e| storage_error("cannot count accounts", e))
+            .map_err(|e| storage_error("cannot count accounts", &e))
     }
 }
 
@@ -167,8 +167,8 @@ fn kind_from_db(raw: &str) -> AccountType {
     match raw {
         "microsoft" => AccountType::Microsoft,
         "mojang" => AccountType::Mojang,
-        "offline" => AccountType::Offline,
         "third_party" => AccountType::ThirdParty,
+        // "offline" and anything the launcher does not know.
         _ => AccountType::Offline,
     }
 }

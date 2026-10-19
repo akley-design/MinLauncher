@@ -70,7 +70,7 @@ impl VersionRepo {
                 now_iso8601(),
             ],
         )
-        .map_err(|e| storage_error("cannot upsert version", e))?;
+        .map_err(|e| storage_error("cannot upsert version", &e))?;
         Ok(())
     }
 
@@ -79,7 +79,7 @@ impl VersionRepo {
         let mut conn = self.conn()?;
         let tx = conn
             .transaction()
-            .map_err(|e| storage_error("cannot start transaction", e))?;
+            .map_err(|e| storage_error("cannot start transaction", &e))?;
         for meta in metas {
             tx.execute(
                 "INSERT INTO versions (
@@ -116,10 +116,10 @@ impl VersionRepo {
                     now_iso8601(),
                 ],
             )
-            .map_err(|e| storage_error("cannot upsert version", e))?;
+            .map_err(|e| storage_error("cannot upsert version", &e))?;
         }
         tx.commit()
-            .map_err(|e| storage_error("cannot commit transaction", e))?;
+            .map_err(|e| storage_error("cannot commit transaction", &e))?;
         Ok(())
     }
 
@@ -133,7 +133,7 @@ impl VersionRepo {
                 row_to_meta,
             )
             .optional()
-            .map_err(|e| storage_error("cannot read version", e))?;
+            .map_err(|e| storage_error("cannot read version", &e))?;
         Ok(row)
     }
 
@@ -148,14 +148,14 @@ impl VersionRepo {
                  WHERE (?1 IS NULL OR kind = ?1)
                  ORDER BY release_time IS NULL, release_time DESC, id ASC"
             ))
-            .map_err(|e| storage_error("cannot prepare statement", e))?;
+            .map_err(|e| storage_error("cannot prepare statement", &e))?;
 
         let rows = stmt
             .query_map(params![kind.map(VersionKind::as_manifest_str)], row_to_meta)
-            .map_err(|e| storage_error("cannot query versions", e))?;
+            .map_err(|e| storage_error("cannot query versions", &e))?;
 
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| storage_error("cannot read versions", e))
+            .map_err(|e| storage_error("cannot read versions", &e))
     }
 
     /// List the versions that are installed locally.
@@ -166,12 +166,12 @@ impl VersionRepo {
                 "SELECT {SELECT_COLUMNS} FROM versions WHERE installed = 1
                  ORDER BY release_time IS NULL, release_time DESC, id ASC"
             ))
-            .map_err(|e| storage_error("cannot prepare statement", e))?;
+            .map_err(|e| storage_error("cannot prepare statement", &e))?;
         let rows = stmt
             .query_map([], row_to_meta)
-            .map_err(|e| storage_error("cannot query versions", e))?;
+            .map_err(|e| storage_error("cannot query versions", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| storage_error("cannot read versions", e))
+            .map_err(|e| storage_error("cannot read versions", &e))
     }
 
     /// Mark a version as installed or not.
@@ -182,7 +182,7 @@ impl VersionRepo {
                 "UPDATE versions SET installed = ?2, updated_at = ?3 WHERE id = ?1",
                 params![id, i64::from(installed), now_iso8601()],
             )
-            .map_err(|e| storage_error("cannot update install state", e))?;
+            .map_err(|e| storage_error("cannot update install state", &e))?;
         if changed == 0 {
             return Err(Error::UnknownVersion(id.to_string()));
         }
@@ -199,7 +199,7 @@ impl VersionRepo {
                 |row| row.get(0),
             )
             .optional()
-            .map_err(|e| storage_error("cannot read install state", e))?;
+            .map_err(|e| storage_error("cannot read install state", &e))?;
         Ok(value.is_some_and(|v| v != 0))
     }
 
@@ -211,7 +211,7 @@ impl VersionRepo {
                 "UPDATE versions SET json_path = ?2, updated_at = ?3 WHERE id = ?1",
                 params![id, path, now_iso8601()],
             )
-            .map_err(|e| storage_error("cannot update json path", e))?;
+            .map_err(|e| storage_error("cannot update json path", &e))?;
         if changed == 0 {
             return Err(Error::UnknownVersion(id.to_string()));
         }
@@ -227,14 +227,14 @@ impl VersionRepo {
             |row| row.get(0),
         )
         .optional()
-        .map_err(|e| storage_error("cannot read json path", e))
+        .map_err(|e| storage_error("cannot read json path", &e))
     }
 
     /// Number of known versions.
     pub fn count(&self) -> Result<i64> {
         let conn = self.conn()?;
         conn.query_row("SELECT COUNT(*) FROM versions", [], |row| row.get(0))
-            .map_err(|e| storage_error("cannot count versions", e))
+            .map_err(|e| storage_error("cannot count versions", &e))
     }
 
     /// Forget a version entirely.
@@ -242,7 +242,7 @@ impl VersionRepo {
         let conn = self.conn()?;
         let changed = conn
             .execute("DELETE FROM versions WHERE id = ?1", params![id])
-            .map_err(|e| storage_error("cannot delete version", e))?;
+            .map_err(|e| storage_error("cannot delete version", &e))?;
         Ok(changed > 0)
     }
 }
@@ -329,7 +329,7 @@ mod tests {
         assert_eq!(repo.list(None).unwrap().len(), 2);
         assert_eq!(repo.list(Some(VersionKind::Release)).unwrap().len(), 1);
         assert_eq!(repo.list(Some(VersionKind::Snapshot)).unwrap().len(), 1);
-        assert!(repo.list(Some(VersionKind::OldBeta)).unwrap().is_empty());
+        assert_eq!(repo.list(Some(VersionKind::OldBeta)).unwrap().len(), 0);
     }
 
     #[test]

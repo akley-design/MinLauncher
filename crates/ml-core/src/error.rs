@@ -1,4 +1,4 @@
-//! Error taxonomy shared by every MinLauncher crate.
+//! Error taxonomy shared by every `MinLauncher` crate.
 //!
 //! The tree is deliberately shallow: a small set of stable variants that the
 //! UI can map onto user-facing messages, plus a catch-all for anything that

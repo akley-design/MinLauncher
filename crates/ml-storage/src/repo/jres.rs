@@ -106,7 +106,7 @@ impl JreRepo {
                 now_iso8601(),
             ],
         )
-        .map_err(|e| storage_error("cannot upsert java runtime", e))?;
+        .map_err(|e| storage_error("cannot upsert java runtime", &e))?;
         Ok(())
     }
 
@@ -121,7 +121,7 @@ impl JreRepo {
                 row_to_entry,
             )
             .optional()
-            .map_err(|e| storage_error("cannot read java runtime", e))?;
+            .map_err(|e| storage_error("cannot read java runtime", &e))?;
         Ok(row)
     }
 
@@ -133,12 +133,12 @@ impl JreRepo {
                 "SELECT component, platform, version, path, status, size, updated_at
                  FROM jres ORDER BY component ASC, platform ASC",
             )
-            .map_err(|e| storage_error("cannot prepare statement", e))?;
+            .map_err(|e| storage_error("cannot prepare statement", &e))?;
         let rows = stmt
             .query_map([], row_to_entry)
-            .map_err(|e| storage_error("cannot query java runtimes", e))?;
+            .map_err(|e| storage_error("cannot query java runtimes", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| storage_error("cannot read java runtimes", e))
+            .map_err(|e| storage_error("cannot read java runtimes", &e))
     }
 
     /// List the runtimes that are ready to be used.
@@ -158,7 +158,7 @@ impl JreRepo {
                 "DELETE FROM jres WHERE component = ?1 AND platform = ?2",
                 params![component, platform],
             )
-            .map_err(|e| storage_error("cannot delete java runtime", e))?;
+            .map_err(|e| storage_error("cannot delete java runtime", &e))?;
         Ok(changed > 0)
     }
 }
