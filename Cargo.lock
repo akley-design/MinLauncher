@@ -2751,6 +2751,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "dirs",
+ "embed-resource",
  "ml-bench",
  "ml-core",
  "ml-launch",

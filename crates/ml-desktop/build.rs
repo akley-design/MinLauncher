@@ -40,6 +40,38 @@
 //! `OUT_DIR`, which the build script controls, and add that directory to
 //! the link search path. The linker then resolves the library through an
 //! ASCII-only path.
+//!
+//! # Why the WebView2 loader is copied next to the test binaries
+//!
+//! `WebView2Loader.dll` is loaded at run time, not at link time. Windows
+//! looks for it in the directory of the executable first. The application
+//! binary lives in `target/debug`, and Tauri's own build script puts the
+//! loader there — but the test binaries live in `target/debug/deps`, and
+//! nothing puts the loader there.
+//!
+//! Without it, every test of this crate dies before the first test runs,
+//! with `STATUS_DLL_NOT_FOUND` (0xC0000135). The copy below is what makes
+//! `cargo test` work on Windows.
+//!
+//! # Why the manifest is embedded here
+//!
+//! Tauri compiles the icon, the version information and the application
+//! manifest into one Windows resource, and hands it to the linker with
+//! `cargo:rustc-link-arg-bins` — that is, to the *binaries* of the crate
+//! only. The test binaries are not among them, so they start without a
+//! manifest.
+//!
+//! That matters because the manifest is what asks Windows for the version 6
+//! of the common controls. Without it, the loader falls back to the legacy
+//! `comctl32.dll` from `System32`, and the code under test imports
+//! `TaskDialogIndirect` — a function that only the version 6 exports. The
+//! loader cannot find it and refuses to start the process with
+//! `STATUS_ENTRYPOINT_NOT_FOUND` (0xC0000139), before the first test runs.
+//!
+//! So Tauri is told to leave the manifest alone, and the manifest below is
+//! compiled into a resource of its own and linked into every target of the
+//! crate — the application binary and the test binaries alike. The content
+//! is the same manifest that Tauri would have used.
 
 use std::path::{Path, PathBuf};
 
@@ -51,6 +83,33 @@ const IMPORT_LIBRARY: &str = "libwindows.0.53.0.a";
 
 /// The crate that owns the import library.
 const IMPORT_LIBRARY_CRATE: &str = "windows_x86_64_gnu";
+
+/// The loader of WebView2, loaded at run time.
+const WEBVIEW2_LOADER: &str = "WebView2Loader.dll";
+
+/// The crate that ships the loader.
+const WEBVIEW2_CRATE: &str = "webview2-com-sys";
+
+/// The manifest of the application.
+///
+/// It asks Windows for the version 6 of the common controls, which is the
+/// one that exports `TaskDialogIndirect` and the window subclassing
+/// functions. Tauri embeds the very same manifest into the application
+/// binary; this copy is for the test binaries, which Tauri leaves alone.
+const WINDOWS_MANIFEST: &str = r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>"#;
 
 /// Copy the application icon into `OUT_DIR` and return the new location.
 ///
@@ -131,6 +190,117 @@ fn stage_import_library(out_dir: &Path) -> Result<PathBuf, String> {
     Ok(target_dir)
 }
 
+/// Copy the WebView2 loader next to the test binaries.
+///
+/// The loader is loaded at run time, and Windows looks for it in the
+/// directory of the executable. The test binaries of the workspace live
+/// in `<target>/debug/deps`, and the loader is not there — so every test
+/// of this crate would die with `STATUS_ENTRYPOINT_NOT_FOUND` before the
+/// first test runs.
+///
+/// # Errors
+/// Fails if the loader cannot be found in the registry.
+fn stage_webview2_loader(out_dir: &Path) -> Result<PathBuf, String> {
+    let cargo_home = std::env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))
+        .ok_or_else(|| "neither CARGO_HOME nor HOME is set".to_string())?;
+
+    let registry = cargo_home.join("registry").join("src");
+    let sources = std::fs::read_dir(&registry)
+        .map_err(|e| format!("cannot read {}: {e}", registry.display()))?;
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    for source in sources {
+        let source = source.map_err(|e| format!("cannot read {}: {e}", registry.display()))?;
+        let source = source.path();
+        let Ok(entries) = std::fs::read_dir(&source) else {
+            continue;
+        };
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("cannot read {}: {e}", source.display()))?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with(WEBVIEW2_CRATE) {
+                candidates.push(entry.path().join("x64").join(WEBVIEW2_LOADER));
+            }
+        }
+    }
+
+    let source = candidates
+        .iter()
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| format!("{WEBVIEW2_LOADER} was not found in {}", registry.display()))?;
+
+    // `OUT_DIR` is `<target>/debug/build/<crate>-<hash>/out`, so the
+    // directory of the test binaries is two levels up.
+    let deps = out_dir
+        .ancestors()
+        .nth(3)
+        .map(|root| root.join("deps"))
+        .ok_or_else(|| "cannot find the deps directory from OUT_DIR".to_string())?;
+
+    std::fs::create_dir_all(&deps).map_err(|e| format!("cannot create {}: {e}", deps.display()))?;
+    let target = deps.join(WEBVIEW2_LOADER);
+    std::fs::copy(source, &target).map_err(|e| {
+        format!(
+            "cannot copy {} to {}: {e}",
+            source.display(),
+            target.display()
+        )
+    })?;
+
+    Ok(target)
+}
+
+/// Compile the application manifest into a resource of its own and hand
+/// it to the linker for every target of the crate.
+///
+/// Tauri compiles the icon, the version information and the manifest into
+/// one resource, and links it into the *binaries* of the crate. The test
+/// binaries are left out, and without the manifest they cannot start: the
+/// loader falls back to the legacy common controls, which do not export
+/// `TaskDialogIndirect`.
+///
+/// To keep one manifest for the whole crate, Tauri is told not to embed
+/// one of its own, and the resource built here is linked into every target
+/// instead — the application binary and the test binaries alike.
+///
+/// The manifest is written to `OUT_DIR` and referenced from a resource file
+/// of its own, so that the targets get the manifest and nothing else — the
+/// icon and the version information come from Tauri.
+///
+/// # Errors
+/// Fails if the manifest or the resource file cannot be written, or if the
+/// resource compiler refuses the resource file.
+fn embed_manifest(out_dir: &Path) -> Result<(), String> {
+    let manifest = out_dir.join("minlaucher-manifest.xml");
+    std::fs::write(&manifest, WINDOWS_MANIFEST)
+        .map_err(|e| format!("cannot write {}: {e}", manifest.display()))?;
+
+    // The resource file asks the resource compiler to put the manifest into
+    // the resource of type 24 (`RT_MANIFEST`) under the identifier 1, which
+    // is where the Windows loader looks for it.
+    //
+    // The path is written with slashes, because the resource compiler
+    // treats a backslash as an escape character and would then look for a
+    // file of a different name.
+    let resource = out_dir.join("minlaucher-manifest.rc");
+    let manifest_path = manifest.to_string_lossy().replace('\\', "/");
+    std::fs::write(&resource, format!("1 24 \"{manifest_path}\"\n"))
+        .map_err(|e| format!("cannot write {}: {e}", resource.display()))?;
+
+    // `compile_for_everything` links the resource into every target that
+    // is linked at all: the application binary, the test binaries, the
+    // examples and the dynamic library.
+    let result = embed_resource::compile_for_everything(&resource, embed_resource::NONE);
+    if let embed_resource::CompilationResult::Failed(error) = result {
+        return Err(format!("cannot compile the manifest: {error}"));
+    }
+
+    Ok(())
+}
+
 /// Generate the Tauri build-time artifacts.
 fn main() {
     let manifest_dir = PathBuf::from(
@@ -143,10 +313,12 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CARGO_HOME");
 
     let mut attributes = tauri_build::Attributes::new();
+    // Tauri links its own manifest into the binaries of the crate only, so
+    // the manifest is built below and linked into every target instead.
+    let mut windows = tauri_build::WindowsAttributes::new_without_app_manifest();
     match stage_icon(&manifest_dir.join("icons"), &out_dir) {
         Ok(staged) => {
-            attributes = attributes
-                .windows_attributes(tauri_build::WindowsAttributes::new().window_icon_path(staged));
+            windows = windows.window_icon_path(staged);
         }
         Err(error) => {
             // Do not fail here: `tauri-build` produces a much better error
@@ -155,6 +327,7 @@ fn main() {
             println!("cargo:warning={error}");
         }
     }
+    attributes = attributes.windows_attributes(windows);
 
     match stage_import_library(&out_dir) {
         Ok(directory) => {
@@ -169,6 +342,25 @@ fn main() {
             // only needed as a fallback.
             println!("cargo:warning={error}");
         }
+    }
+
+    // The loader is needed at run time by the test binaries, which run
+    // from `<target>/debug/deps`. Without it they cannot even start.
+    #[cfg(target_os = "windows")]
+    match stage_webview2_loader(&out_dir) {
+        Ok(target) => println!(
+            "cargo:warning=webview2 loader staged at {}",
+            target.display()
+        ),
+        Err(error) => println!("cargo:warning={error}"),
+    }
+
+    // Tauri links its own manifest into the binaries of the crate only, so
+    // the manifest is built here and linked into every target instead.
+    #[cfg(target_os = "windows")]
+    match embed_manifest(&out_dir) {
+        Ok(()) => println!("cargo:warning=manifest embedded into every target"),
+        Err(error) => println!("cargo:warning={error}"),
     }
 
     tauri_build::try_build(attributes).expect("tauri-build failed");

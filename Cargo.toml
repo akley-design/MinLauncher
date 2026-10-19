@@ -95,6 +95,10 @@ criterion = "0.8.2"
 # --- tauri ---
 tauri = { version = "2.12.4", features = ["tray-icon", "protocol-asset"] }
 tauri-build = "2.7.3"
+# Used by the build script of `ml-desktop` to embed the Windows manifest
+# into every target of the crate — see the comment in
+# `crates/ml-desktop/build.rs`.
+embed-resource = "3.0.12"
 tauri-plugin-store = "2.5.0"
 tauri-plugin-updater = "2.14.0"
 tauri-plugin-process = "2.4.0"
