@@ -158,6 +158,8 @@ fn the_launcher_and_the_agent_work_together() {
         extra_jvm_args: Vec::new(),
         agent_jar: Some(agent.clone()),
         agent_report: Some(report.clone()),
+        loader: None,
+        mod_jars: Vec::new(),
     };
 
     let command = build_command(&request, platform(), &FeatureSet::none(), "release").unwrap();

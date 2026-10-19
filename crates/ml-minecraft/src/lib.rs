@@ -56,6 +56,7 @@
 
 pub mod assets;
 pub mod download;
+pub mod fabric;
 pub mod install;
 pub mod jre;
 pub mod library;
@@ -69,6 +70,10 @@ use ml_storage::Storage;
 
 pub use assets::{AssetIndex, AssetObject, AssetRoots, AssetStore};
 pub use download::{BatchResult, DownloadOutcome, DownloadTask, Downloader};
+pub use fabric::{
+    FabricArguments, FabricLaunch, FabricLauncherMeta, FabricLibrary, FabricLoader,
+    FabricLoaderEntry, FabricLoaderList, FabricMetaLibraries, FabricMetaMainClass, FabricProfile,
+};
 pub use install::{FileKind, InstallLayout, InstallPlan, PlannedFile};
 pub use jre::{RuntimeEntry, RuntimeFileList, RuntimeManifest};
 pub use library::{Coordinate, ResolvedLibrary};
@@ -208,6 +213,35 @@ impl MinecraftService {
     pub async fn runtime_manifest(&self) -> Result<RuntimeManifest> {
         let bytes = self.fetch_bytes(jre::JRE_MANIFEST_URL).await?;
         RuntimeManifest::parse(&bytes)
+    }
+
+    /// Fetch the list of the Fabric loaders that exist for a version of
+    /// the game.
+    ///
+    /// # Errors
+    /// Fails on a transport error or a malformed document.
+    pub async fn fabric_loaders(&self, minecraft_version: &str) -> Result<FabricLoaderList> {
+        let url = fabric::loader_list_url(minecraft_version);
+        let bytes = self.fetch_bytes(&url).await?;
+        FabricLoaderList::parse(&bytes)
+    }
+
+    /// Fetch the profile of a Fabric loader.
+    ///
+    /// The profile is the document that says which libraries the loader
+    /// needs, which class the game is started with, and which class of the
+    /// game the loader starts itself.
+    ///
+    /// # Errors
+    /// Fails on a transport error or a malformed document.
+    pub async fn fabric_profile(
+        &self,
+        minecraft_version: &str,
+        loader_version: &str,
+    ) -> Result<FabricProfile> {
+        let url = fabric::profile_url(minecraft_version, loader_version);
+        let bytes = self.fetch_bytes(&url).await?;
+        FabricProfile::parse(&bytes)
     }
 
     /// Build the install plan of a version.

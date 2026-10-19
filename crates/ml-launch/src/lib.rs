@@ -139,6 +139,8 @@ mod tests {
             extra_jvm_args: Vec::new(),
             agent_jar: None,
             agent_report: None,
+            loader: None,
+            mod_jars: Vec::new(),
         };
 
         assert!(classpath_of(&request).starts_with("C:/v/client.jar"));

@@ -2759,6 +2759,7 @@ dependencies = [
  "ml-storage",
  "once_cell",
  "parking_lot",
+ "reqwest",
  "serde",
  "serde_json",
  "tauri",

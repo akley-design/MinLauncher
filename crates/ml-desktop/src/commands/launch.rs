@@ -123,7 +123,14 @@ pub async fn launch_game(
         })?;
 
     // --- the request ------------------------------------------------
-    let request = build_request(&state, &account, &meta, &options)?;
+    let mut request = build_request(&state, &account, &meta, &options)?;
+
+    // --- the loader -------------------------------------------------
+    //
+    // The loader makes the game itself faster. It is optional: a
+    // version of the game the loader does not support is started without
+    // it, and the game is a little slower but works.
+    prepare_loader(&state, &mut request, &meta.id).await;
 
     // --- the command ------------------------------------------------
     let platform = state.platform();
@@ -366,7 +373,92 @@ fn build_request(
         extra_jvm_args: extra_jvm_args(state),
         agent_jar: agent.as_ref().map(|agent| agent.jar.clone()),
         agent_report: agent.as_ref().map(|agent| agent.report.clone()),
+        loader: None,
+        mod_jars: Vec::new(),
     })
+}
+
+/// Put the loader in front of the game, when everything is ready for it.
+///
+/// Everything that can go wrong here is a normal thing: the loader does
+/// not publish a loader for every version of the game, the network may
+/// be down, and the jar of the mod may not be built yet. In every one of
+/// those cases the game is started without the loader, and the launcher
+/// says why in its log.
+async fn prepare_loader(state: &SharedState, request: &mut LaunchRequest, version_id: &str) {
+    let Ok(config) = state.storage().load_settings() else {
+        return;
+    };
+
+    if !config.mods.enabled {
+        tracing::info!("the mod of the launcher is switched off");
+        return;
+    }
+
+    // The loader needs a version of the game it supports.
+    let Some(loader_version) =
+        crate::commands::fabric::loader_version_for(version_id, &config.mods.loader_version)
+            .await
+            .ok()
+            .flatten()
+    else {
+        tracing::info!("the loader has no release for the version {version_id}");
+        return;
+    };
+
+    let profile = match crate::commands::fabric::profile(version_id, &loader_version).await {
+        Ok(profile) => profile,
+        Err(error) => {
+            tracing::warn!("cannot fetch the profile of the loader: {error}");
+            return;
+        }
+    };
+
+    // The libraries of the loader go into the same store the libraries
+    // of the game go into.
+    if let Err(error) =
+        crate::commands::fabric::download_libraries(state.paths(), state.platform(), &profile).await
+    {
+        tracing::warn!("cannot download the libraries of the loader: {error}");
+        return;
+    }
+
+    // The settings of the mod are read by the mod itself, at the start
+    // of the game.
+    let game_directory = request.session.game_directory.clone();
+    if let Err(error) =
+        crate::commands::fabric::write_mod_settings(&game_directory, &config.mods.preset, true)
+    {
+        tracing::warn!("cannot write the settings of the mod: {error}");
+    }
+
+    // The jar of the mod goes where the loader looks for the mods.
+    let source = if config.mods.mod_jar.is_empty() {
+        state.paths().mod_jar()
+    } else {
+        PathBuf::from(&config.mods.mod_jar)
+    };
+
+    let mods_directory = game_directory.join("mods");
+    match crate::commands::fabric::install_mod_jar(&source, &mods_directory) {
+        Ok(jar) => request.mod_jars.push(jar),
+        Err(error) => {
+            tracing::warn!("cannot install the jar of the mod: {error}");
+            // The loader without the mod of the launcher is still worth
+            // having: the mods of the player are still loaded.
+        }
+    }
+
+    request.loader = Some(ml_minecraft::fabric::FabricLaunch::from_profile(
+        version_id,
+        &loader_version,
+        &profile,
+    ));
+
+    tracing::info!(
+        "the game is started with the loader {loader_version} and {} mods",
+        request.mod_jars.len()
+    );
 }
 
 /// The agent to attach to the game, when the settings ask for it.
@@ -574,6 +666,8 @@ mod tests {
             extra_jvm_args: Vec::new(),
             agent_jar: None,
             agent_report: None,
+            loader: None,
+            mod_jars: Vec::new(),
         };
 
         // The library has no artifact, so it does not go on the

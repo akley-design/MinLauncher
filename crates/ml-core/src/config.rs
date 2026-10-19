@@ -60,6 +60,42 @@ impl Default for JvmConfig {
     }
 }
 
+/// The settings of the mods.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModConfig {
+    /// Whether the mod of the launcher is used at all.
+    ///
+    /// The mod makes the game itself faster. It only works with the
+    /// Fabric loader, and only for the versions of the game the loader
+    /// supports.
+    pub enabled: bool,
+    /// The version of the Fabric loader to use.
+    ///
+    /// Empty means "the newest one the loader publishes for the version
+    /// of the game".
+    pub loader_version: String,
+    /// The jar of the mod.
+    ///
+    /// Empty means "the jar that ships with the launcher".
+    pub mod_jar: String,
+    /// The preset of the settings of the mod.
+    ///
+    /// One of `balanced`, `fast` or `off`.
+    pub preset: String,
+}
+
+impl Default for ModConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            loader_version: String::new(),
+            mod_jar: String::new(),
+            preset: "balanced".to_string(),
+        }
+    }
+}
+
 /// The launcher's complete settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -82,6 +118,8 @@ pub struct LauncherConfig {
     pub downloads: DownloadConfig,
     /// JVM tuning.
     pub jvm: JvmConfig,
+    /// The settings of the mods.
+    pub mods: ModConfig,
     /// Whether to collect anonymous performance samples.
     pub telemetry_enabled: bool,
 }
@@ -98,6 +136,7 @@ impl Default for LauncherConfig {
             show_console: false,
             downloads: DownloadConfig::default(),
             jvm: JvmConfig::default(),
+            mods: ModConfig::default(),
             telemetry_enabled: false,
         }
     }

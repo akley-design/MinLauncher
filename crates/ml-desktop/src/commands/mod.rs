@@ -11,6 +11,7 @@
 //! | [`instances`] | The game instances |
 //! | [`launch`] | Starting and stopping the game |
 //! | [`agent`] | Finding the profiling agent that measures the game |
+//! | [`fabric`] | Putting the Fabric loader in front of the game |
 //! | [`settings`] | The settings of the launcher |
 //! | [`benchmarks`] | The results of the measurements |
 //!
@@ -21,6 +22,7 @@
 pub mod accounts;
 pub mod agent;
 pub mod benchmarks;
+pub mod fabric;
 pub mod instances;
 pub mod launch;
 pub mod settings;

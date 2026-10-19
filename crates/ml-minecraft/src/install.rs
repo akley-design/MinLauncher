@@ -187,7 +187,7 @@ pub fn plan_install(
                 PlannedFile {
                     url: download.map_or_else(String::new, |file| file.url.clone()),
                     target,
-                    sha1: download.map(|file| file.sha1.clone()),
+                    sha1: download.and_then(|file| checksum(&file.sha1)),
                     size: download.map(|file| file.size),
                     kind: FileKind::Library,
                 },
@@ -204,7 +204,7 @@ pub fn plan_install(
                 PlannedFile {
                     url: download.url.clone(),
                     target,
-                    sha1: Some(download.sha1.clone()),
+                    sha1: checksum(&download.sha1),
                     size: Some(download.size),
                     kind: FileKind::Native,
                 },
@@ -253,6 +253,20 @@ fn push_if_missing(files: &mut Vec<PlannedFile>, file: PlannedFile) {
     files.push(file);
 }
 
+/// The checksum of a file, or nothing when the source did not give one.
+///
+/// Some sources leave the checksum of a file empty — the profile of the
+/// Fabric loader does it for the loader itself and for the intermediary.
+/// An empty checksum is not a checksum that matches nothing, so it must
+/// not be given to the download engine as one.
+fn checksum(sha1: &str) -> Option<String> {
+    if sha1.is_empty() {
+        None
+    } else {
+        Some(sha1.to_string())
+    }
+}
+
 /// Persist the resolved libraries of a version.
 ///
 /// The libraries are stored *after* rule evaluation, so the launcher does
@@ -277,7 +291,10 @@ pub fn store_libraries(
                 classifier: library.coordinate.classifier.clone(),
                 is_native: library.is_native,
                 artifact_path,
-                sha1: library.artifact.as_ref().map(|file| file.sha1.clone()),
+                sha1: library
+                    .artifact
+                    .as_ref()
+                    .and_then(|file| checksum(&file.sha1)),
                 size: library.artifact.as_ref().map(|file| file.size),
                 download_url: library.artifact.as_ref().map(|file| file.url.clone()),
                 rules_json: library.rules_json.clone(),

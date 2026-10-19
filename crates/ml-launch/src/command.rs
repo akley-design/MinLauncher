@@ -18,6 +18,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use ml_core::{Error, FeatureSet, Platform, Result};
+use ml_minecraft::fabric::FabricLaunch;
 use ml_minecraft::library::{NativeFamily, ResolvedLibrary};
 use ml_minecraft::version::VersionJson;
 
@@ -51,6 +52,17 @@ pub struct LaunchRequest {
     /// `=`, so a path that has an `=` in it would cut the jar path in
     /// half and the agent would not load at all.
     pub agent_report: Option<PathBuf>,
+    /// The loader that wraps the game, when there is one.
+    ///
+    /// The loader does not replace the game, it goes in front of it: the
+    /// game is still the game of Mojang, and the loader starts it.
+    pub loader: Option<FabricLaunch>,
+    /// The jars of the mods.
+    ///
+    /// They do not go on the classpath: the loader finds them in the
+    /// directory of the mods and loads them itself, so that it can
+    /// transform them first.
+    pub mod_jars: Vec<PathBuf>,
 }
 
 impl LaunchRequest {
@@ -59,17 +71,31 @@ impl LaunchRequest {
     /// Every library that resolved contributes its artifact, the natives
     /// jars included: LWJGL finds its native inside the jar on the
     /// classpath and unpacks it itself.
+    ///
+    /// The libraries of the loader come first, when there is a loader:
+    /// the loader reads the game out of the classpath, and it has to
+    /// find its own classes before the game is touched at all.
     #[must_use]
     pub fn classpath_entries(&self) -> Vec<PathBuf> {
-        self.libraries
-            .iter()
-            .filter_map(|library| {
+        let mut entries = Vec::new();
+
+        if let Some(loader) = &self.loader {
+            entries.extend(loader.libraries.iter().filter_map(|library| {
                 library.artifact.as_ref().map(|_| {
                     self.library_directory
                         .join(library.coordinate.artifact_path())
                 })
+            }));
+        }
+
+        entries.extend(self.libraries.iter().filter_map(|library| {
+            library.artifact.as_ref().map(|_| {
+                self.library_directory
+                    .join(library.coordinate.artifact_path())
             })
-            .collect()
+        }));
+
+        entries
     }
 
     /// The native jars that have to be unpacked before the game starts.
@@ -129,11 +155,19 @@ pub fn build_command(
     features: &FeatureSet,
     version_type: &str,
 ) -> Result<LaunchCommand> {
-    let Some(main_class) = request.version.main_class.as_ref() else {
-        return Err(Error::InvalidInput(format!(
-            "version `{}` has no main class",
-            request.version.id
-        )));
+    // The loader goes in front of the game, so it is the loader's class
+    // that is started, not the class of the version.
+    let main_class = match &request.loader {
+        Some(loader) => loader.main_class.clone(),
+        None => {
+            let Some(main_class) = request.version.main_class.as_ref() else {
+                return Err(Error::InvalidInput(format!(
+                    "version `{}` has no main class",
+                    request.version.id
+                )));
+            };
+            main_class.clone()
+        }
     };
 
     let mut session = request.session.clone();
@@ -164,6 +198,38 @@ pub fn build_command(
             .resolve_jvm(platform, version_id, features),
         &values,
     ));
+
+    // The arguments of the loader come after the arguments of the game,
+    // so that the arguments of the game win where both of them say
+    // something about the same thing.
+    if let Some(loader) = &request.loader {
+        jvm_arguments.extend(loader.jvm_arguments.iter().cloned());
+
+        // The loader looks for the jar of the game. It finds the one on
+        // the classpath on its own, but it is told where the jar is
+        // anyway: the jar of the game is on the classpath under a name
+        // of the launcher, and the loader should not have to guess.
+        jvm_arguments.push(format!(
+            "-Dfabric.gameJarPath.client={}",
+            request.client_jar.display()
+        ));
+
+        // The mods are not put on the classpath: the loader loads them
+        // itself, from the directory of the mods, so that it can
+        // transform them before the game sees them.
+        if !request.mod_jars.is_empty() {
+            let separator = crate::args::classpath_separator();
+            let paths: Vec<String> = request
+                .mod_jars
+                .iter()
+                .map(|jar| jar.display().to_string())
+                .collect();
+            jvm_arguments.push(format!(
+                "-Dfabric.addMods={}",
+                paths.join(&separator.to_string())
+            ));
+        }
+    }
 
     if let Some(agent) = &request.agent_jar
         && let Some(argument) = crate::args::java_agent(agent)
@@ -333,6 +399,8 @@ mod tests {
             extra_jvm_args: Vec::new(),
             agent_jar: None,
             agent_report: None,
+            loader: None,
+            mod_jars: Vec::new(),
         }
     }
 
@@ -520,5 +588,166 @@ mod tests {
         assert_eq!(jars.len(), 1);
         assert_eq!(jars[0].family, NativeFamily::Lwjgl);
         assert!(jars[0].path.ends_with("lwjgl-3.4.3-natives-windows.jar"));
+    }
+
+    /// A request with the Fabric loader in front of the game.
+    fn loader_request() -> LaunchRequest {
+        let profile = ml_minecraft::fabric::FabricProfile::parse(
+            br#"{
+              "id": "fabric-loader-0.19.5-1.21.4",
+              "inheritsFrom": "1.21.4",
+              "mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
+              "arguments": { "jvm": ["-DFabricMcEmu= net.minecraft.client.main.Main "] },
+              "libraries": [
+                { "name": "net.fabricmc:fabric-loader:0.19.5", "url": "https://maven.fabricmc.net/" },
+                { "name": "net.fabricmc:intermediary:1.21.4", "url": "https://maven.fabricmc.net/" }
+              ]
+            }"#,
+        )
+        .unwrap();
+
+        let mut request = request();
+        request.loader = Some(ml_minecraft::fabric::FabricLaunch::from_profile(
+            "1.21.4", "0.19.5", &profile,
+        ));
+        request.mod_jars = vec![PathBuf::from("C:/games/mc/mods/minlaucher.jar")];
+        request
+    }
+
+    #[test]
+    fn the_loader_is_the_class_the_game_is_started_with() {
+        let command = build_command(
+            &loader_request(),
+            platform(),
+            &FeatureSet::none(),
+            "release",
+        )
+        .unwrap();
+
+        let main = command
+            .arguments
+            .iter()
+            .position(|argument| argument == "net.fabricmc.loader.impl.launch.knot.KnotClient")
+            .expect("the class of the loader is not there");
+
+        // The class of the game is not started directly any more.
+        assert!(
+            !command
+                .arguments
+                .iter()
+                .any(|argument| argument == "net.minecraft.client.main.Main")
+        );
+        assert!(
+            command.arguments[main + 1..]
+                .iter()
+                .any(|a| a == "--username")
+        );
+    }
+
+    #[test]
+    fn the_libraries_of_the_loader_are_on_the_classpath() {
+        let request = loader_request();
+        let entries = request.classpath_entries();
+
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.ends_with("fabric-loader-0.19.5.jar")),
+            "{entries:?}"
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.ends_with("intermediary-1.21.4.jar")),
+            "{entries:?}"
+        );
+
+        // The libraries of the loader come before the libraries of the
+        // game, so that the loader finds its own classes first.
+        let loader = entries
+            .iter()
+            .position(|entry| entry.ends_with("fabric-loader-0.19.5.jar"))
+            .unwrap();
+        assert_eq!(loader, 0);
+    }
+
+    #[test]
+    fn the_jar_of_the_game_is_pointed_at() {
+        let command = build_command(
+            &loader_request(),
+            platform(),
+            &FeatureSet::none(),
+            "release",
+        )
+        .unwrap();
+
+        assert!(
+            command
+                .arguments
+                .iter()
+                .any(|argument| argument
+                    == "-Dfabric.gameJarPath.client=C:/versions/26.3/client.jar"),
+            "{:?}",
+            command.arguments
+        );
+    }
+
+    #[test]
+    fn the_mods_are_handed_to_the_loader() {
+        let command = build_command(
+            &loader_request(),
+            platform(),
+            &FeatureSet::none(),
+            "release",
+        )
+        .unwrap();
+
+        assert!(
+            command
+                .arguments
+                .iter()
+                .any(|argument| argument == "-Dfabric.addMods=C:/games/mc/mods/minlaucher.jar"),
+            "{:?}",
+            command.arguments
+        );
+    }
+
+    #[test]
+    fn the_arguments_of_the_loader_are_added() {
+        let command = build_command(
+            &loader_request(),
+            platform(),
+            &FeatureSet::none(),
+            "release",
+        )
+        .unwrap();
+
+        assert!(
+            command
+                .arguments
+                .iter()
+                .any(|argument| argument.starts_with("-DFabricMcEmu=")),
+            "{:?}",
+            command.arguments
+        );
+    }
+
+    #[test]
+    fn a_game_without_a_loader_starts_the_game_itself() {
+        let command =
+            build_command(&request(), platform(), &FeatureSet::none(), "release").unwrap();
+
+        assert!(
+            command
+                .arguments
+                .iter()
+                .any(|argument| argument == "net.minecraft.client.main.Main")
+        );
+        assert!(
+            !command
+                .arguments
+                .iter()
+                .any(|argument| argument.starts_with("-Dfabric."))
+        );
     }
 }

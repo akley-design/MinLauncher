@@ -32,6 +32,8 @@ pub struct AppPaths {
     pub benchmarks_dir: PathBuf,
     /// Directory holding the jar of the profiling agent.
     pub agent_dir: PathBuf,
+    /// Directory holding the jars of the mods.
+    pub mods_dir: PathBuf,
     /// SQLite database file.
     pub database_path: PathBuf,
     /// JSON settings file.
@@ -55,6 +57,7 @@ impl AppPaths {
             logs_dir: data_dir.join("logs"),
             benchmarks_dir: data_dir.join("benchmarks"),
             agent_dir: data_dir.join("agent"),
+            mods_dir: data_dir.join("mods"),
             database_path: data_dir.join("minlaucher.db"),
             settings_path: data_dir.join("settings.json"),
             secrets_path: data_dir.join("secrets.json"),
@@ -97,6 +100,7 @@ impl AppPaths {
             &self.logs_dir,
             &self.benchmarks_dir,
             &self.agent_dir,
+            &self.mods_dir,
         ]
     }
 
@@ -150,6 +154,28 @@ impl AppPaths {
     #[must_use]
     pub fn agent_jar(&self) -> PathBuf {
         self.agent_dir.join("minlaucher-agent.jar")
+    }
+
+    /// Path of the jar of the mod of the launcher.
+    ///
+    /// The jar lives next to the other mods: it is a mod like any other,
+    /// and the loader reads them all from the same place.
+    #[must_use]
+    pub fn mod_jar(&self) -> PathBuf {
+        self.mods_dir.join("minlaucher-optimisations.jar")
+    }
+
+    /// Directory the loader reads the mods from.
+    ///
+    /// The loader reads the mods of the instance it runs in, so the
+    /// directory is inside the instance and not in the data directory of
+    /// the launcher.
+    #[must_use]
+    pub fn instance_mods_dir(&self, instance_id: Option<&str>) -> PathBuf {
+        match instance_id {
+            Some(id) => self.instance_dir(id).join("mods"),
+            None => self.mods_dir.clone(),
+        }
     }
 
     /// Path of the report the agent writes.
