@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "minlaucher-optimisations",
+  "version": "${version}",
+  "name": "MinLauncher Optimisations",
+  "description": "Makes the game itself faster: fewer expensive effects, a smarter renderer, and a faster start.",
+  "authors": [
+    "MinLauncher"
+  ],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.minlaucher.mod.MinLauncherMod"
+    ]
+  },
+  "mixins": [
+    "minlaucher-optimisations.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~${minecraft_version}",
+    "java": ">=${java_version}",
+    "fabric-api": "*"
+  }
+}
