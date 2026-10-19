@@ -462,11 +462,32 @@ mod tests {
     }
 
     #[test]
-    fn the_extra_arguments_are_empty_without_a_heap() {
+    fn a_fresh_installation_asks_for_the_collector_it_defaults_to() {
+        // The collector is never left to the accident of the runtime: the
+        // settings name one, and the launcher passes it on. The heap, on
+        // the other hand, is left to the runtime as long as the player
+        // has not said otherwise.
         let dir = tempfile::tempdir().unwrap();
         let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
         let platform = Platform::new(OsName::Windows, OsArch::X86_64);
         let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
+
+        let args = extra_jvm_args(&state);
+        assert_eq!(args, vec!["-XX:+UseG1".to_string()]);
+        assert!(!args.iter().any(|arg| arg.starts_with("-Xmx")), "{args:?}");
+        assert!(!args.iter().any(|arg| arg.starts_with("-Xms")), "{args:?}");
+    }
+
+    #[test]
+    fn an_empty_collector_is_left_to_the_runtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
+        let platform = Platform::new(OsName::Windows, OsArch::X86_64);
+        let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
+
+        let mut config = state.storage().load_settings().unwrap();
+        config.jvm.garbage_collector = String::new();
+        state.storage().save_settings(&config).unwrap();
 
         let args = extra_jvm_args(&state);
         assert!(args.is_empty(), "{args:?}");

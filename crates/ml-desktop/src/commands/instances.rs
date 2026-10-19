@@ -142,13 +142,18 @@ pub fn remove_instance(
 /// The name is lowered and everything that is not a letter or a digit
 /// becomes a dash, so that the identifier is safe to use as a directory
 /// name on every operating system.
+///
+/// Letters and digits are counted in the whole of Unicode, not only in
+/// ASCII: an instance called "Мой мир" is a perfectly ordinary name, and
+/// an identifier built out of dashes alone would send every such instance
+/// into the same directory.
 #[must_use]
 pub fn instance_id(name: &str) -> String {
     let mut id = String::with_capacity(name.len());
     let mut last_was_dash = false;
 
     for character in name.trim().to_lowercase().chars() {
-        if character.is_ascii_alphanumeric() {
+        if character.is_alphanumeric() {
             id.push(character);
             last_was_dash = false;
         } else if !last_was_dash {
@@ -178,7 +183,16 @@ mod tests {
         assert_eq!(instance_id("My World"), "my-world");
         assert_eq!(instance_id("  Spaced  Out  "), "spaced-out");
         assert_eq!(instance_id("Weird/Name:Here"), "weird-name-here");
-        assert_eq!(instance_id("Ünïcödé"), "nïcödé");
+        assert_eq!(instance_id("Ünïcödé"), "ünïcödé");
+    }
+
+    #[test]
+    fn the_identifier_keeps_the_letters_of_the_name() {
+        // A name in any alphabet has to keep its letters, or every
+        // instance of that name would end up in the same directory.
+        assert_eq!(instance_id("Мой мир"), "мой-мир");
+        assert_eq!(instance_id("Мир"), "мир");
+        assert!(!instance_id("Мой мир").is_empty());
     }
 
     #[test]
