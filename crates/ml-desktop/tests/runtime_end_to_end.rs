@@ -114,12 +114,18 @@ async fn a_runtime_is_downloaded_and_the_launcher_finds_it() {
         .await
         .expect("the runtime must download");
 
-    assert!(result.is_success(), "the files that failed: {:?}", result.failed);
+    assert!(
+        result.is_success(),
+        "the files that failed: {:?}",
+        result.failed
+    );
     assert_eq!(result.completed.len(), plan.files.len());
 
     // --- what is on the disk --------------------------------------------
     let home = paths.jre_dir_for(COMPONENT);
-    let java = home.join("bin").join(if cfg!(windows) { "java.exe" } else { "java" });
+    let java = home
+        .join("bin")
+        .join(if cfg!(windows) { "java.exe" } else { "java" });
 
     assert!(
         java.is_file(),

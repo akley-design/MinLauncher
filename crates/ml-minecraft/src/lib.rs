@@ -77,9 +77,7 @@ pub use fabric::{
     FabricLoaderEntry, FabricLoaderList, FabricMetaLibraries, FabricMetaMainClass, FabricProfile,
 };
 pub use install::{FileKind, InstallLayout, InstallPlan, PlannedFile};
-pub use jre::{
-    PlannedRuntimeFile, RuntimeEntry, RuntimeFileList, RuntimeManifest, RuntimePlan,
-};
+pub use jre::{PlannedRuntimeFile, RuntimeEntry, RuntimeFileList, RuntimeManifest, RuntimePlan};
 pub use library::{Coordinate, ResolvedLibrary};
 pub use manifest::{ManifestClient, VersionManifest, VersionSummary};
 pub use version::{Argument, ArgumentValue, Arguments, VersionJson};
@@ -231,9 +229,11 @@ impl MinecraftService {
         let manifest = self.runtime_manifest().await?;
         let entry = manifest
             .entry(&jre::platform_key(), component)
-            .ok_or_else(|| Error::InvalidInput(format!(
-                "there is no runtime `{component}` for this platform"
-            )))?;
+            .ok_or_else(|| {
+                Error::InvalidInput(format!(
+                    "there is no runtime `{component}` for this platform"
+                ))
+            })?;
 
         let bytes = self.fetch_bytes(&entry.manifest.url).await?;
         RuntimeFileList::parse(&bytes)
@@ -264,7 +264,8 @@ impl MinecraftService {
     /// Fails when the runtime does not exist for this platform, when the
     /// manifest is malformed, or when the files cannot be fetched.
     pub async fn install_runtime(&self, component: &str) -> Result<BatchResult> {
-        self.install_runtime_with_progress(component, Arc::new(|_| {})).await
+        self.install_runtime_with_progress(component, Arc::new(|_| {}))
+            .await
     }
 
     /// Download a Java runtime, unpack it and report the progress.

@@ -227,10 +227,7 @@ pub struct PlannedRuntimeFile {
 /// # Errors
 /// Fails when a path of the manifest is not a safe relative path, or
 /// when a file of the manifest offers no download at all.
-pub fn plan_runtime(
-    list: &RuntimeFileList,
-    runtime_dir: &Path,
-) -> Result<RuntimePlan> {
+pub fn plan_runtime(list: &RuntimeFileList, runtime_dir: &Path) -> Result<RuntimePlan> {
     let mut files = Vec::new();
     let mut directories = Vec::new();
     let mut total_size = 0;
@@ -299,8 +296,12 @@ pub fn runtime_tasks(plan: &RuntimePlan) -> Vec<DownloadTask> {
     plan.files
         .iter()
         .map(|file| {
-            DownloadTask::new(file.download.url.clone(), file.target.clone(), Some(file.download.sha1.clone()))
-                .with_size(Some(file.download.size))
+            DownloadTask::new(
+                file.download.url.clone(),
+                file.target.clone(),
+                Some(file.download.sha1.clone()),
+            )
+            .with_size(Some(file.download.size))
         })
         .collect()
 }
@@ -498,9 +499,15 @@ mod tests {
         assert_eq!(plan.total_size, 22056);
 
         let file = &plan.files[0];
-        assert!(file.target.ends_with("bin/api-ms-win-core-console-l1-1-0.dll"));
+        assert!(
+            file.target
+                .ends_with("bin/api-ms-win-core-console-l1-1-0.dll")
+        );
         assert!(file.executable);
-        assert_eq!(file.download.sha1, "fc7b39ea653d61f0e04faf229404b05c0c003753");
+        assert_eq!(
+            file.download.sha1,
+            "fc7b39ea653d61f0e04faf229404b05c0c003753"
+        );
     }
 
     #[test]
@@ -543,7 +550,11 @@ mod tests {
             Some("fc7b39ea653d61f0e04faf229404b05c0c003753")
         );
         assert_eq!(tasks[0].size, Some(22056));
-        assert!(tasks[0].url.contains("fc7b39ea653d61f0e04faf229404b05c0c003753"));
+        assert!(
+            tasks[0]
+                .url
+                .contains("fc7b39ea653d61f0e04faf229404b05c0c003753")
+        );
     }
 
     #[test]

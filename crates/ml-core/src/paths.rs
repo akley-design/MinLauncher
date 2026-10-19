@@ -179,7 +179,9 @@ impl AppPaths {
     /// Fails with [`crate::Error::InvalidInput`] when the path is empty,
     /// absolute, or walks out of the runtime directory.
     pub fn runtime_file(&self, component: &str, relative: &str) -> crate::Result<PathBuf> {
-        Ok(self.jre_dir_for(component).join(safe_relative_path(relative)?))
+        Ok(self
+            .jre_dir_for(component)
+            .join(safe_relative_path(relative)?))
     }
 
     /// Path of the jar of the profiling agent.
@@ -425,7 +427,9 @@ mod tests {
     #[test]
     fn a_runtime_file_stays_inside_the_runtime() {
         let p = AppPaths::new("/data", "/cache");
-        let path = p.runtime_file("java-runtime-epsilon", "bin/java.exe").unwrap();
+        let path = p
+            .runtime_file("java-runtime-epsilon", "bin/java.exe")
+            .unwrap();
         assert_eq!(
             path,
             PathBuf::from("/cache/runtimes/java-runtime-epsilon/bin/java.exe")

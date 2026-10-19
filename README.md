@@ -104,6 +104,19 @@ of them. The address of an asset is a two-letter directory and the **whole**
 hash, and the store on the disk is laid out the same way — which is what
 the game itself reads.
 
+And a third one, for the Java the game needs: it downloads a runtime of
+Mojang — every file of it separately, as the manifest of the runtime says —
+and checks that the launcher finds the Java it just put on the disk:
+
+```bash
+MINLAUNCHER_E2E=1 cargo test -p ml-desktop --test runtime_end_to_end -- --nocapture
+```
+
+It found a second bug: the Java of the system was newer than the runtime
+Mojang publishes, and the launcher took it. Now the runtime the launcher
+downloaded itself comes first — the version document of the game names the
+Java it was tested with.
+
 ## Building it
 
 The Rust side needs a Rust toolchain; the pinned one is in
@@ -151,11 +164,11 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 368 |
+| Rust | 381 |
 | Java agent | 23 |
 | Java mod | 18 |
-| Interface | 39 |
-| **Total** | **448** |
+| Interface | 46 |
+| **Total** | **468** |
 
 Plus the end-to-end tests against the real game and the real servers of
 Mojang, which are switched on by hand.

@@ -503,7 +503,10 @@ mod tests {
         let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
         let runtime = JavaRuntime::new("java-runtime-epsilon", 21);
 
-        assert!(preferred_candidates(&paths, &runtime, None).is_empty(), "there is no runtime to offer");
+        assert!(
+            preferred_candidates(&paths, &runtime, None).is_empty(),
+            "there is no runtime to offer"
+        );
     }
 
     #[test]
