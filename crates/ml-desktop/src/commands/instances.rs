@@ -192,7 +192,7 @@ mod tests {
         // instance of that name would end up in the same directory.
         assert_eq!(instance_id("Мой мир"), "мой-мир");
         assert_eq!(instance_id("Мир"), "мир");
-        assert!(!instance_id("Мой мир").is_empty());
+        assert_ne!(instance_id("Мой мир"), "");
     }
 
     #[test]

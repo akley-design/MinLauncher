@@ -104,7 +104,7 @@ public final class GLFW {
     let game_source = game.join("FakeGame.java");
     std::fs::write(
         &game_source,
-        r#"package fakegame;
+        r"package fakegame;
 
 import org.lwjgl.glfw.GLFW;
 
@@ -116,7 +116,7 @@ public final class FakeGame {
         }
     }
 }
-"#,
+",
     )
     .unwrap();
 
@@ -139,48 +139,21 @@ fn the_launcher_and_the_agent_work_together() {
 
     // The launcher builds the command line, exactly as it does for a
     // real game.
-    let request = LaunchRequest {
-        version: ml_minecraft::version::VersionJson::parse(
-            br#"{"id":"26.3","type":"release","mainClass":"fakegame.FakeGame"}"#,
-        )
-        .unwrap(),
-        libraries: Vec::new(),
-        java: JavaInstallation {
-            executable: java.clone(),
-            windowless_executable: None,
-            major_version: 25,
-            version: "25.0.1".into(),
-            origin: JavaOrigin::System,
-        },
-        session: Session::default(),
-        client_jar: PathBuf::from("C:/v/client.jar"),
-        library_directory: PathBuf::from("C:/l"),
-        extra_jvm_args: Vec::new(),
-        agent_jar: Some(agent.clone()),
-        agent_report: Some(report.clone()),
-        loader: None,
-        mod_jars: Vec::new(),
-    };
-
-    let command = build_command(&request, platform(), &FeatureSet::none(), "release").unwrap();
+    let arguments_of_the_launcher = command_with_the_agent(&java, &agent, &report);
 
     // The argument of the agent and the property that says where the
     // report goes are both there.
     assert!(
-        command
-            .arguments
+        arguments_of_the_launcher
             .iter()
             .any(|argument| argument.starts_with("-javaagent:")),
-        "the agent is not in the command line: {:?}",
-        command.arguments
+        "the agent is not in the command line: {arguments_of_the_launcher:?}"
     );
     assert!(
-        command
-            .arguments
+        arguments_of_the_launcher
             .iter()
             .any(|argument| argument.starts_with(&format!("-D{OUTPUT_PROPERTY}="))),
-        "the property of the report is not in the command line: {:?}",
-        command.arguments
+        "the property of the report is not in the command line: {arguments_of_the_launcher:?}"
     );
 
     // The game is written and compiled.
@@ -207,13 +180,12 @@ fn the_launcher_and_the_agent_work_together() {
     // comes with the arguments of the game after it. The class path
     // of the fake game replaces the one of the launcher, because the
     // libraries of a real game are not here.
-    let main_class = command
-        .arguments
+    let main_class = arguments_of_the_launcher
         .iter()
         .position(|argument| argument == "fakegame.FakeGame")
         .expect("the main class is not in the command line");
 
-    let mut arguments: Vec<String> = command.arguments[..main_class].to_vec();
+    let mut arguments: Vec<String> = arguments_of_the_launcher[..main_class].to_vec();
     arguments.retain(|argument| !argument.starts_with("-javaagent:"));
     arguments.retain(|argument| !argument.starts_with("-D"));
 
@@ -255,4 +227,34 @@ fn the_launcher_and_the_agent_work_together() {
         report.average_frametime_ms > 10.0 && report.average_frametime_ms < 40.0,
         "the frame time is not what it should be: {report:?}"
     );
+}
+
+/// The command of a game that has an agent attached to it.
+fn command_with_the_agent(java: &Path, agent: &Path, report: &Path) -> Vec<String> {
+    let request = LaunchRequest {
+        version: ml_minecraft::version::VersionJson::parse(
+            br#"{"id":"26.3","type":"release","mainClass":"fakegame.FakeGame"}"#,
+        )
+        .unwrap(),
+        libraries: Vec::new(),
+        java: JavaInstallation {
+            executable: java.to_path_buf(),
+            windowless_executable: None,
+            major_version: 25,
+            version: "25.0.1".into(),
+            origin: JavaOrigin::System,
+        },
+        session: Session::default(),
+        client_jar: PathBuf::from("C:/v/client.jar"),
+        library_directory: PathBuf::from("C:/l"),
+        extra_jvm_args: Vec::new(),
+        agent_jar: Some(agent.to_path_buf()),
+        agent_report: Some(report.to_path_buf()),
+        loader: None,
+        mod_jars: Vec::new(),
+    };
+
+    build_command(&request, platform(), &FeatureSet::none(), "release")
+        .unwrap()
+        .arguments
 }

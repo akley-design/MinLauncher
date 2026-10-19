@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatTime, formatValue } from "./format";
+import { formatBytes, formatTime, formatValue } from "./format";
 
 /**
  * The time of a release.
@@ -58,5 +58,35 @@ describe("a number with its unit", () => {
 
   it("shows an unknown unit as it is", () => {
     expect(formatValue(1.5, "widgets")).toBe("1.50 widgets");
+  });
+});
+
+/**
+ * A number of bytes.
+ *
+ * An installation moves hundreds of megabytes, and the number of bytes
+ * is only ever read to know how much is left — so it is shown in the
+ * unit that keeps it short.
+ */
+describe("a number of bytes", () => {
+  it("shows the bytes as they are", () => {
+    expect(formatBytes(512)).toBe("512 Б");
+  });
+
+  it("shows the kilobytes", () => {
+    expect(formatBytes(2048)).toBe("2.0 КБ");
+  });
+
+  it("shows the megabytes", () => {
+    expect(formatBytes(484_829_952)).toBe("462.4 МБ");
+  });
+
+  it("shows the gigabytes", () => {
+    expect(formatBytes(3 * 1024 * 1024 * 1024)).toBe("3.0 ГБ");
+  });
+
+  it("shows nothing as zero", () => {
+    expect(formatBytes(0)).toBe("0 Б");
+    expect(formatBytes(-1)).toBe("0 Б");
   });
 });

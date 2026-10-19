@@ -89,6 +89,21 @@ Loading 5 mods:
 	- minlaucher-optimisations 0.1.0
 ```
 
+There is a second one, for the step before that: it installs a real version
+of the game from the servers of Mojang — the client jar, the libraries and
+every one of the 4039 assets — and checks that the result on the disk is
+the layout the launcher and the game expect:
+
+```bash
+MINLAUNCHER_E2E=1 cargo test -p ml-desktop --test install_end_to_end -- --nocapture
+```
+
+It found a bug that no unit test could have: the address of an asset was
+built from the *tail* of its hash, and the server answered 404 to every one
+of them. The address of an asset is a two-letter directory and the **whole**
+hash, and the store on the disk is laid out the same way — which is what
+the game itself reads.
+
 ## Building it
 
 The Rust side needs a Rust toolchain; the pinned one is in
@@ -136,13 +151,14 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 340 |
+| Rust | 368 |
 | Java agent | 23 |
 | Java mod | 18 |
-| Interface | 26 |
-| **Total** | **407** |
+| Interface | 39 |
+| **Total** | **448** |
 
-Plus the end-to-end test against the real game, which is switched on by hand.
+Plus the end-to-end tests against the real game and the real servers of
+Mojang, which are switched on by hand.
 
 ## The plan
 

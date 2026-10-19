@@ -133,16 +133,40 @@ impl AppPaths {
         self.instances_dir.join(sanitize_component(instance_id))
     }
 
+    /// Path of the asset index of a version.
+    ///
+    /// The game reads the index from `<assets>/indexes/<id>.json` — the
+    /// name comes from the version document, and the place is the one the
+    /// game itself uses, taken from the bytecode of
+    /// `net.minecraft.client.resources.IndexedAssetSource`.
+    #[must_use]
+    pub fn asset_index(&self, index_id: &str) -> PathBuf {
+        self.assets_dir
+            .join("indexes")
+            .join(format!("{}.json", sanitize_component(index_id)))
+    }
+
     /// Path of an asset object inside the content-addressed store.
     ///
     /// Mojang addresses assets by the SHA-1 of their content, which makes the
     /// store a pure content-addressed filesystem: identical assets are stored
     /// once and never re-downloaded.
+    ///
+    /// The layout is a two-letter directory and the *whole* hash as the name
+    /// of the file. The two-letter part is only a way to keep any one
+    /// directory from holding thousands of files; the name of the file is
+    /// the whole hash.
+    ///
+    /// This is the layout the game itself reads, taken from the bytecode of
+    /// `net.minecraft.client.resources.IndexedAssetSource` of 1.21.4: it
+    /// resolves an object as `objects/<hash[0..2]>/<hash>`. It is also the
+    /// layout the official launcher writes, so the store can be read by
+    /// anything that reads a Mojang installation.
     #[must_use]
     pub fn asset_object(&self, hash: &str) -> PathBuf {
         let hash = hash.to_ascii_lowercase();
-        let (prefix, rest) = hash.split_at(hash.len().min(2));
-        self.assets_dir.join("objects").join(prefix).join(rest)
+        let (prefix, _) = hash.split_at(hash.len().min(2));
+        self.assets_dir.join("objects").join(prefix).join(hash)
     }
 
     /// Path of the jar of the profiling agent.
@@ -275,8 +299,40 @@ mod tests {
         let obj = p.asset_object("ABCDEF0123456789");
         assert_eq!(
             obj,
-            PathBuf::from("/cache/assets/objects/ab/cdef0123456789")
+            PathBuf::from("/cache/assets/objects/ab/abcdef0123456789")
         );
+    }
+
+    #[test]
+    fn the_name_of_an_asset_object_is_the_whole_hash() {
+        // The two-letter directory is a way to spread the files over
+        // directories; the name of the file is the whole hash. This is
+        // the layout the official launcher uses.
+        let p = AppPaths::new("/data", "/cache");
+        let hash = "b62ca8ec10d07e6bf5ac8dae0c8c1d2e6a1e3356";
+        let path = p.asset_object(hash);
+
+        assert_eq!(path.file_name().unwrap(), hash);
+        assert_eq!(path.parent().unwrap().file_name().unwrap(), "b6");
+    }
+
+    #[test]
+    fn the_asset_index_is_where_the_game_looks_for_it() {
+        // The game reads `<assets>/indexes/<id>.json`, with the id taken
+        // from the version document.
+        let p = AppPaths::new("/data", "/cache");
+        assert_eq!(
+            p.asset_index("34"),
+            PathBuf::from("/cache/assets/indexes/34.json")
+        );
+    }
+
+    #[test]
+    fn the_asset_index_cannot_escape_its_directory() {
+        let p = AppPaths::new("/data", "/cache");
+        let path = p.asset_index("../../etc/passwd");
+        assert_eq!(path.parent().unwrap().file_name().unwrap(), "indexes");
+        assert!(!path.to_string_lossy().contains(".."));
     }
 
     #[test]

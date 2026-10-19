@@ -2,16 +2,20 @@
  * The events the backend emits.
  *
  * The launcher tells the frontend when the game starts and when it ends
- * through one event channel. The frontend listens on it and turns the
- * event into a state change.
+ * through one event channel, and how an installation is going through
+ * another one. The frontend listens on them and turns the events into
+ * state changes.
  */
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import type { GameEvent } from "./types";
+import type { GameEvent, InstallEvent } from "./types";
 
 /** The channel the game events arrive on. */
 export const GAME_EVENT = "minlauncher://game";
+
+/** The channel the events of an installation arrive on. */
+export const INSTALL_EVENT = "minlauncher://install";
 
 /**
  * Listen to the events of the game.
@@ -22,6 +26,20 @@ export const GAME_EVENT = "minlauncher://game";
  */
 export async function onGameEvent(handler: (event: GameEvent) => void): Promise<UnlistenFn> {
   const unlisten = await listen<GameEvent>(GAME_EVENT, (message) => {
+    handler(message.payload);
+  });
+
+  return unlisten;
+}
+
+/**
+ * Listen to the events of an installation.
+ *
+ * The returned function stops the listening, in the same way as the
+ * listening of the game.
+ */
+export async function onInstallEvent(handler: (event: InstallEvent) => void): Promise<UnlistenFn> {
+  const unlisten = await listen<InstallEvent>(INSTALL_EVENT, (message) => {
     handler(message.payload);
   });
 

@@ -52,3 +52,31 @@ export function formatValue(value: number, unit: string): string {
   }
   return `${value.toFixed(2)} ${unit}`;
 }
+
+/**
+ * A number of bytes, in the unit a person reads.
+ *
+ * An installation of a modern version of the game moves a few hundred
+ * megabytes, so the number is shown in the unit that keeps it short.
+ * The units are the ones a Russian reader expects: килобайты, мегабайты
+ * and гигабайты.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 Б";
+  }
+
+  const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
+  let value = bytes;
+  let unit = 0;
+
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+
+  // A whole number of bytes is written as it is; everything else gets
+  // one digit, because the second one is noise.
+  const text = unit === 0 ? String(Math.round(value)) : value.toFixed(1);
+  return `${text} ${units[unit]}`;
+}

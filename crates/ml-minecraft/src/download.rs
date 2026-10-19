@@ -118,6 +118,48 @@ impl BatchResult {
     }
 }
 
+/// How far a batch has come.
+///
+/// The report is a snapshot: it says how many files are done, how many
+/// bytes have moved, and which file was being fetched at the moment.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DownloadProgress {
+    /// The number of files that are done, successful or not.
+    pub completed: usize,
+    /// The number of files in the batch.
+    pub total: usize,
+    /// The number of bytes that have been transferred.
+    pub bytes: u64,
+    /// The URL that was being fetched, when one is.
+    pub current: Option<String>,
+}
+
+impl DownloadProgress {
+    /// The part of the batch that is done, between 0 and 1.
+    ///
+    /// A batch of zero files is done, not stuck at zero: there is
+    /// nothing left to wait for.
+    #[must_use]
+    pub fn fraction(&self) -> f64 {
+        if self.total == 0 {
+            return 1.0;
+        }
+        self.completed as f64 / self.total as f64
+    }
+
+    /// Whether every file of the batch is done.
+    #[must_use]
+    pub fn is_finished(&self) -> bool {
+        self.completed >= self.total
+    }
+}
+
+/// The thing that is told about the progress of a batch.
+///
+/// The callback is called from several tasks at once, so it has to be
+/// usable from more than one thread.
+pub type ProgressCallback = Arc<dyn Fn(DownloadProgress) + Send + Sync>;
+
 /// The download engine.
 #[derive(Debug, Clone)]
 pub struct Downloader {
@@ -210,6 +252,101 @@ impl Downloader {
     /// or a filesystem error.
     pub async fn download(&self, task: &DownloadTask) -> Result<DownloadOutcome> {
         download_with_retry(&self.http, task, self.attempts, self.backoff).await
+    }
+
+    /// Download a batch of files and report the progress.
+    ///
+    /// The callback is called once per file that finishes, with a
+    /// snapshot of the batch. The last call always carries a finished
+    /// batch, whatever the order the files finished in.
+    ///
+    /// # Errors
+    /// Fails only when the batch itself cannot be started; individual
+    /// failures are reported in the result.
+    pub async fn download_all_with_progress(
+        &self,
+        tasks: Vec<DownloadTask>,
+        on_progress: ProgressCallback,
+    ) -> Result<BatchResult> {
+        let total = tasks.len();
+        if total == 0 {
+            on_progress(DownloadProgress {
+                completed: 0,
+                total: 0,
+                bytes: 0,
+                current: None,
+            });
+            return Ok(BatchResult::default());
+        }
+
+        let http = self.http.clone();
+        let attempts = self.attempts;
+        let backoff = self.backoff;
+
+        // The counter and the byte total are shared by every task of the
+        // batch, because they all finish at the same time.
+        let completed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let bytes = Arc::new(std::sync::atomic::AtomicU64::new(0));
+
+        let outcomes: Vec<std::result::Result<DownloadOutcome, (String, String)>> =
+            futures::stream::iter(tasks)
+                .map(|task| {
+                    let http = http.clone();
+                    let on_progress = Arc::clone(&on_progress);
+                    let completed = Arc::clone(&completed);
+                    let bytes = Arc::clone(&bytes);
+                    async move {
+                        let url = task.url.clone();
+                        let result =
+                            match download_with_retry(&http, &task, attempts, backoff).await {
+                                Ok(outcome) => Ok(outcome),
+                                Err(error) => Err((url.clone(), error.to_string())),
+                            };
+
+                        // The report is sent whether the file was
+                        // fetched or not: a file that failed is done
+                        // too, and the caller has to know about it.
+                        let moved = bytes.fetch_add(
+                            result.as_ref().map_or(0, |outcome| outcome.bytes),
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
+                        let done = completed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+
+                        on_progress(DownloadProgress {
+                            completed: done,
+                            total,
+                            bytes: moved + result.as_ref().map_or(0, |outcome| outcome.bytes),
+                            current: Some(url),
+                        });
+
+                        result
+                    }
+                })
+                .buffer_unordered(self.concurrency)
+                .collect()
+                .await;
+
+        let mut result = BatchResult::default();
+        for outcome in outcomes {
+            match outcome {
+                Ok(outcome) => {
+                    result.bytes += outcome.bytes;
+                    result.completed.push(outcome);
+                }
+                Err((url, error)) => result.failed.push((url, error)),
+            }
+        }
+
+        // The last report says that the batch is over, whatever the last
+        // file to finish was.
+        on_progress(DownloadProgress {
+            completed: total,
+            total,
+            bytes: result.bytes,
+            current: None,
+        });
+
+        Ok(result)
     }
 }
 
@@ -475,5 +612,78 @@ mod tests {
         let result = futures::executor::block_on(downloader.download_all(Vec::new())).unwrap();
         assert!(result.is_success());
         assert_eq!(result.bytes, 0);
+    }
+
+    #[test]
+    fn an_empty_batch_is_already_finished() {
+        let progress = DownloadProgress::default();
+        assert_eq!(progress.fraction(), 1.0);
+        assert!(progress.is_finished());
+    }
+
+    #[test]
+    fn the_fraction_follows_the_number_of_files() {
+        let progress = DownloadProgress {
+            completed: 25,
+            total: 100,
+            bytes: 1024,
+            current: None,
+        };
+        assert!((progress.fraction() - 0.25).abs() < f64::EPSILON);
+        assert!(!progress.is_finished());
+    }
+
+    #[test]
+    fn the_report_of_an_empty_batch_says_it_is_over() {
+        let downloader = Downloader::new().unwrap();
+        let seen: Arc<std::sync::Mutex<Vec<DownloadProgress>>> =
+            Arc::new(std::sync::Mutex::new(vec![]));
+
+        let recorder = Arc::clone(&seen);
+        let result = futures::executor::block_on(downloader.download_all_with_progress(
+            Vec::new(),
+            Arc::new(move |progress| {
+                recorder.lock().unwrap().push(progress);
+            }),
+        ))
+        .unwrap();
+
+        assert!(result.is_success());
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 1);
+        assert!(seen[0].is_finished());
+        assert_eq!(seen[0].total, 0);
+    }
+
+    #[test]
+    fn a_file_that_is_already_there_is_still_counted() {
+        // The report counts the files that are done, not the bytes that
+        // moved: a version that is already installed is finished at once.
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("already.jar");
+        std::fs::write(&target, b"jar").unwrap();
+
+        let downloader = Downloader::new().unwrap();
+        let seen: Arc<std::sync::Mutex<Vec<DownloadProgress>>> =
+            Arc::new(std::sync::Mutex::new(vec![]));
+        let recorder = Arc::clone(&seen);
+
+        let task = DownloadTask::new("https://example/jar", &target, None).with_size(Some(3));
+        let result = futures::executor::block_on(downloader.download_all_with_progress(
+            vec![task],
+            Arc::new(move |progress| {
+                recorder.lock().unwrap().push(progress);
+            }),
+        ))
+        .unwrap();
+
+        assert!(result.is_success());
+        assert_eq!(result.bytes, 0);
+
+        let seen = seen.lock().unwrap();
+        assert!(seen.len() >= 2, "{seen:?}");
+        let last = seen.last().unwrap();
+        assert!(last.is_finished());
+        assert_eq!(last.completed, 1);
     }
 }

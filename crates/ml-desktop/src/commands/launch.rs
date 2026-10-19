@@ -466,8 +466,7 @@ fn agent_for(state: &SharedState, version_id: &str) -> Option<crate::commands::a
     let enabled = state
         .storage()
         .load_settings()
-        .map(|config| config.jvm.enable_agent)
-        .unwrap_or(true);
+        .map_or(true, |config| config.jvm.enable_agent);
 
     if !enabled {
         return None;

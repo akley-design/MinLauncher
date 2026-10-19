@@ -4,7 +4,9 @@
  * The shell is the frame the screens live in. It knows about the
  * running game, because the state of the game is shown in the frame and
  * not inside a screen: the player has to see that the game is running
- * from every screen.
+ * from every screen. The same is true of an installation, which takes
+ * long enough that the player has to be able to leave the screen it
+ * started on.
  */
 
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
@@ -12,6 +14,8 @@ import { useEffect } from "react";
 
 import { watchGame } from "../stores/game";
 import { useGameStore } from "../stores/game";
+import { useInstallStore } from "../stores/install";
+import { watchInstall } from "../stores/install";
 
 /** One entry of the sidebar. */
 interface NavItem {
@@ -36,6 +40,9 @@ const NAV_ITEMS: NavItem[] = [
 export function AppShell() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const running = useGameStore((state) => state.running);
+  const installing = useInstallStore((state) => state.versionId);
+  const installCompleted = useInstallStore((state) => state.completed);
+  const installTotal = useInstallStore((state) => state.total);
 
   // The events of the game are listened to once, for the whole life of
   // the window. The listener is removed when the shell is unmounted.
@@ -44,6 +51,25 @@ export function AppShell() {
     let cancelled = false;
 
     void watchGame().then((stop) => {
+      if (cancelled) {
+        stop();
+        return;
+      }
+      unlisten = stop;
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // The events of an installation are listened to in the same way.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+
+    void watchInstall().then((stop) => {
       if (cancelled) {
         stop();
         return;
@@ -83,7 +109,17 @@ export function AppShell() {
         </nav>
 
         <div className="shell__footer">
-          {running ? (
+          {installing ? (
+            <div className="shell__status shell__status--running">
+              <span className="shell__dot" aria-hidden="true" />
+              <div>
+                <div className="shell__status-title">Установка</div>
+                <div className="shell__status-sub">
+                  {installing} — {installCompleted} из {installTotal}
+                </div>
+              </div>
+            </div>
+          ) : running ? (
             <div className="shell__status shell__status--running">
               <span className="shell__dot" aria-hidden="true" />
               <div>

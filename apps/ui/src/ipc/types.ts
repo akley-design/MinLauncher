@@ -179,6 +179,38 @@ export type GameEvent =
   | { kind: "started"; game: RunningGame }
   | { kind: "exited"; version_id: string; success: boolean; code: number | null };
 
+/** The request of an installation. */
+export interface InstallOptions {
+  version_id: string;
+  allow_network?: boolean;
+}
+
+/** What the frontend gets after a successful installation. */
+export interface InstallResult {
+  version_id: string;
+  files: number;
+  bytes: number;
+  elapsed_ms: number;
+}
+
+/**
+ * What the launcher tells the frontend while it installs a version.
+ *
+ * The four kinds are the four moments of an installation: it begins, it
+ * makes progress, it ends, or it fails.
+ */
+export type InstallEvent =
+  | { kind: "started"; version_id: string; total: number; bytes: number }
+  | {
+      kind: "progress";
+      version_id: string;
+      completed: number;
+      total: number;
+      bytes: number;
+    }
+  | { kind: "finished"; version_id: string; files: number; bytes: number; elapsed_ms: number }
+  | { kind: "failed"; version_id: string; message: string };
+
 /**
  * The manifest of the versions, as Mojang publishes it.
  *

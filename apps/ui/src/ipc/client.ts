@@ -20,6 +20,8 @@ import type {
   AccountList,
   BenchmarkList,
   Directories,
+  InstallOptions,
+  InstallResult,
   IpcError,
   InstanceList,
   LaunchOptions,
@@ -106,6 +108,11 @@ export function readManifest(): Promise<VersionManifest | null> {
 /** Fetch the manifest from Mojang and remember what it says. */
 export function refreshManifest(): Promise<ManifestSummary> {
   return call<ManifestSummary>("refresh_manifest");
+}
+
+/** Install a version of the game. */
+export function installVersion(options: InstallOptions): Promise<InstallResult> {
+  return call<InstallResult>("install_version", { options });
 }
 
 // --- the accounts ----------------------------------------------------

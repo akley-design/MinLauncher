@@ -6,6 +6,11 @@
  * launcher that is slow every single time it is opened. The button
  * "Обновить" asks the backend to fetch the manifest, and the list
  * changes under the player's fingers while the network answers.
+ *
+ * The button "Установить" starts an installation. The installation
+ * takes minutes, so its progress is shown in the frame of the launcher
+ * and not only here — the player can go to another screen while the
+ * files come in.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,10 +18,11 @@ import { useMemo, useState } from "react";
 
 import { Button } from "../components/Button";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
-import { listVersions, refreshManifest, toCommandError } from "../ipc/client";
+import { installVersion, listVersions, refreshManifest, toCommandError } from "../ipc/client";
 import { queryKeys } from "../ipc/queries";
 import type { VersionKind } from "../ipc/types";
-import { formatTime } from "../lib/format";
+import { formatBytes, formatTime } from "../lib/format";
+import { progressOf, useInstallStore } from "../stores/install";
 
 /** The screen of the versions. */
 export function VersionsRoute() {
@@ -36,6 +42,19 @@ export function VersionsRoute() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.manifest() });
     },
   });
+
+  const install = useMutation({
+    mutationFn: installVersion,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.versions() });
+    },
+  });
+
+  // The state of the installation is in a store of its own, because the
+  // frame of the launcher shows it too.
+  const installing = useInstallStore((state) => state.versionId);
+  const installState = useInstallStore((state) => state);
+  const progress = Math.round(progressOf(installState) * 100);
 
   const shown = useMemo(() => {
     const all = versions.data?.versions ?? [];
@@ -79,6 +98,25 @@ export function VersionsRoute() {
 
       {refresh.isError ? (
         <p className="field__error">{toCommandError(refresh.error).message}</p>
+      ) : null}
+
+      {install.isError ? (
+        <p className="field__error">{toCommandError(install.error).message}</p>
+      ) : null}
+
+      {installing ? (
+        <div className="progress" role="status">
+          <div className="progress__head">
+            <span className="progress__title">Установка {installing}</span>
+            <span className="progress__value">
+              {installState.completed} из {installState.total} · {formatBytes(installState.bytes)} ·{" "}
+              {progress}%
+            </span>
+          </div>
+          <div className="progress__track">
+            <div className="progress__fill" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
       ) : null}
 
       <div className="toolbar">
@@ -134,7 +172,14 @@ export function VersionsRoute() {
                       {version.installed ? (
                         <span className="badge badge--success">Установлена</span>
                       ) : (
-                        <span className="badge">Не установлена</span>
+                        <Button
+                          variant="primary"
+                          busy={install.isPending && installing === version.id}
+                          disabled={installing !== null}
+                          onClick={() => install.mutate({ version_id: version.id })}
+                        >
+                          Установить
+                        </Button>
                       )}
                     </div>
                   </td>

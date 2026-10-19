@@ -11,6 +11,7 @@
 use std::sync::Arc;
 
 use ml_core::{AppPaths, Platform};
+use ml_minecraft::MinecraftService;
 use ml_storage::Storage;
 use parking_lot::Mutex;
 
@@ -20,11 +21,20 @@ use crate::error::{IpcError, IpcResult};
 #[derive(Debug)]
 pub struct AppState {
     /// The storage layer.
-    storage: Storage,
+    ///
+    /// It is behind an `Arc` because the service that talks to Mojang
+    /// needs a handle of its own, and opening a second database would
+    /// mean a second pool of connections for the same file.
+    storage: Arc<Storage>,
     /// The paths the launcher uses.
     paths: AppPaths,
     /// The platform the launcher runs on.
     platform: Platform,
+    /// The service that knows about the metadata of the game.
+    ///
+    /// It holds the HTTP client and the download engine, and both of
+    /// them are expensive to build, so they are built once and kept.
+    service: MinecraftService,
     /// The game that is currently running, if any.
     running: Mutex<Option<crate::commands::launch::RunningGame>>,
 }
@@ -33,21 +43,31 @@ impl AppState {
     /// Build the state from a set of paths.
     ///
     /// # Errors
-    /// Fails when the directories cannot be created or the database
-    /// cannot be opened.
+    /// Fails when the directories cannot be created, the database cannot
+    /// be opened, or the HTTP client cannot be built.
     pub fn new(paths: AppPaths, platform: Platform) -> IpcResult<Self> {
-        let storage = Storage::open(&paths).map_err(|error| {
+        let storage = Arc::new(Storage::open(&paths).map_err(|error| {
             IpcError::with_detail(
                 crate::error::ErrorCode::Storage,
                 "cannot open the storage of the launcher",
                 error.to_string(),
             )
-        })?;
+        })?);
+
+        let service =
+            MinecraftService::new(paths.clone(), Arc::clone(&storage)).map_err(|error| {
+                IpcError::with_detail(
+                    crate::error::ErrorCode::Network,
+                    "cannot create the http client of the launcher",
+                    error.to_string(),
+                )
+            })?;
 
         Ok(Self {
             storage,
             paths,
             platform,
+            service,
             running: Mutex::new(None),
         })
     }
@@ -83,6 +103,18 @@ impl AppState {
     #[must_use]
     pub fn platform(&self) -> Platform {
         self.platform
+    }
+
+    /// The service that knows about the metadata of the game.
+    #[must_use]
+    pub fn service(&self) -> &MinecraftService {
+        &self.service
+    }
+
+    /// A copy of the service, which can be moved into a task.
+    #[must_use]
+    pub fn service_clone(&self) -> MinecraftService {
+        self.service.clone()
     }
 
     /// The game that is running, if any.

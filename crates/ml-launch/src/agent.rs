@@ -128,11 +128,11 @@ mod tests {
         let report: AgentReport = serde_json::from_str(SAMPLE).unwrap();
 
         assert_eq!(report.frames, 119);
-        assert!((report.average_fps - 60.673668).abs() < 1e-6);
-        assert!((report.average_frametime_ms - 16.481614).abs() < 1e-6);
+        assert!((report.average_fps - 60.673_668).abs() < 1e-6);
+        assert!((report.average_frametime_ms - 16.481_614).abs() < 1e-6);
         assert!((report.heap_used_mib - 512.5).abs() < 1e-9);
         assert!(report.frames_counted);
-        assert!(report.failures.is_empty());
+        assert_eq!(report.failures, Vec::<String>::new());
     }
 
     #[test]

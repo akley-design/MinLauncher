@@ -731,3 +731,53 @@ button {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* --- the progress of an installation -------------------------------- */
+
+/*
+ * The bar is deliberately plain: a rectangle that fills up. Its width
+ * is set by the script, so that the value and the picture cannot drift
+ * apart.
+ */
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.progress__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.progress__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.progress__value {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress__track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.progress__fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 120ms linear;
+}

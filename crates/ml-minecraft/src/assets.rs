@@ -5,8 +5,13 @@
 //! content. The file itself is stored under its hash:
 //!
 //! ```text
-//! assets/objects/<first two hex digits>/<remaining hex digits>
+//! assets/objects/<first two hex digits>/<the whole hash>
 //! ```
+//!
+//! This is the layout the official launcher uses, and the one the server
+//! serves the objects at. The two-letter directory is only a way to keep
+//! any one directory from holding thousands of files; the name of the file
+//! is the whole hash.
 //!
 //! Because the store is content-addressed, an object that several versions
 //! share is downloaded once and kept forever. That is the single biggest
@@ -172,8 +177,12 @@ impl AssetStore {
                 else {
                     continue;
                 };
-                let hash = format!("{prefix_name}{name}");
-                if referenced.contains(hash.as_str()) {
+                // The name of the file is the whole hash, and the
+                // directory it sits in is the first two letters of it.
+                if !name.starts_with(prefix_name) {
+                    continue;
+                }
+                if referenced.contains(name) {
                     continue;
                 }
                 let size = std::fs::metadata(&path).map_or(0, |meta| meta.len());
@@ -189,14 +198,21 @@ impl AssetStore {
 ///
 /// Mojang serves assets from a host that is not part of the content
 /// address, so the URL has to be built from the hash.
+///
+/// The path is a two-letter directory and the *whole* hash as the name of
+/// the file. The two-letter part is only a way to keep any one directory
+/// from holding thousands of files; the name of the file is the whole
+/// hash. Cutting the hash at the directory boundary — and serving the
+/// rest of it — makes every asset answer 404, and there is no way to
+/// notice that without asking the server for a real file.
 #[must_use]
 pub fn asset_url(base: &str, hash: &str) -> String {
     let hash = hash.to_ascii_lowercase();
     if hash.len() < 2 {
         return format!("{base}/{hash}");
     }
-    let (prefix, rest) = hash.split_at(2);
-    format!("{base}/{prefix}/{rest}")
+    let (prefix, _) = hash.split_at(2);
+    format!("{base}/{prefix}/{hash}")
 }
 
 /// The default asset host.
@@ -266,17 +282,35 @@ mod tests {
 
     #[test]
     fn object_url_is_content_addressed() {
+        // The name of the file is the *whole* hash. Serving the rest of
+        // it after the two-letter directory makes every asset answer 404.
+        //
+        // The hash below is a real one, taken from the asset index of
+        // 1.21.4, and the address below is the one that answers 200.
         assert_eq!(
             asset_url(ASSET_HOST, "b62ca8ec10d07e6bf5ac8dae0c8c1d2e6a1e3356"),
-            "https://resources.download.minecraft.net/b6/2ca8ec10d07e6bf5ac8dae0c8c1d2e6a1e3356"
+            "https://resources.download.minecraft.net/b6/b62ca8ec10d07e6bf5ac8dae0c8c1d2e6a1e3356"
         );
+    }
+
+    #[test]
+    fn the_object_url_keeps_the_whole_hash() {
+        // The two-letter directory is a way to spread the files over
+        // directories; the name of the file is the whole hash. A URL
+        // that loses the two letters of the prefix serves nothing.
+        let hash = "b62ca8ec10d07e6bf5ac8dae0c8c1d2e6a1e3356";
+        let url = asset_url(ASSET_HOST, hash);
+
+        let name = url.rsplit('/').next().unwrap();
+        assert_eq!(name, hash, "the name of the file must be the whole hash");
+        assert_eq!(name.len(), 40);
     }
 
     #[test]
     fn object_url_lowercases_the_hash() {
         assert_eq!(
             asset_url(ASSET_HOST, "ABCDEF0123456789"),
-            "https://resources.download.minecraft.net/ab/cdef0123456789"
+            "https://resources.download.minecraft.net/ab/abcdef0123456789"
         );
     }
 

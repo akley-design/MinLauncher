@@ -69,7 +69,9 @@ use ml_core::{AppPaths, Error, Platform, Result};
 use ml_storage::Storage;
 
 pub use assets::{AssetIndex, AssetObject, AssetRoots, AssetStore};
-pub use download::{BatchResult, DownloadOutcome, DownloadTask, Downloader};
+pub use download::{
+    BatchResult, DownloadOutcome, DownloadProgress, DownloadTask, Downloader, ProgressCallback,
+};
 pub use fabric::{
     FabricArguments, FabricLaunch, FabricLauncherMeta, FabricLibrary, FabricLoader,
     FabricLoaderEntry, FabricLoaderList, FabricMetaLibraries, FabricMetaMainClass, FabricProfile,
@@ -260,6 +262,33 @@ impl MinecraftService {
     /// reported in the result.
     pub async fn install(&self, plan: &InstallPlan) -> Result<BatchResult> {
         self.downloader.download_all(plan.to_tasks()).await
+    }
+
+    /// Download every file of a plan and report the progress.
+    ///
+    /// # Errors
+    /// Fails only when the batch cannot be started; individual failures are
+    /// reported in the result.
+    pub async fn install_with_progress(
+        &self,
+        plan: &InstallPlan,
+        on_progress: ProgressCallback,
+    ) -> Result<BatchResult> {
+        self.downloader
+            .download_all_with_progress(plan.to_tasks(), on_progress)
+            .await
+    }
+
+    /// Fetch a URL and return the body.
+    ///
+    /// The client of the service is the one the rest of the launcher
+    /// uses, so a document that is fetched here shares the connection
+    /// pool with the downloads.
+    ///
+    /// # Errors
+    /// Fails on a transport error or a non-success status.
+    pub async fn fetch(&self, url: &str) -> Result<Vec<u8>> {
+        self.fetch_bytes(url).await
     }
 
     /// Fetch a URL and return the body.
