@@ -265,8 +265,13 @@ pub fn mojang_runtime_home(paths: &AppPaths, runtime: &JavaRuntime) -> PathBuf {
 /// Find a Java installation that satisfies the required major version.
 ///
 /// The candidates are tried in the order the user expects: the runtime
-/// the launcher downloaded itself, then the system installations. The
-/// first candidate that is new enough wins.
+/// the user pointed at, then the runtime the launcher downloaded itself,
+/// then the installations of the system. The first candidate that is new
+/// enough wins — the version document names the runtime it was tested
+/// with, and a newer Java of the system is not a reason to ignore it.
+///
+/// Among the installations of the system the newest one wins, because
+/// there is no order between them to prefer.
 ///
 /// # Errors
 /// Fails with [`Error::NoJavaRuntime`] when nothing suitable is found.
@@ -275,6 +280,43 @@ pub fn find_runtime(
     runtime: &JavaRuntime,
     explicit: Option<&Path>,
 ) -> Result<JavaInstallation> {
+    // The first candidate that is new enough wins.
+    for (home, origin) in preferred_candidates(paths, runtime, explicit) {
+        if let Some(installation) = installation_at(&home, origin, runtime.major_version) {
+            return Ok(installation);
+        }
+    }
+
+    // The installations of the system have no order between them, so
+    // the newest one wins.
+    let mut best: Option<JavaInstallation> = None;
+    for home in system_candidates() {
+        let Some(installation) = installation_at(&home, JavaOrigin::System, runtime.major_version)
+        else {
+            continue;
+        };
+        let better = best
+            .as_ref()
+            .is_none_or(|current| installation.major_version > current.major_version);
+        if better {
+            best = Some(installation);
+        }
+    }
+
+    best.ok_or(Error::NoJavaRuntime(runtime.major_version))
+}
+
+/// The candidates that have a name, in the order of the priority.
+///
+/// The first one is the Java the user pointed at, the second one the
+/// runtime the launcher downloaded itself. The installations of the
+/// system are not here: they have no order between them, and they are
+/// only used when none of these is new enough.
+fn preferred_candidates(
+    paths: &AppPaths,
+    runtime: &JavaRuntime,
+    explicit: Option<&Path>,
+) -> Vec<(PathBuf, JavaOrigin)> {
     let mut candidates: Vec<(PathBuf, JavaOrigin)> = Vec::new();
 
     if let Some(explicit) = explicit {
@@ -286,46 +328,45 @@ pub fn find_runtime(
         candidates.push((mojang, JavaOrigin::Mojang));
     }
 
-    for home in well_known_java_homes() {
-        candidates.push((home, JavaOrigin::System));
+    candidates
+}
+
+/// The Java installations of the system.
+fn system_candidates() -> Vec<PathBuf> {
+    well_known_java_homes()
+        .into_iter()
+        .chain(registry_java_homes())
+        .chain(path_java_homes())
+        .collect()
+}
+
+/// Describe the Java installation in a directory, if it is new enough.
+///
+/// # Errors
+/// Never fails: a directory without a Java, or with a Java that is too
+/// old, is not an installation.
+fn installation_at(
+    home: &Path,
+    origin: JavaOrigin,
+    required_major: u32,
+) -> Option<JavaInstallation> {
+    let executable = java_in_home(home);
+    if !executable.is_file() {
+        return None;
     }
-    for home in registry_java_homes() {
-        candidates.push((home, JavaOrigin::System));
-    }
-    for home in path_java_homes() {
-        candidates.push((home, JavaOrigin::System));
+    let (major, version) = probe_version(&executable).ok()?;
+    if major < required_major {
+        return None;
     }
 
-    let mut best: Option<JavaInstallation> = None;
-    for (home, origin) in candidates {
-        let executable = java_in_home(&home);
-        if !executable.is_file() {
-            continue;
-        }
-        let Ok((major, version)) = probe_version(&executable) else {
-            continue;
-        };
-        if major < runtime.major_version {
-            continue;
-        }
-        // Prefer the newest runtime, but keep the first one of an equal
-        // version so the order the user expects is preserved.
-        let better = best
-            .as_ref()
-            .is_none_or(|current| major > current.major_version);
-        if better {
-            let windowless = javaw_in_home(&home);
-            best = Some(JavaInstallation {
-                executable,
-                windowless_executable: windowless.is_file().then_some(windowless),
-                major_version: major,
-                version,
-                origin,
-            });
-        }
-    }
-
-    best.ok_or(Error::NoJavaRuntime(runtime.major_version))
+    let windowless = javaw_in_home(home);
+    Some(JavaInstallation {
+        executable,
+        windowless_executable: windowless.is_file().then_some(windowless),
+        major_version: major,
+        version,
+        origin,
+    })
 }
 
 /// Describe a Java installation without running it.
@@ -431,6 +472,38 @@ mod tests {
         let home = mojang_runtime_home(&paths, &runtime);
         assert!(home.starts_with(&paths.jre_dir));
         assert!(home.ends_with("java-runtime-epsilon"));
+    }
+
+    #[test]
+    fn the_candidates_are_tried_in_the_order_of_the_priority() {
+        // The Java the user pointed at comes first, then the runtime
+        // the launcher downloaded itself, and only then the installations
+        // of the system.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
+        let runtime = JavaRuntime::new("java-runtime-epsilon", 21);
+
+        // The runtime of the launcher, with a java in it.
+        let home = paths.jre_dir_for("java-runtime-epsilon");
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        std::fs::write(home.join("bin").join(java_executable_name()), b"x").unwrap();
+
+        let user = PathBuf::from("/opt/user-java");
+        let candidates = preferred_candidates(&paths, &runtime, Some(&user));
+
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0], (user, JavaOrigin::User));
+        assert_eq!(candidates[1].1, JavaOrigin::Mojang);
+        assert_eq!(candidates[1].0, home);
+    }
+
+    #[test]
+    fn a_runtime_that_is_not_there_is_not_a_candidate() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
+        let runtime = JavaRuntime::new("java-runtime-epsilon", 21);
+
+        assert!(preferred_candidates(&paths, &runtime, None).is_empty(), "there is no runtime to offer");
     }
 
     #[test]

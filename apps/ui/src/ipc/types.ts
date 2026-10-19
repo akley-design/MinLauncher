@@ -212,6 +212,43 @@ export type InstallEvent =
   | { kind: "failed"; version_id: string; message: string };
 
 /**
+ * A Java runtime the launcher can download.
+ *
+ * The runtimes are published by Mojang for every platform; the launcher
+ * only shows the ones that fit the machine it runs on.
+ */
+export interface RuntimeView {
+  /** The component of the runtime, e.g. `java-runtime-epsilon`. */
+  component: string;
+  /** The version of the runtime, e.g. `21.0.7`. */
+  version: string;
+  /** Whether the runtime is on the disk already. */
+  installed: boolean;
+  /** Where the runtime lives. */
+  path: string;
+}
+
+/** What the frontend gets after a successful download of a runtime. */
+export interface RuntimeResult {
+  component: string;
+  files: number;
+  bytes: number;
+  elapsed_ms: number;
+}
+
+/**
+ * What the launcher tells the frontend while it downloads a runtime.
+ *
+ * The four kinds are the same four moments as the installation of a
+ * version has.
+ */
+export type RuntimeEvent =
+  | { kind: "started"; component: string; total: number; bytes: number }
+  | { kind: "progress"; component: string; completed: number; total: number; bytes: number }
+  | { kind: "finished"; component: string; files: number; bytes: number; elapsed_ms: number }
+  | { kind: "failed"; component: string; message: string };
+
+/**
  * The manifest of the versions, as Mojang publishes it.
  *
  * Only the fields the launcher reads are described. The rest of the

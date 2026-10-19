@@ -9,13 +9,16 @@
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import type { GameEvent, InstallEvent } from "./types";
+import type { GameEvent, InstallEvent, RuntimeEvent } from "./types";
 
 /** The channel the game events arrive on. */
 export const GAME_EVENT = "minlauncher://game";
 
 /** The channel the events of an installation arrive on. */
 export const INSTALL_EVENT = "minlauncher://install";
+
+/** The channel the events of a runtime download arrive on. */
+export const RUNTIME_EVENT = "minlauncher://runtime";
 
 /**
  * Listen to the events of the game.
@@ -40,6 +43,20 @@ export async function onGameEvent(handler: (event: GameEvent) => void): Promise<
  */
 export async function onInstallEvent(handler: (event: InstallEvent) => void): Promise<UnlistenFn> {
   const unlisten = await listen<InstallEvent>(INSTALL_EVENT, (message) => {
+    handler(message.payload);
+  });
+
+  return unlisten;
+}
+
+/**
+ * Listen to the events of a runtime download.
+ *
+ * The returned function stops the listening, in the same way as the
+ * listening of the installation.
+ */
+export async function onRuntimeEvent(handler: (event: RuntimeEvent) => void): Promise<UnlistenFn> {
+  const unlisten = await listen<RuntimeEvent>(RUNTIME_EVENT, (message) => {
     handler(message.payload);
   });
 

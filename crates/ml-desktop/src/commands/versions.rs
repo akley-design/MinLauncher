@@ -5,7 +5,7 @@
 //! can ask it to install one of them.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ml_core::{VersionKind, VersionMeta};
@@ -16,6 +16,8 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::error::{ErrorCode, IpcError, IpcResult};
 use crate::state::SharedState;
+
+use super::throttle::Throttle;
 
 /// A version, as the frontend sees it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -395,13 +397,21 @@ async fn install(
     // The report of the download is thinned out before it reaches the
     // frontend: an installation of a modern version fetches thousands of
     // files, and an event per file would cost more than the download.
-    let throttle = Arc::new(Throttle::new(Duration::from_millis(100)));
+    let throttle = Arc::new(Throttle::new(INSTALL_EVENT, Duration::from_millis(100)));
     let emitter = Arc::clone(&throttle);
     let progress_version = version_id.clone();
     let handle = app.clone();
 
     let callback: ml_minecraft::ProgressCallback = Arc::new(move |progress: DownloadProgress| {
-        emitter.report(&handle, &progress_version, &progress);
+        emitter.report(
+            &handle,
+            InstallEvent::Progress {
+                version_id: progress_version.clone(),
+                completed: progress.completed,
+                total: progress.total,
+                bytes: progress.bytes,
+            },
+        );
     });
 
     let result = service
@@ -650,58 +660,6 @@ fn store_the_install(
     Ok(())
 }
 
-/// Thins out the reports of a download.
-///
-/// An installation of a modern version of the game fetches thousands of
-/// files. Sending an event for every one of them would cost the
-/// frontend more than the download costs the launcher, so only a few
-/// reports per second go out — and the last one always goes out, so the
-/// interface never shows a bar that stopped at 99 %.
-struct Throttle {
-    /// The shortest time between two reports.
-    interval: Duration,
-    /// When the last report went out.
-    last: Mutex<Option<Instant>>,
-}
-
-impl Throttle {
-    /// A throttle that lets a report through every `interval`.
-    fn new(interval: Duration) -> Self {
-        Self {
-            interval,
-            last: Mutex::new(None),
-        }
-    }
-
-    /// Whether a report is due, and remember that it went out.
-    fn due(&self, now: Instant) -> bool {
-        let mut last = self
-            .last
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let due = last.is_none_or(|then| now.duration_since(then) >= self.interval);
-        if due {
-            *last = Some(now);
-        }
-        due
-    }
-
-    /// Send the report, if enough time has passed since the last one.
-    fn report(&self, app: &AppHandle, version_id: &str, progress: &DownloadProgress) {
-        if !self.due(Instant::now()) {
-            return;
-        }
-
-        let event = InstallEvent::Progress {
-            version_id: version_id.to_string(),
-            completed: progress.completed,
-            total: progress.total,
-            bytes: progress.bytes,
-        };
-        let _ = app.emit(INSTALL_EVENT, &event);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -794,35 +752,6 @@ mod tests {
             }
         }
     }"#;
-
-    #[test]
-    fn the_first_report_of_a_download_goes_out_at_once() {
-        let throttle = Throttle::new(Duration::from_millis(100));
-        let now = Instant::now();
-
-        assert!(throttle.due(now));
-    }
-
-    #[test]
-    fn a_report_that_comes_too_soon_is_held_back() {
-        let throttle = Throttle::new(Duration::from_millis(100));
-        let now = Instant::now();
-
-        assert!(throttle.due(now));
-        // The second report comes a millisecond later: it is too soon.
-        assert!(!throttle.due(now + Duration::from_millis(1)));
-        // A tenth of a second later: it is due.
-        assert!(throttle.due(now + Duration::from_millis(100)));
-    }
-
-    #[test]
-    fn a_throttle_with_no_interval_holds_nothing_back() {
-        let throttle = Throttle::new(Duration::ZERO);
-        let now = Instant::now();
-
-        assert!(throttle.due(now));
-        assert!(throttle.due(now));
-    }
 
     #[test]
     fn the_file_of_a_version_is_written_where_the_launcher_looks_for_it() {

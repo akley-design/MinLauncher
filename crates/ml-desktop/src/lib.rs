@@ -92,6 +92,8 @@ pub fn run() {
             commands::versions::read_manifest,
             commands::versions::refresh_manifest,
             commands::versions::install_version,
+            commands::runtimes::list_runtimes,
+            commands::runtimes::install_runtime,
             commands::accounts::list_accounts,
             commands::accounts::selected_account,
             commands::accounts::select_account,

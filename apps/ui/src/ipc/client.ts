@@ -27,6 +27,8 @@ import type {
   LaunchOptions,
   LaunchResult,
   ManifestSummary,
+  RuntimeResult,
+  RuntimeView,
   SettingsView,
   VersionList,
   VersionManifest,
@@ -113,6 +115,18 @@ export function refreshManifest(): Promise<ManifestSummary> {
 /** Install a version of the game. */
 export function installVersion(options: InstallOptions): Promise<InstallResult> {
   return call<InstallResult>("install_version", { options });
+}
+
+// --- the runtimes ----------------------------------------------------
+
+/** The Java runtimes the launcher can download for this machine. */
+export function listRuntimes(): Promise<RuntimeView[]> {
+  return call<RuntimeView[]>("list_runtimes");
+}
+
+/** Download a Java runtime and unpack it. */
+export function installRuntime(component: string): Promise<RuntimeResult> {
+  return call<RuntimeResult>("install_runtime", { component });
 }
 
 // --- the accounts ----------------------------------------------------

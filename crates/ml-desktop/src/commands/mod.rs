@@ -7,6 +7,7 @@
 //! | Module | What it does |
 //! |--------|--------------|
 //! | [`versions`] | The list of versions, the manifest and the state of an installation |
+//! | [`runtimes`] | The Java runtimes the launcher can download |
 //! | [`accounts`] | The player accounts |
 //! | [`instances`] | The game instances |
 //! | [`launch`] | Starting and stopping the game |
@@ -25,5 +26,7 @@ pub mod benchmarks;
 pub mod fabric;
 pub mod instances;
 pub mod launch;
+pub mod runtimes;
 pub mod settings;
+pub mod throttle;
 pub mod versions;

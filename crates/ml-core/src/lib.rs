@@ -22,7 +22,7 @@ pub mod version;
 pub use account::{Account, AccountSecrets, AccountType, offline_uuid};
 pub use config::{DownloadConfig, JvmConfig, LauncherConfig, ModConfig};
 pub use error::{Error, Result};
-pub use paths::{APP_DIR_NAME, AppPaths};
+pub use paths::{APP_DIR_NAME, AppPaths, safe_relative_path};
 pub use rules::{
     FeatureSet, OsArch, OsCondition, OsName, OsVersionRange, Platform, Rule, RuleAction,
     RuleOutcome, VersionRange, evaluate, evaluate_with_features,

@@ -28,6 +28,7 @@ vi.mock("../ipc/client", async () => {
     ...actual,
     readSettings: () => readSettings(),
     writeSettings: (config: LauncherConfig) => writeSettings(config),
+    listRuntimes: () => Promise.resolve([]),
   };
 });
 

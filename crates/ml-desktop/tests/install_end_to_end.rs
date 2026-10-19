@@ -177,6 +177,16 @@ async fn install_from_nothing() -> Installation {
     assert_eq!(last.completed, plan.len());
 
     // --- what is on the disk --------------------------------------------
+    check_the_disk(&plan, &paths);
+
+    Installation {
+        plan: Arc::new(plan),
+        reports: Arc::new(reports),
+    }
+}
+
+/// Check that the installation put everything where the launcher expects it.
+fn check_the_disk(plan: &ml_minecraft::InstallPlan, paths: &AppPaths) {
     for file in &plan.files {
         assert!(
             file.target.is_file(),
@@ -186,6 +196,11 @@ async fn install_from_nothing() -> Installation {
     }
 
     // The client jar is the one file the game cannot start without.
+    let client = plan
+        .files
+        .iter()
+        .find(|file| file.kind == ml_minecraft::FileKind::Client)
+        .expect("the plan must hold the client jar");
     assert!(client.target.is_file());
     assert!(client.target.metadata().unwrap().len() > 20_000_000);
 
@@ -196,7 +211,7 @@ async fn install_from_nothing() -> Installation {
         .find(|file| file.kind == ml_minecraft::FileKind::Library)
         .expect("the plan must hold libraries");
     assert!(
-        library.target.starts_with(paths.libraries_dir),
+        library.target.starts_with(&paths.libraries_dir),
         "the library {} is not in the store",
         library.target.display()
     );
@@ -218,11 +233,6 @@ async fn install_from_nothing() -> Installation {
         .to_string_lossy()
         .into_owned();
     assert_eq!(name, asset.sha1.as_deref().unwrap());
-
-    Installation {
-        plan: Arc::new(plan),
-        reports: Arc::new(reports),
-    }
 }
 
 /// A version is installed the way the launcher expects to find it.

@@ -17,6 +17,7 @@ export const queryKeys = {
   accounts: () => ["accounts"] as const,
   instances: () => ["instances"] as const,
   settings: () => ["settings"] as const,
+  runtimes: () => ["runtimes"] as const,
   benchmarks: () => ["benchmarks"] as const,
   benchmarkSeries: (metric: string, scenario: string) => ["benchmarks", metric, scenario] as const,
 } as const;

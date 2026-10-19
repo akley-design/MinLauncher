@@ -169,6 +169,19 @@ impl AppPaths {
         self.assets_dir.join("objects").join(prefix).join(hash)
     }
 
+    /// Path of one file inside a Java runtime.
+    ///
+    /// The path comes from the runtime manifest, which is remote data, so
+    /// it is validated before it is joined: a path may not leave the
+    /// runtime directory, and it may not be absolute.
+    ///
+    /// # Errors
+    /// Fails with [`crate::Error::InvalidInput`] when the path is empty,
+    /// absolute, or walks out of the runtime directory.
+    pub fn runtime_file(&self, component: &str, relative: &str) -> crate::Result<PathBuf> {
+        Ok(self.jre_dir_for(component).join(safe_relative_path(relative)?))
+    }
+
     /// Path of the jar of the profiling agent.
     ///
     /// The jar lives under the data directory rather than next to the
@@ -228,6 +241,55 @@ impl AppPaths {
 #[must_use]
 pub fn is_usable_as_agent_path(path: &Path) -> bool {
     path.to_string_lossy().chars().all(|c| c != '=')
+}
+
+/// Validate a relative path that came from a remote document.
+///
+/// The path is used to build a file inside a directory the launcher owns,
+/// so it must stay inside it: an absolute path, a drive letter, a `..`
+/// segment or an empty segment is refused.
+///
+/// The segments themselves are kept as they are — a runtime manifest
+/// names files like `bin/java.exe` and `lib/security/cacerts`, and
+/// mangling them would change what the runtime contains. Only the shape
+/// of the path is checked.
+///
+/// # Errors
+/// Fails with [`crate::Error::InvalidInput`] when the path is not a
+/// safe relative path.
+pub fn safe_relative_path(input: &str) -> crate::Result<PathBuf> {
+    if input.is_empty() {
+        return Err(crate::Error::InvalidInput("the path is empty".into()));
+    }
+
+    // A Windows path may name a drive (`C:\...`) or begin with a
+    // separator; both leave the directory.
+    if input.contains(':') || input.starts_with('/') || input.starts_with('\\') {
+        return Err(crate::Error::InvalidInput(format!(
+            "the path `{input}` is not relative"
+        )));
+    }
+
+    let mut out = PathBuf::new();
+    for segment in input.split(['/', '\\']) {
+        if segment.is_empty() || segment == "." {
+            continue;
+        }
+        if segment == ".." {
+            return Err(crate::Error::InvalidInput(format!(
+                "the path `{input}` leaves its directory"
+            )));
+        }
+        out.push(segment);
+    }
+
+    if out.as_os_str().is_empty() {
+        return Err(crate::Error::InvalidInput(format!(
+            "the path `{input}` names nothing"
+        )));
+    }
+
+    Ok(out)
 }
 
 /// Reduce an arbitrary string to something safe to use as a path segment.
@@ -358,6 +420,48 @@ mod tests {
     fn normal_ids_survive() {
         assert_eq!(sanitize_component("1.20.5"), "1.20.5");
         assert_eq!(sanitize_component("26.4-snapshot-4"), "26.4-snapshot-4");
+    }
+
+    #[test]
+    fn a_runtime_file_stays_inside_the_runtime() {
+        let p = AppPaths::new("/data", "/cache");
+        let path = p.runtime_file("java-runtime-epsilon", "bin/java.exe").unwrap();
+        assert_eq!(
+            path,
+            PathBuf::from("/cache/runtimes/java-runtime-epsilon/bin/java.exe")
+        );
+    }
+
+    #[test]
+    fn a_runtime_file_may_not_escape_the_runtime() {
+        // The path comes from a remote manifest, so it must not be able
+        // to write outside the directory of the runtime.
+        let p = AppPaths::new("/data", "/cache");
+        for hostile in [
+            "../evil",
+            "bin/../../evil",
+            "..",
+            "/etc/passwd",
+            "C:\\Windows\\System32\\evil",
+            "",
+        ] {
+            assert!(
+                p.runtime_file("java-runtime-epsilon", hostile).is_err(),
+                "the path {hostile} was accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn a_relative_path_keeps_its_segments() {
+        // The manifest names files like `lib/security/cacerts`; the shape
+        // is checked, the segments are kept.
+        let path = safe_relative_path("lib/security/cacerts").unwrap();
+        assert_eq!(path, PathBuf::from("lib/security/cacerts"));
+        assert_eq!(
+            safe_relative_path("./bin/./java.exe").unwrap(),
+            PathBuf::from("bin/java.exe")
+        );
     }
 
     #[test]

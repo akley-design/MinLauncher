@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Button } from "../components/Button";
+import { JavaRuntimes } from "../components/JavaRuntimes";
 import { ErrorState, LoadingState } from "../components/States";
 import { readSettings, toCommandError, writeSettings } from "../ipc/client";
 import { queryKeys } from "../ipc/queries";
@@ -363,6 +364,8 @@ function SettingsForm({ config, directories, busy, onSave }: SettingsFormProps) 
           </span>
         </label>
       </section>
+
+      <JavaRuntimes />
 
       <section className="card">
         <div className="card__title">Папки</div>

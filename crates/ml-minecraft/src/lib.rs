@@ -77,7 +77,9 @@ pub use fabric::{
     FabricLoaderEntry, FabricLoaderList, FabricMetaLibraries, FabricMetaMainClass, FabricProfile,
 };
 pub use install::{FileKind, InstallLayout, InstallPlan, PlannedFile};
-pub use jre::{RuntimeEntry, RuntimeFileList, RuntimeManifest};
+pub use jre::{
+    PlannedRuntimeFile, RuntimeEntry, RuntimeFileList, RuntimeManifest, RuntimePlan,
+};
 pub use library::{Coordinate, ResolvedLibrary};
 pub use manifest::{ManifestClient, VersionManifest, VersionSummary};
 pub use version::{Argument, ArgumentValue, Arguments, VersionJson};
@@ -215,6 +217,98 @@ impl MinecraftService {
     pub async fn runtime_manifest(&self) -> Result<RuntimeManifest> {
         let bytes = self.fetch_bytes(jre::JRE_MANIFEST_URL).await?;
         RuntimeManifest::parse(&bytes)
+    }
+
+    /// Fetch the file list of a Java runtime.
+    ///
+    /// The outer manifest names the document that holds the files; the
+    /// document is fetched from there.
+    ///
+    /// # Errors
+    /// Fails when the platform or the component is unknown, on a
+    /// transport error, or on a malformed document.
+    pub async fn runtime_files(&self, component: &str) -> Result<RuntimeFileList> {
+        let manifest = self.runtime_manifest().await?;
+        let entry = manifest
+            .entry(&jre::platform_key(), component)
+            .ok_or_else(|| Error::InvalidInput(format!(
+                "there is no runtime `{component}` for this platform"
+            )))?;
+
+        let bytes = self.fetch_bytes(&entry.manifest.url).await?;
+        RuntimeFileList::parse(&bytes)
+    }
+
+    /// Build the plan of a Java runtime.
+    ///
+    /// The plan says which files have to be fetched and where each one
+    /// goes. It is built before the download, so that the caller can tell
+    /// the user how much there is to fetch.
+    ///
+    /// # Errors
+    /// Fails when the runtime does not exist for this platform, when the
+    /// manifest is malformed, or when a path of the manifest is not safe.
+    pub async fn runtime_plan(&self, component: &str) -> Result<RuntimePlan> {
+        let list = self.runtime_files(component).await?;
+        let runtime_dir = self.paths.jre_dir_for(component);
+        jre::plan_runtime(&list, &runtime_dir)
+    }
+
+    /// Download a Java runtime and unpack it.
+    ///
+    /// The runtime ends up in the directory [`AppPaths::jre_dir_for`]
+    /// names, laid out like a Java installation, so that `bin/java.exe`
+    /// is where the game expects it.
+    ///
+    /// # Errors
+    /// Fails when the runtime does not exist for this platform, when the
+    /// manifest is malformed, or when the files cannot be fetched.
+    pub async fn install_runtime(&self, component: &str) -> Result<BatchResult> {
+        self.install_runtime_with_progress(component, Arc::new(|_| {})).await
+    }
+
+    /// Download a Java runtime, unpack it and report the progress.
+    ///
+    /// # Errors
+    /// Fails when the runtime does not exist for this platform, when the
+    /// manifest is malformed, or when the files cannot be fetched.
+    pub async fn install_runtime_with_progress(
+        &self,
+        component: &str,
+        on_progress: ProgressCallback,
+    ) -> Result<BatchResult> {
+        let plan = self.runtime_plan(component).await?;
+        self.install_runtime_plan(&plan, on_progress).await
+    }
+
+    /// Download the files of a plan of a runtime and unpack it.
+    ///
+    /// # Errors
+    /// Fails when the files cannot be fetched.
+    pub async fn install_runtime_plan(
+        &self,
+        plan: &RuntimePlan,
+        on_progress: ProgressCallback,
+    ) -> Result<BatchResult> {
+        let result = self
+            .downloader
+            .download_all_with_progress(jre::runtime_tasks(plan), on_progress)
+            .await?;
+
+        if !result.is_success() {
+            return Err(Error::InvalidInput(format!(
+                "the runtime did not download: {}",
+                result
+                    .failed
+                    .iter()
+                    .map(|(url, reason)| format!("{url}: {reason}"))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )));
+        }
+
+        jre::unpack_runtime(plan)?;
+        Ok(result)
     }
 
     /// Fetch the list of the Fabric loaders that exist for a version of

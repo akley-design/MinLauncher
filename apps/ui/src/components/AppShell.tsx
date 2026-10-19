@@ -16,6 +16,7 @@ import { watchGame } from "../stores/game";
 import { useGameStore } from "../stores/game";
 import { useInstallStore } from "../stores/install";
 import { watchInstall } from "../stores/install";
+import { watchRuntime } from "../stores/runtime";
 
 /** One entry of the sidebar. */
 interface NavItem {
@@ -70,6 +71,26 @@ export function AppShell() {
     let cancelled = false;
 
     void watchInstall().then((stop) => {
+      if (cancelled) {
+        stop();
+        return;
+      }
+      unlisten = stop;
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // The events of a download of a Java runtime are listened to in the
+  // same way.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+
+    void watchRuntime().then((stop) => {
       if (cancelled) {
         stop();
         return;
