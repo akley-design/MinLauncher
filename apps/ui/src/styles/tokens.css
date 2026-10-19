@@ -1,0 +1,100 @@
+/*
+ * The design tokens of the launcher.
+ *
+ * The launcher is a tool that a player opens for a minute and forgets,
+ * so the interface has to be quiet: one accent, a lot of grey, and
+ * nothing that moves unless it has to.
+ *
+ * The tokens are the only place where a colour is written down. A
+ * component uses the token, never the colour, so that the whole
+ * launcher can be re-skinned by changing this file.
+ */
+
+:root {
+  /* --- the surfaces ------------------------------------------------ */
+  --surface-0: #0d0f12;
+  --surface-1: #14171c;
+  --surface-2: #1b1f26;
+  --surface-3: #232830;
+  --surface-hover: #2a303a;
+
+  /* --- the lines --------------------------------------------------- */
+  --line: #262b34;
+  --line-strong: #333a45;
+
+  /* --- the text ---------------------------------------------------- */
+  --text: #e6e9ef;
+  --text-muted: #9aa3b2;
+  --text-dim: #6b7482;
+
+  /* --- the accent -------------------------------------------------- */
+  --accent: #4a9eff;
+  --accent-hover: #63adff;
+  --accent-dim: #2d6cb8;
+  --accent-text: #ffffff;
+
+  /* --- the states -------------------------------------------------- */
+  --success: #3fb950;
+  --warning: #d29922;
+  --danger: #f85149;
+  --info: #58a6ff;
+
+  /* --- the metrics ------------------------------------------------- */
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --font-mono: "Cascadia Mono", "JetBrains Mono", "Consolas", monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-lg: 15px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+
+  /* The window is 1180 wide by default, so the sidebar is narrow. */
+  --sidebar: 220px;
+  --header: 56px;
+
+  --shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  --transition: 120ms ease;
+}
+
+/*
+ * The light theme is not a second design: it is the same design with
+ * the surfaces inverted, and it is only used when the system asks for
+ * it. The launcher follows the system, because a player who made their
+ * system dark did not ask for a white window.
+ */
+@media (prefers-color-scheme: light) {
+  :root {
+    --surface-0: #f2f4f7;
+    --surface-1: #ffffff;
+    --surface-2: #f7f8fa;
+    --surface-3: #eceff3;
+    --surface-hover: #e3e7ed;
+
+    --line: #dde1e7;
+    --line-strong: #c6ccd5;
+
+    --text: #1a1d23;
+    --text-muted: #5b6472;
+    --text-dim: #858e9c;
+
+    --accent: #1668c7;
+    --accent-hover: #0f57a8;
+    --accent-dim: #a8c9ee;
+
+    --shadow: 0 8px 24px rgb(15 23 42 / 12%);
+  }
+}

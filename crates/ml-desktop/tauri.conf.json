@@ -4,10 +4,17 @@
   "version": "0.1.0",
   "identifier": "com.minlaucher.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm --prefix ../.. run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm --prefix ../.. run build",
     "frontendDist": "../../apps/ui/dist"
+  },
+  "plugins": {
+    "updater": {
+      "//": "The endpoints and the signing key come with the first release. Until then the list is empty, and the check reports that there is no update — the plugin is registered, so the code that asks for an update is already in place.",
+      "endpoints": [],
+      "pubkey": ""
+    }
   },
   "app": {
     "withGlobalTauri": false,

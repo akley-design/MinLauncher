@@ -15,8 +15,8 @@
     "lint": "npm run lint --workspace @minlaucher/ui",
     "format": "npm run format --workspace @minlaucher/ui",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:dev": "cd crates/ml-desktop && tauri dev",
+    "tauri:build": "cd crates/ml-desktop && tauri build"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.3"
