@@ -18,6 +18,12 @@ dist-ssr/
 /apps/ui/src-tauri/target/
 /apps/ui/src-tauri/gen/
 
+# --- Java / Gradle ---
+.gradle/
+/apps/java/build/
+/apps/java/*/build/
+/apps/java/.gradle/
+
 # --- Local data (never commit user state) ---
 *.db
 *.db-wal
