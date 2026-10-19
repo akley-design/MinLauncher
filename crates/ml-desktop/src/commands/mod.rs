@@ -10,6 +10,7 @@
 //! | [`accounts`] | The player accounts |
 //! | [`instances`] | The game instances |
 //! | [`launch`] | Starting and stopping the game |
+//! | [`agent`] | Finding the profiling agent that measures the game |
 //! | [`settings`] | The settings of the launcher |
 //! | [`benchmarks`] | The results of the measurements |
 //!
@@ -18,6 +19,7 @@
 //! back. Everything that is worth testing lives below this layer.
 
 pub mod accounts;
+pub mod agent;
 pub mod benchmarks;
 pub mod instances;
 pub mod launch;

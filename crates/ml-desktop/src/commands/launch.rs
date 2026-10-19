@@ -166,9 +166,17 @@ pub async fn launch_game(
     // game ends.
     let handle = app.clone();
     let shared = Arc::clone(&state);
+    let report_path = request.agent_report.clone();
     tauri::async_runtime::spawn(async move {
         let status = process.wait().await;
         shared.set_running(None);
+
+        // The agent writes its report when the game ends, and it is
+        // read now that the game is gone. What it says becomes the
+        // measurements of the metrics M5, M6 and M8.
+        if let Some(path) = report_path {
+            store_agent_report(&shared, &path);
+        }
 
         let event = GameEvent::Exited {
             version_id: meta.id.clone(),
@@ -182,6 +190,34 @@ pub async fn launch_game(
         game,
         prepare_ms: started_at.elapsed().as_millis() as u64,
     })
+}
+
+/// Read the report of the agent and store what it says.
+///
+/// A report that is missing, or that holds nothing usable, is not an
+/// error: the game may have been started without the agent, and a game
+/// that was not measured is not a broken game.
+fn store_agent_report(state: &SharedState, path: &std::path::Path) {
+    let Some(report) = ml_launch::read_report(path) else {
+        tracing::info!("the agent wrote no report at {}", path.display());
+        return;
+    };
+
+    for failure in &report.failures {
+        tracing::warn!("the agent: {failure}");
+    }
+
+    let Some(measurements) = ml_bench::measurements_of(&report) else {
+        tracing::info!("the report holds no measurement");
+        return;
+    };
+
+    let mut meta = ml_bench::Meta::of_this_machine();
+    meta.set("frames", report.frames.to_string());
+    meta.set("agent", "minlaucher-agent");
+
+    let stored = ml_bench::store_measurements(state.storage(), &measurements, &meta);
+    tracing::info!("the agent report was stored as {stored} measurements");
 }
 
 /// What the launcher tells the frontend while the game runs.
@@ -314,6 +350,12 @@ fn build_request(
     // --- the session ------------------------------------------------
     let session = build_session(state, account, meta, options);
 
+    // --- the agent --------------------------------------------------
+    //
+    // The agent measures the game from the inside. It is optional: a
+    // game without it runs perfectly well, it is only not measured.
+    let agent = agent_for(state, &meta.id);
+
     Ok(LaunchRequest {
         version,
         libraries,
@@ -322,8 +364,24 @@ fn build_request(
         client_jar: state.paths().version_dir(&meta.id).join("client.jar"),
         library_directory: library_directory(state.paths()),
         extra_jvm_args: extra_jvm_args(state),
-        agent_jar: None,
+        agent_jar: agent.as_ref().map(|agent| agent.jar.clone()),
+        agent_report: agent.as_ref().map(|agent| agent.report.clone()),
     })
+}
+
+/// The agent to attach to the game, when the settings ask for it.
+fn agent_for(state: &SharedState, version_id: &str) -> Option<crate::commands::agent::Agent> {
+    let enabled = state
+        .storage()
+        .load_settings()
+        .map(|config| config.jvm.enable_agent)
+        .unwrap_or(true);
+
+    if !enabled {
+        return None;
+    }
+
+    crate::commands::agent::prepare(state.paths(), version_id)
 }
 
 /// Find the Java runtime the version needs.
@@ -515,6 +573,7 @@ mod tests {
             library_directory: PathBuf::from("C:/cache/libraries"),
             extra_jvm_args: Vec::new(),
             agent_jar: None,
+            agent_report: None,
         };
 
         // The library has no artifact, so it does not go on the

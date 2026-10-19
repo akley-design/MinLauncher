@@ -37,6 +37,27 @@ public final class MinLauncherAgent {
     /** The name of the argument that says how often the report is written. */
     static final String INTERVAL_ARGUMENT = "interval";
 
+    /**
+     * The name of the system property that says where the report goes.
+     *
+     * <p>The property exists because the options of the agent cannot
+     * carry the path: the JVM splits {@code -javaagent:jar=options} at
+     * the first {@code =}, so a path that has an {@code =} in it —
+     * and the name of the user can have one — cuts the jar path in
+     * half and the agent does not load at all.
+     *
+     * <p>A system property is a separate argument, so nothing in it is
+     * split. The property wins over the option of the agent, because
+     * the launcher is the one that knows where the report belongs.
+     */
+    static final String OUTPUT_PROPERTY = "minlaucher.agent.output";
+
+    /**
+     * The name of the system property that says how often the report
+     * is written.
+     */
+    static final String INTERVAL_PROPERTY = "minlaucher.agent.interval";
+
     /** How often the report is written, in seconds. */
     static final int DEFAULT_INTERVAL_SECONDS = 5;
 
@@ -141,7 +162,10 @@ public final class MinLauncherAgent {
      * @return the file
      */
     static Path outputPath(Map<String, String> options) {
-        String output = options.get(OUTPUT_ARGUMENT);
+        String output = System.getProperty(OUTPUT_PROPERTY);
+        if (output == null || output.trim().isEmpty()) {
+            output = options.get(OUTPUT_ARGUMENT);
+        }
         if (output == null || output.trim().isEmpty()) {
             // Without a file to write to, the report goes to the
             // working directory of the game, under a name the launcher
@@ -158,7 +182,10 @@ public final class MinLauncherAgent {
      * @return the interval
      */
     static int intervalSeconds(Map<String, String> options) {
-        String value = options.get(INTERVAL_ARGUMENT);
+        String value = System.getProperty(INTERVAL_PROPERTY);
+        if (value == null || value.trim().isEmpty()) {
+            value = options.get(INTERVAL_ARGUMENT);
+        }
         if (value == null) {
             return DEFAULT_INTERVAL_SECONDS;
         }

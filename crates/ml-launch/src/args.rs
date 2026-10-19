@@ -263,6 +263,22 @@ pub fn java_agent(jar: &Path) -> Option<String> {
     }
 }
 
+/// The name of the system property that tells the agent where to write
+/// its report.
+pub const AGENT_OUTPUT_PROPERTY: &str = "minlaucher.agent.output";
+
+/// The system property that tells the agent where to write its report.
+///
+/// The path travels in a property and not in the options of the agent
+/// because the JVM splits `-javaagent:jar=options` at the *first* `=`.
+/// A path that has an `=` in it — and the name of the user can have one
+/// — would cut the jar path in half, and the agent would not load at
+/// all.
+#[must_use]
+pub fn agent_output_property(report: &Path) -> String {
+    format!("-D{AGENT_OUTPUT_PROPERTY}={}", path_to_string(report))
+}
+
 /// The classpath entry of a jar, as the JVM expects it.
 #[must_use]
 pub fn classpath_entry(jar: &Path) -> String {

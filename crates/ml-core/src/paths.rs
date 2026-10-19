@@ -30,6 +30,8 @@ pub struct AppPaths {
     pub logs_dir: PathBuf,
     /// Benchmark result store.
     pub benchmarks_dir: PathBuf,
+    /// Directory holding the jar of the profiling agent.
+    pub agent_dir: PathBuf,
     /// SQLite database file.
     pub database_path: PathBuf,
     /// JSON settings file.
@@ -52,6 +54,7 @@ impl AppPaths {
             instances_dir: data_dir.join("instances"),
             logs_dir: data_dir.join("logs"),
             benchmarks_dir: data_dir.join("benchmarks"),
+            agent_dir: data_dir.join("agent"),
             database_path: data_dir.join("minlaucher.db"),
             settings_path: data_dir.join("settings.json"),
             secrets_path: data_dir.join("secrets.json"),
@@ -93,6 +96,7 @@ impl AppPaths {
             &self.instances_dir,
             &self.logs_dir,
             &self.benchmarks_dir,
+            &self.agent_dir,
         ]
     }
 
@@ -136,6 +140,44 @@ impl AppPaths {
         let (prefix, rest) = hash.split_at(hash.len().min(2));
         self.assets_dir.join("objects").join(prefix).join(rest)
     }
+
+    /// Path of the jar of the profiling agent.
+    ///
+    /// The jar lives under the data directory rather than next to the
+    /// executable, because it is written there by the build and not
+    /// carried by the installer: the launcher copies it into place when
+    /// it is missing.
+    #[must_use]
+    pub fn agent_jar(&self) -> PathBuf {
+        self.agent_dir.join("minlaucher-agent.jar")
+    }
+
+    /// Path of the report the agent writes.
+    ///
+    /// The report is written next to the logs: it is the same kind of
+    /// thing — what the launcher tells about the last run — and it is
+    /// read back after the game ends.
+    #[must_use]
+    pub fn agent_report(&self, version_id: &str) -> PathBuf {
+        self.logs_dir
+            .join("agent")
+            .join(format!("{}.json", sanitize_component(version_id)))
+    }
+}
+
+/// Whether a path can be used for the `-javaagent:` argument.
+///
+/// The JVM splits `-javaagent:jar=options` at the *first* `=`, so a jar
+/// whose path has an `=` in it is cut in half and the agent does not
+/// load. The name of the user is part of the path of the data
+/// directory, and a name can have an `=` in it, so the path has to be
+/// checked before the agent is attached.
+///
+/// The path of the *report* has no such problem: it travels in a system
+/// property, which is a separate argument and is never split.
+#[must_use]
+pub fn is_usable_as_agent_path(path: &Path) -> bool {
+    path.to_string_lossy().chars().all(|c| c != '=')
 }
 
 /// Reduce an arbitrary string to something safe to use as a path segment.
@@ -234,5 +276,30 @@ mod tests {
     fn normal_ids_survive() {
         assert_eq!(sanitize_component("1.20.5"), "1.20.5");
         assert_eq!(sanitize_component("26.4-snapshot-4"), "26.4-snapshot-4");
+    }
+
+    #[test]
+    fn the_agent_jar_and_its_report_have_their_own_places() {
+        let p = AppPaths::new("/data", "/cache");
+
+        assert_eq!(
+            p.agent_jar(),
+            PathBuf::from("/data/agent/minlaucher-agent.jar")
+        );
+        assert_eq!(
+            p.agent_report("1.20.5"),
+            PathBuf::from("/data/logs/agent/1.20.5.json")
+        );
+    }
+
+    #[test]
+    fn a_path_with_an_equals_sign_cannot_carry_the_agent() {
+        // The JVM splits `-javaagent:jar=options` at the first `=`, so
+        // such a path would cut the jar in half.
+        assert!(is_usable_as_agent_path(Path::new("/data/agent/agent.jar")));
+        assert!(!is_usable_as_agent_path(Path::new("/data/a=b/agent.jar")));
+        assert!(!is_usable_as_agent_path(Path::new(
+            "C:\\Users\\a=b\\agent.jar"
+        )));
     }
 }

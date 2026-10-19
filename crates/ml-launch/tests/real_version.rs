@@ -65,6 +65,7 @@ fn request(version: &VersionJson) -> LaunchRequest {
         library_directory: PathBuf::from("C:/cache/libraries"),
         extra_jvm_args: Vec::new(),
         agent_jar: None,
+        agent_report: None,
     }
 }
 

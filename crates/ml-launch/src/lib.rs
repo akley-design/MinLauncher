@@ -10,6 +10,7 @@
 //! | [`natives`] | Where do the native libraries come from? |
 //! | [`command`] | How are the pieces put together? |
 //! | [`supervisor`] | How is the process run and watched? |
+//! | [`agent`] | What did the game do while it ran? |
 //!
 //! The pipeline is deliberately free of I/O beyond the filesystem, so
 //! that a command can be built and inspected without starting anything.
@@ -20,12 +21,14 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod agent;
 pub mod args;
 pub mod command;
 pub mod jvm;
 pub mod natives;
 pub mod supervisor;
 
+pub use agent::{AgentReport, read_report};
 pub use args::{Session, build_classpath, substitute, substitute_all};
 pub use command::{LaunchCommand, LaunchRequest, build_command};
 pub use jvm::{JavaInstallation, JavaOrigin, find_runtime, probe_version};
@@ -135,6 +138,7 @@ mod tests {
             library_directory: PathBuf::from("C:/l"),
             extra_jvm_args: Vec::new(),
             agent_jar: None,
+            agent_report: None,
         };
 
         assert!(classpath_of(&request).starts_with("C:/v/client.jar"));

@@ -13,7 +13,9 @@
 //! * [`scenario`] runs a measurement the same way N times;
 //! * [`compare`] decides whether the target was reached;
 //! * [`record`] stores the result next to the metadata that makes it
-//!   reproducible.
+//!   reproducible;
+//! * [`ingame`] turns the report of the profiling agent into the
+//!   measurements of the metrics that are about the game itself.
 //!
 //! # Example
 //!
@@ -33,6 +35,7 @@
 #![warn(missing_docs)]
 
 pub mod compare;
+pub mod ingame;
 pub mod metric;
 pub mod record;
 pub mod report;
@@ -40,6 +43,7 @@ pub mod scenario;
 pub mod stats;
 
 pub use compare::{Comparison, DEFAULT_NOISE_LIMIT, check_absolute, compare, compare_with_limit};
+pub use ingame::{IN_GAME_SCENARIO, InGameMeasurements, measurements_of, store_measurements};
 pub use metric::{Direction, Metric, Verdict};
 pub use record::{Meta, load, load_meta, store, to_record};
 pub use report::Report;

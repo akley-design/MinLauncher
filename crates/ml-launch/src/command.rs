@@ -44,6 +44,13 @@ pub struct LaunchRequest {
     pub extra_jvm_args: Vec<String>,
     /// The jar of the profiling agent, when it is enabled.
     pub agent_jar: Option<PathBuf>,
+    /// The file the agent writes its report to.
+    ///
+    /// The path travels in a system property and not in the options of
+    /// the agent: the JVM splits `-javaagent:jar=options` at the first
+    /// `=`, so a path that has an `=` in it would cut the jar path in
+    /// half and the agent would not load at all.
+    pub agent_report: Option<PathBuf>,
 }
 
 impl LaunchRequest {
@@ -161,6 +168,15 @@ pub fn build_command(
     if let Some(agent) = &request.agent_jar
         && let Some(argument) = crate::args::java_agent(agent)
     {
+        // The property that says where the report goes comes first, so
+        // that it is set before the agent reads it. The agent reads it
+        // in `premain`, which runs before the game starts, so the order
+        // of the two arguments does not matter to the agent — but the
+        // JVM sets the properties as it reads them, and this way the
+        // property is already in place when the agent is loaded.
+        if let Some(report) = &request.agent_report {
+            jvm_arguments.push(crate::args::agent_output_property(report));
+        }
         jvm_arguments.push(argument);
     }
 
@@ -316,6 +332,7 @@ mod tests {
             library_directory: PathBuf::from("C:/cache/libraries"),
             extra_jvm_args: Vec::new(),
             agent_jar: None,
+            agent_report: None,
         }
     }
 
@@ -417,6 +434,38 @@ mod tests {
                 .iter()
                 .any(|argument| argument.starts_with("-javaagent:"))
         );
+    }
+
+    #[test]
+    fn the_path_of_the_report_travels_in_a_property() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent = dir.path().join("agent.jar");
+        std::fs::write(&agent, b"x").unwrap();
+
+        let mut request = request();
+        request.agent_jar = Some(agent);
+        request.agent_report = Some(PathBuf::from("C:/logs/a=b.json"));
+
+        let command = build_command(&request, platform(), &FeatureSet::none(), "release").unwrap();
+
+        // The path of the report has an '=' in it. It must not travel
+        // in the options of the agent: the JVM would cut the jar path
+        // in half at that sign and the agent would not load.
+        let property = command
+            .arguments
+            .iter()
+            .find(|argument| argument.starts_with("-Dminlaucher.agent.output="))
+            .expect("the property is not there");
+        assert_eq!(property, "-Dminlaucher.agent.output=C:/logs/a=b.json");
+
+        // And the argument of the agent itself carries nothing but the
+        // path of the jar.
+        let agent_argument = command
+            .arguments
+            .iter()
+            .find(|argument| argument.starts_with("-javaagent:"))
+            .expect("the agent is not there");
+        assert!(!agent_argument.contains('='), "{agent_argument}");
     }
 
     #[test]
