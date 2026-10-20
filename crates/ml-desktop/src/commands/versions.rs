@@ -442,12 +442,62 @@ async fn install(
     // --- what is stored -------------------------------------------------
     store_the_install(state, &version, &version_id, &plan, &asset_index)?;
 
-    Ok(InstallResult {
+    let installed = InstallResult {
         version_id,
         files: result.completed.len(),
         bytes: result.bytes,
         elapsed_ms: started_at.elapsed().as_millis() as u64,
-    })
+    };
+
+    // The length of the installation is the metric M4. The launcher is
+    // the only one who knows it exactly: from the outside there is no
+    // way to tell that the last file has landed.
+    store_install_measurement(state, &installed);
+
+    Ok(installed)
+}
+
+/// Store the length of an installation as the metric M4.
+///
+/// The measurement is stored under the version that was installed, so
+/// that the installations of different versions do not overwrite each
+/// other.
+fn store_install_measurement(state: &SharedState, result: &InstallResult) {
+    let mut meta = ml_bench::Meta::of_this_machine();
+    meta.game_version = Some(result.version_id.clone());
+    meta.set("files", result.files.to_string());
+    meta.set("bytes", result.bytes.to_string());
+
+    let series = ml_bench::Series::from_samples(vec![result.elapsed_ms as f64]);
+
+    let stored = ml_bench::store(
+        state.storage(),
+        ml_bench::Metric::FreshInstall,
+        &result.version_id,
+        &series,
+        &meta,
+    );
+
+    // The measurement is also written into the file of the scenario, so
+    // that a measurer outside can pick it up.
+    if let Err(error) = ml_bench::samples::append(
+        state.paths(),
+        &result.version_id,
+        ml_bench::Metric::FreshInstall,
+        result.elapsed_ms as f64,
+        &meta,
+    ) {
+        tracing::warn!("the length of the installation was not written: {error}");
+    }
+
+    match stored {
+        Some(_) => tracing::info!(
+            "the installation of {} took {} ms and was measured",
+            result.version_id,
+            result.elapsed_ms
+        ),
+        None => tracing::warn!("the length of the installation could not be stored"),
+    }
 }
 
 /// Fetch the version document of a version.

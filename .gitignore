@@ -34,6 +34,12 @@ dist-ssr/
 /data/
 /bench-results/
 
+# --- Measurements ---
+# The numbers of a machine are not a property of the repository: only the
+# baseline of the CI is committed, so that a regression is visible.
+/benchmarks/*.json
+!/benchmarks/baseline.json
+
 # --- Secrets ---
 .env
 .env.*

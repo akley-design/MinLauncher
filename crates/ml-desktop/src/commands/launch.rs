@@ -341,6 +341,19 @@ fn store_agent_report(state: &SharedState, path: &std::path::Path, scenario: &st
 
     let stored = ml_bench::store_measurements(state.storage(), &measurements, &mut meta, scenario);
     tracing::info!("the agent report was stored as {stored} measurements under {scenario}");
+
+    // The measurements are also written into the file of the scenario,
+    // so that a measurer outside can pick them up.
+    for (metric, sample) in [
+        (ml_bench::Metric::InGameFps, measurements.fps),
+        (ml_bench::Metric::InGameFrametime, measurements.frametime_ms),
+    ] {
+        if let Err(error) =
+            ml_bench::samples::append(state.paths(), scenario, metric, sample, &meta)
+        {
+            tracing::warn!("the measurement of {} was not written: {error}", metric);
+        }
+    }
 }
 
 /// The scenario of a run: the preset of the mod that was in the game.

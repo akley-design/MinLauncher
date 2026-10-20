@@ -6,8 +6,8 @@ launcher, and optimises the game itself on the way.
 The speed promise is not a slogan — it is measured. The metrics are fixed in
 advance, the protocol of the measurement is written down, and every result
 carries the metadata of the machine it was taken on, so that it can be
-reproduced. See [`docs/PLAN.md`](docs/PLAN.md) for the metrics and the
-protocol.
+reproduced. See [`docs/PLAN.md`](docs/PLAN.md) for the metrics and
+[`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the procedure.
 
 ---
 
@@ -46,6 +46,41 @@ start and how it behaves while it runs. The mod changes the game: it turns off
 the expensive effects that are on by default, tunes the renderer, and reads its
 settings from a file the launcher writes, so the user keeps the last choice
 between launches.
+
+## How the promise is checked
+
+The measurement is done by an outside observer. `scripts/measure.ps1` starts
+the launcher, waits for its window, watches the mouse for the click on
+"Play", waits for the window of the game, and writes down what it saw. It
+reads the processes, the windows and the clock — and nothing else. The
+launcher does not time itself, because a launcher that announces its own
+speed does not measure its speed.
+
+```bash
+cargo build --release
+```
+
+```powershell
+# thirty runs, the number the protocol asks for
+.\scripts\measure.ps1 -Runs 30 -Out benchmarks\ours.json
+
+# the table M1–M8, with a verdict for every metric
+cargo run -p ml-bench --bin report -- --ours benchmarks\ours.json --reference benchmarks\reference.json
+```
+
+The report exits with `1` when a target was missed and with `2` when it
+could not be built at all, so it can be a gate and not only a page.
+
+The whole procedure — what is measured, when, and where it breaks — is
+written down in [`docs/PROTOCOL.md`](docs/PROTOCOL.md). The reference side
+of the comparison is a file that arrives from outside and was taken by that
+same procedure: the reference launcher is never started, never reconfigured
+and never touched.
+
+Two of the eight metrics cannot be seen from outside at all — the length
+of an installation and the behaviour of the game — so the launcher measures
+those itself and writes them into its own directory, in the same format.
+The measurer picks them up from there.
 
 ## The Fabric loader, and why it is in the way
 
@@ -164,11 +199,11 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 424 |
+| Rust | 453 |
 | Java agent | 23 |
 | Java mod | 18 |
 | Interface | 68 |
-| **Total** | **533** |
+| **Total** | **562** |
 
 Plus the end-to-end tests against the real game and the real servers of
 Mojang, which are switched on by hand.

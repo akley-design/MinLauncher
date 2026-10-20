@@ -15,7 +15,9 @@
 //! * [`record`] stores the result next to the metadata that makes it
 //!   reproducible;
 //! * [`ingame`] turns the report of the profiling agent into the
-//!   measurements of the metrics that are about the game itself.
+//!   measurements of the metrics that are about the game itself;
+//! * [`samples`] reads and writes the file of measurements that both
+//!   sides of a comparison share.
 //!
 //! # Example
 //!
@@ -39,10 +41,14 @@ pub mod ingame;
 pub mod metric;
 pub mod record;
 pub mod report;
+pub mod samples;
 pub mod scenario;
 pub mod stats;
 
-pub use compare::{Comparison, DEFAULT_NOISE_LIMIT, check_absolute, compare, compare_with_limit};
+pub use compare::{
+    Comparison, DEFAULT_NOISE_LIMIT, check_absolute, compare, compare_with_limit, not_measured,
+    uncompared,
+};
 pub use ingame::{
     IN_GAME_PREFIX, InGameMeasurements, InGamePair, PRESET_OFF, PRESETS, measurements_of, pair_of,
     scenario_of, scenario_with_mod, scenario_without_mod, store_measurements,
@@ -50,5 +56,6 @@ pub use ingame::{
 pub use metric::{Direction, Metric, Verdict};
 pub use record::{Meta, load, load_meta, store, to_record};
 pub use report::Report;
+pub use samples::{DEFAULT_SCENARIO, SampleFile, Side, side_of_storage};
 pub use scenario::{DEFAULT_SAMPLES, DEFAULT_WARMUP, Run, Scenario, measure, measure_ms};
 pub use stats::{Series, Summary, is_stable, spread, variation};

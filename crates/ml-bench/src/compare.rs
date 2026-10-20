@@ -143,18 +143,71 @@ pub fn check_absolute(metric: Metric, ours: &Series) -> Option<Comparison> {
     Some(Comparison {
         metric,
         ours: summary,
-        theirs: Summary {
-            samples: 0,
-            p50: 0.0,
-            p95: 0.0,
-            p99: 0.0,
-            mean: 0.0,
-            stddev: 0.0,
-        },
+        theirs: empty_summary(),
         ratio_percent: 0.0,
         verdict,
         target_ratio: Some(target),
     })
+}
+
+/// The comparison of a measurement that could not be judged.
+///
+/// The metric was measured on our side, and there is nothing to judge
+/// it against: either the reference was never measured, or one of the
+/// two series is too noisy to be trusted. The verdict is
+/// [`Verdict::Unknown`] — the report says that the metric was measured
+/// and not judged, instead of leaving it out or inventing a number.
+///
+/// The ratio is still given when the reference is there: the numbers are
+/// worth reading even when the verdict cannot be taken from them.
+#[must_use]
+pub fn uncompared(metric: Metric, ours: &Series, theirs: Option<&Series>) -> Option<Comparison> {
+    let ours = ours.summary()?;
+    let theirs = theirs.and_then(Series::summary);
+
+    let ratio_percent = match theirs {
+        Some(theirs) if theirs.p50 > 0.0 => ours.p50 / theirs.p50 * 100.0,
+        _ => 0.0,
+    };
+
+    Some(Comparison {
+        metric,
+        ours,
+        theirs: theirs.unwrap_or_else(empty_summary),
+        ratio_percent,
+        verdict: Verdict::Unknown,
+        target_ratio: metric.target_ratio(),
+    })
+}
+
+/// The comparison of a metric that was not measured at all.
+///
+/// The row is in the table because the table has one row for every
+/// metric of the plan. The row says that nothing was measured, which
+/// is a different thing from measuring zero — and a row that claims a
+/// number of zero would be a lie the verdict would be taken from.
+#[must_use]
+pub fn not_measured(metric: Metric) -> Comparison {
+    Comparison {
+        metric,
+        ours: empty_summary(),
+        theirs: empty_summary(),
+        ratio_percent: 0.0,
+        verdict: Verdict::Unknown,
+        target_ratio: metric.target_ratio(),
+    }
+}
+
+/// The summary of nothing: what a missing measurement looks like.
+fn empty_summary() -> Summary {
+    Summary {
+        samples: 0,
+        p50: 0.0,
+        p95: 0.0,
+        p99: 0.0,
+        mean: 0.0,
+        stddev: 0.0,
+    }
 }
 
 #[cfg(test)]
@@ -286,5 +339,32 @@ mod tests {
         let comparison = compare(Metric::LauncherRss, &quiet(50.0), &quiet(100.0)).unwrap();
         assert_eq!(comparison.verdict, Verdict::Unknown);
         assert_eq!(comparison.target_ratio, None);
+    }
+
+    #[test]
+    fn a_measurement_without_a_reference_is_not_judged() {
+        let comparison = uncompared(Metric::ClickToWindow, &quiet(800.0), None).unwrap();
+
+        assert_eq!(comparison.verdict, Verdict::Unknown);
+        assert_eq!(comparison.theirs.samples, 0);
+        assert!((comparison.ours.p50 - 800.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_measurement_that_is_too_noisy_keeps_the_ratio_it_had() {
+        // The ratio is worth reading even when the verdict cannot be
+        // taken from it: the reader sees the numbers and the reason.
+        let noisy = series(&[500.0, 1500.0, 700.0, 1300.0]);
+        let comparison = uncompared(Metric::ClickToWindow, &noisy, Some(&quiet(1000.0))).unwrap();
+
+        assert_eq!(comparison.verdict, Verdict::Unknown);
+        assert_eq!(comparison.theirs.samples, 3);
+        // The medians are 700 and 1000: the ratio is still there.
+        assert!((comparison.ratio_percent - 70.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn an_empty_measurement_has_no_comparison_at_all() {
+        assert!(uncompared(Metric::ClickToWindow, &Series::new(), None).is_none());
     }
 }

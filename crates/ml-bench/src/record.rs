@@ -46,6 +46,12 @@ pub struct Meta {
     /// The processor of the machine.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpu: Option<String>,
+    /// When the measurement was taken.
+    ///
+    /// A measurement without a date says nothing about whether it still
+    /// describes the machine it was taken on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorded_at: Option<String>,
     /// Anything else worth keeping.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extra: BTreeMap<String, String>,
@@ -63,6 +69,7 @@ impl Meta {
         Self {
             os: Some(std::env::consts::OS.to_string()),
             launcher: Some(format!("MinLauncher {}", env!("CARGO_PKG_VERSION"))),
+            recorded_at: Some(chrono::Utc::now().to_rfc3339()),
             ..Self::default()
         }
     }
