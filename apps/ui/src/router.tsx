@@ -1,7 +1,7 @@
 /**
  * The routes of the launcher.
  *
- * The router is built in code, not from files. A launcher has five
+ * The router is built in code, not from files. A launcher has six
  * screens and they never change; a file-based router would add a build
  * plugin and a directory layout to say the same thing as twenty lines
  * of code.
@@ -20,6 +20,7 @@ import {
 } from "@tanstack/react-router";
 
 import { AppShell } from "./components/AppShell";
+import { DownloadsRoute } from "./routes/downloads";
 import { HomeRoute } from "./routes/home";
 import { InstancesRoute } from "./routes/instances";
 import { PerformanceRoute } from "./routes/performance";
@@ -72,10 +73,18 @@ const performanceRoute = createRoute({
   component: PerformanceRoute,
 });
 
+/** The queue of the downloads. */
+const downloadsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/downloads",
+  component: DownloadsRoute,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   versionsRoute,
   instancesRoute,
+  downloadsRoute,
   settingsRoute,
   performanceRoute,
 ]);

@@ -18,6 +18,7 @@ export const queryKeys = {
   instances: () => ["instances"] as const,
   settings: () => ["settings"] as const,
   runtimes: () => ["runtimes"] as const,
+  downloads: () => ["downloads"] as const,
   benchmarks: () => ["benchmarks"] as const,
   benchmarkSeries: (metric: string, scenario: string) => ["benchmarks", metric, scenario] as const,
 } as const;

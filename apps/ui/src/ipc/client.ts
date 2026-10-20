@@ -20,6 +20,7 @@ import type {
   AccountList,
   BenchmarkList,
   Directories,
+  DownloadEntry,
   InstallOptions,
   InstallResult,
   IpcError,
@@ -127,6 +128,28 @@ export function listRuntimes(): Promise<RuntimeView[]> {
 /** Download a Java runtime and unpack it. */
 export function installRuntime(component: string): Promise<RuntimeResult> {
   return call<RuntimeResult>("install_runtime", { component });
+}
+
+// --- the download queue -----------------------------------------------
+
+/** The entries of the download queue. */
+export function listDownloads(): Promise<DownloadEntry[]> {
+  return call<DownloadEntry[]>("list_downloads");
+}
+
+/** Remove the finished entries from the queue. */
+export function clearCompletedDownloads(): Promise<number> {
+  return call<number>("clear_completed_downloads");
+}
+
+/** Remove the failed entries from the queue. */
+export function clearFailedDownloads(): Promise<number> {
+  return call<number>("clear_failed_downloads");
+}
+
+/** Fetch one file of the queue again. */
+export function retryDownload(url: string): Promise<DownloadEntry> {
+  return call<DownloadEntry>("retry_download", { url });
 }
 
 // --- the accounts ----------------------------------------------------

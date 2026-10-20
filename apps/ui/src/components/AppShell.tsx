@@ -33,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Играть", glyph: "▶" },
   { to: "/versions", label: "Версии", glyph: "≡" },
   { to: "/instances", label: "Инстансы", glyph: "◫" },
+  { to: "/downloads", label: "Загрузки", glyph: "↓" },
   { to: "/performance", label: "Производительность", glyph: "◷" },
   { to: "/settings", label: "Настройки", glyph: "⚙" },
 ];

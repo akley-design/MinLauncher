@@ -131,6 +131,37 @@ export interface SettingsView {
   directories: Directories;
 }
 
+/** The state of one entry of the download queue. */
+export type DownloadState = "queued" | "downloading" | "completed" | "failed";
+
+/**
+ * One entry of the download queue.
+ *
+ * The queue is what the launcher remembers about the files it fetched.
+ * The key of an entry is its address, so two versions that share a
+ * library share one entry.
+ */
+export interface DownloadEntry {
+  /** The address the payload comes from. */
+  url: string;
+  /** The expected SHA-1 of the payload, when it is known. */
+  sha1: string | null;
+  /** The expected size of the payload, when it is known. */
+  size: number | null;
+  /** Where the payload is written. */
+  target_path: string;
+  /** Where the entry stands now. */
+  state: DownloadState;
+  /** How many bytes of the payload are on the disk. */
+  bytes_done: number;
+  /** How many attempts have been made. */
+  attempts: number;
+  /** The reason of the last failure, when there was one. */
+  error: string | null;
+  /** When the entry was last touched, ISO-8601. */
+  updated_at: string;
+}
+
 /** One stored measurement. */
 export interface BenchmarkView {
   suite: string;

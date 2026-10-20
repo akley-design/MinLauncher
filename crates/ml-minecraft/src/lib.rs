@@ -502,7 +502,12 @@ fn queue_entry(task: &DownloadTask) -> DownloadEntry {
 }
 
 /// The size of a file on the disk, or zero when it is not there.
-fn file_size(path: &Path) -> i64 {
+///
+/// The size on the disk is the truth about a file: what the server
+/// promised may be wrong, and a file that was only half fetched is
+/// bigger than nothing and smaller than the whole.
+#[must_use]
+pub fn file_size(path: &Path) -> i64 {
     std::fs::metadata(path).map_or(0, |metadata| {
         i64::try_from(metadata.len()).unwrap_or(i64::MAX)
     })
