@@ -2,7 +2,8 @@
 //!
 //! The queue is persisted so that an interrupted installation resumes
 //! instead of starting over — a meaningful part of the "faster than
-//! `TLauncher`" promise, since a fresh install is dominated by downloads.
+//! the reference launcher" promise, since a fresh install is dominated by
+//! downloads.
 
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};

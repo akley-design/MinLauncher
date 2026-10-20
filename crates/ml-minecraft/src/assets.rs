@@ -15,8 +15,8 @@
 //!
 //! Because the store is content-addressed, an object that several versions
 //! share is downloaded once and kept forever. That is the single biggest
-//! difference from `TLauncher`, which keeps a separate copy per version and
-//! re-downloads anything it cannot find in its own folder.
+//! difference from the reference launcher, which keeps a separate copy per
+//! version and re-downloads anything it cannot find in its own folder.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

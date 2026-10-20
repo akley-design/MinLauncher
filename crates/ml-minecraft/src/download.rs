@@ -1,8 +1,8 @@
 //! The download engine.
 //!
-//! This is where most of the "faster than `TLauncher`" promise is won or
-//! lost. `TLauncher` downloads assets one by one and re-downloads what it
-//! cannot find in its own folder; this engine
+//! This is where most of the "faster than the reference launcher" promise
+//! is won or lost. The reference launcher downloads assets one by one and
+//! re-downloads what it cannot find in its own folder; this engine
 //!
 //! * downloads many files at once,
 //! * stores assets content-addressed, so a shared object is fetched once

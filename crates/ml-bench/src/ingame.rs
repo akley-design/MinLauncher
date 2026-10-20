@@ -7,8 +7,8 @@
 //!
 //! The numbers go into the database as the measurements of a run. They
 //! are stored the same way as any other measurement, so that the
-//! comparison against `TLauncher` does not have to know where they came
-//! from.
+//! comparison against the reference launcher does not have to know where
+//! they came from.
 
 use ml_launch::agent::AgentReport;
 use ml_storage::Storage;

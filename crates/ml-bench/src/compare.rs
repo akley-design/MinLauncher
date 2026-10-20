@@ -1,4 +1,4 @@
-//! Comparing a measurement with the one of `TLauncher`.
+//! Comparing a measurement with the one of the reference launcher.
 //!
 //! The comparison is deliberately conservative:
 //!
@@ -33,7 +33,7 @@ pub struct Comparison {
     pub metric: Metric,
     /// The measurement of `MinLauncher`.
     pub ours: Summary,
-    /// The measurement of `TLauncher`.
+    /// The measurement of the reference launcher.
     pub theirs: Summary,
     /// The ratio of ours to theirs, in percent.
     pub ratio_percent: f64,

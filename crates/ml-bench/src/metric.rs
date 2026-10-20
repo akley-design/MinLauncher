@@ -1,8 +1,9 @@
 //! The metrics the launcher is measured by.
 //!
-//! The claim of the project is "at least 20 % faster than `TLauncher`",
-//! and a claim like that is only meaningful if the point of measurement
-//! is fixed beforehand. Every metric therefore names three things:
+//! The claim of the project is "at least 20 % faster than the reference
+//! launcher", and a claim like that is only meaningful if the point of
+//! measurement is fixed beforehand. Every metric therefore names three
+//! things:
 //!
 //! * what exactly is measured,
 //! * which direction is an improvement,
@@ -107,9 +108,10 @@ impl Metric {
     /// The target of the metric.
     ///
     /// The value is the **ratio** the measurement of `MinLauncher` may
-    /// have to the measurement of `TLauncher`: 0.8 means "at most 80 %",
-    /// which is the 20 % improvement the project promises. A metric with
-    /// an absolute target instead of a relative one returns `None`.
+    /// have to the measurement of the reference launcher: 0.8 means "at
+    /// most 80 %", which is the 20 % improvement the project promises.
+    /// A metric with an absolute target instead of a relative one
+    /// returns `None`.
     #[must_use]
     pub fn target_ratio(self) -> Option<f64> {
         match self {

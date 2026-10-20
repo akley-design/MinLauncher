@@ -1,8 +1,8 @@
 //! Repository for benchmark results.
 //!
-//! Measurements are kept so that the "at least 20% faster than `TLauncher`"
-//! claim can be re-checked on demand instead of being a one-off assertion
-//! in a pull request description.
+//! Measurements are kept so that the "at least 20% faster than the
+//! reference launcher" claim can be re-checked on demand instead of being
+//! a one-off assertion in a pull request description.
 
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};

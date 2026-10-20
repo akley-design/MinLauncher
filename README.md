@@ -1,7 +1,7 @@
 # MinLauncher
 
-A Minecraft launcher that starts **at least 20 % faster** than TLauncher, and
-optimises the game itself on the way.
+A Minecraft launcher that starts **at least 20 % faster** than the reference
+launcher, and optimises the game itself on the way.
 
 The speed promise is not a slogan — it is measured. The metrics are fixed in
 advance, the protocol of the measurement is written down, and every result

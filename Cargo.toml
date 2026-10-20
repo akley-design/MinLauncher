@@ -16,7 +16,7 @@ rust-version = "1.90"
 license = "MIT OR Apache-2.0"
 authors = ["MinLauncher Team"]
 repository = "https://github.com/minlaucher/minlaucher"
-description = "Fast Minecraft launcher (TLauncher-compatible) with an optimized Rust core"
+description = "Fast Minecraft launcher with an optimized Rust core and an optimized game"
 
 [workspace.dependencies]
 # --- internal ---

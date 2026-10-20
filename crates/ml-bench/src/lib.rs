@@ -1,10 +1,10 @@
 //! Benchmark harness for `MinLauncher`.
 //!
 //! The project promises to start Minecraft at least **20 % faster** than
-//! `TLauncher`, and to make the game itself measurably faster. A promise
-//! like that is only worth something if the measurement is fixed before
-//! the result is known, so the harness is built around the metrics of
-//! `docs/PLAN.md` § 1:
+//! the reference launcher, and to make the game itself measurably faster.
+//! A promise like that is only worth something if the measurement is
+//! fixed before the result is known, so the harness is built around the
+//! metrics of `docs/PLAN.md` § 1:
 //!
 //! * [`metric`] names every metric, the direction of an improvement and
 //!   the target it has to reach;

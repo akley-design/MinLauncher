@@ -71,7 +71,7 @@ impl fmt::Display for Report {
         writeln!(
             f,
             "{:<6} {:<24} {:>10} {:>10} {:>9}  {:<8}",
-            "ID", "metric", "ours", "TLauncher", "ratio", "verdict"
+            "ID", "metric", "ours", "reference", "ratio", "verdict"
         )?;
 
         for comparison in &self.comparisons {
