@@ -71,6 +71,10 @@ cargo run -p ml-bench --bin report -- --ours benchmarks\ours.json --reference be
 The report exits with `1` when a target was missed and with `2` when it
 could not be built at all, so it can be a gate and not only a page.
 
+The result of that measurement on this machine is written down in
+[`docs/RESULTS.md`](docs/RESULTS.md) — the table M1–M8 with a verdict for
+every metric, the metadata of the machine, and what was *not* measured.
+
 The whole procedure — what is measured, when, and where it breaks — is
 written down in [`docs/PROTOCOL.md`](docs/PROTOCOL.md). The reference side
 of the comparison is a file that arrives from outside and was taken by that
