@@ -127,6 +127,22 @@ function SettingsForm({ config, directories, busy, onSave }: SettingsFormProps) 
           <label className="toggle">
             <input
               type="checkbox"
+              checked={draft.restart.enabled}
+              onChange={(event) =>
+                patch({ restart: { ...draft.restart, enabled: event.target.checked } })
+              }
+            />
+            <span>
+              <span className="toggle__title">Перезапускать игру при падении</span>
+              <span className="toggle__hint">
+                Игра, которая упала сама, запускается заново. Закрытая игроком — нет
+              </span>
+            </span>
+          </label>
+
+          <label className="toggle">
+            <input
+              type="checkbox"
               checked={draft.show_console}
               onChange={(event) => patch({ show_console: event.target.checked })}
             />
@@ -152,6 +168,29 @@ function SettingsForm({ config, directories, busy, onSave }: SettingsFormProps) 
         </div>
 
         <div className="form-row" style={{ marginTop: "var(--space-4)" }}>
+          <div className="field" style={{ flex: 1 }}>
+            <label className="field__label" htmlFor="restarts">
+              Перезапусков подряд
+            </label>
+            <input
+              id="restarts"
+              className="input"
+              type="number"
+              min={0}
+              max={20}
+              value={draft.restart.max_restarts}
+              onChange={(event) =>
+                patch({
+                  restart: {
+                    ...draft.restart,
+                    max_restarts: Number(event.target.value) || 0,
+                  },
+                })
+              }
+            />
+            <span className="field__hint">Сколько раз игра поднимется сама</span>
+          </div>
+
           <div className="field" style={{ flex: 1 }}>
             <label className="field__label" htmlFor="language">
               Язык интерфейса

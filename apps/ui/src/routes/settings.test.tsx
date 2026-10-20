@@ -56,6 +56,18 @@ function settings(overrides: Partial<LauncherConfig> = {}): SettingsView {
       extra_args: ["-XX:+UseStringDeduplication"],
       enable_agent: false,
     },
+    mods: {
+      enabled: true,
+      loader_version: "0.16.9",
+      mod_jar: "",
+      preset: "balanced",
+    },
+    restart: {
+      enabled: true,
+      max_restarts: 3,
+      backoff_ms: 5000,
+      window_ms: 300_000,
+    },
     telemetry_enabled: false,
     ...overrides,
   };
@@ -133,6 +145,34 @@ describe("the screen of the settings", () => {
     expect(sent?.minimize_to_tray).toBe(true);
     expect(sent?.jvm.garbage_collector).toBe("G1");
     expect(sent?.downloads.max_concurrent).toBe(8);
+  });
+
+  it("keeps the settings the screen does not show", async () => {
+    // The copy of the settings in the frontend is a copy: a field that
+    // is missing from it goes back to its default when the player
+    // presses the button, and the settings of the mods are lost.
+    readSettings.mockResolvedValue(settings());
+    renderScreen();
+
+    await screen.findByLabelText("Максимальная куча");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+    await waitFor(() => expect(writeSettings).toHaveBeenCalledTimes(1));
+    const sent = writeSettings.mock.calls[0]?.[0];
+    expect(sent?.mods.preset).toBe("balanced");
+    expect(sent?.restart.max_restarts).toBe(3);
+  });
+
+  it("saves the rules of the restart", async () => {
+    readSettings.mockResolvedValue(settings());
+    renderScreen();
+
+    await screen.findByLabelText("Максимальная куча");
+    await userEvent.click(screen.getByRole("checkbox", { name: /Перезапускать игру при падении/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+    await waitFor(() => expect(writeSettings).toHaveBeenCalledTimes(1));
+    expect(writeSettings.mock.calls[0]?.[0]?.restart.enabled).toBe(false);
   });
 
   it("turns the extra arguments into a list of lines", async () => {

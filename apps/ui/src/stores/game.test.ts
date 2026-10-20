@@ -14,6 +14,7 @@ describe("the state of the game", () => {
     useGameStore.setState({
       running: null,
       starting: false,
+      restarting: null,
       error: null,
       lastVersion: null,
     });
@@ -50,7 +51,10 @@ describe("the state of the game", () => {
       },
     });
 
-    applyGameEvent({ kind: "exited", version_id: "26.3", success: true, code: 0 }, useGameStore);
+    applyGameEvent(
+      { kind: "exited", version_id: "26.3", success: true, code: 0, stopped: false },
+      useGameStore,
+    );
 
     const state = useGameStore.getState();
     expect(state.running).toBeNull();
@@ -58,11 +62,49 @@ describe("the state of the game", () => {
   });
 
   it("reports the failure when the game ended badly", () => {
-    applyGameEvent({ kind: "exited", version_id: "26.3", success: false, code: 1 }, useGameStore);
+    applyGameEvent(
+      { kind: "exited", version_id: "26.3", success: false, code: 1, stopped: false },
+      useGameStore,
+    );
 
     const state = useGameStore.getState();
     expect(state.running).toBeNull();
     expect(state.error).toContain("26.3");
+  });
+
+  it("does not call a game the player closed a failure", () => {
+    // The player closed the game: it did not fall over, and the
+    // interface must not say that it did.
+    applyGameEvent(
+      { kind: "exited", version_id: "26.3", success: false, code: 1, stopped: true },
+      useGameStore,
+    );
+
+    const state = useGameStore.getState();
+    expect(state.running).toBeNull();
+    expect(state.error).toBeNull();
+  });
+
+  it("remembers that the game is being started again", () => {
+    applyGameEvent({ kind: "restarting", version_id: "26.3", attempt: 2 }, useGameStore);
+
+    const state = useGameStore.getState();
+    expect(state.restarting).toBe(2);
+    expect(state.error).toBeNull();
+  });
+
+  it("forgets the restart when the game is started again", () => {
+    applyGameEvent({ kind: "restarting", version_id: "26.3", attempt: 2 }, useGameStore);
+
+    applyGameEvent(
+      {
+        kind: "started",
+        game: { pid: 7, version_id: "26.3", command: "java", started_at: 1 },
+      },
+      useGameStore,
+    );
+
+    expect(useGameStore.getState().restarting).toBeNull();
   });
 
   it("remembers the failure of a start", () => {

@@ -19,6 +19,8 @@ interface GameState {
   running: RunningGame | null;
   /** Whether the game is being started right now. */
   starting: boolean;
+  /** The number of the attempt that is coming, when the game fell over. */
+  restarting: number | null;
   /** The last failure of a start or a stop. */
   error: string | null;
   /** The version that was running when it ended, for the message. */
@@ -26,8 +28,10 @@ interface GameState {
 
   /** The game started. */
   started: (game: RunningGame) => void;
+  /** The game fell over and is being started again. */
+  willRestart: (attempt: number) => void;
   /** The game ended. */
-  exited: (versionId: string, success: boolean) => void;
+  exited: (versionId: string, success: boolean, stopped: boolean) => void;
   /** A start or a stop failed. */
   failed: (message: string) => void;
   /** The start is under way. */
@@ -39,6 +43,7 @@ interface GameState {
 export const useGameStore = create<GameState>((set) => ({
   running: null,
   starting: false,
+  restarting: null,
   error: null,
   lastVersion: null,
 
@@ -46,16 +51,22 @@ export const useGameStore = create<GameState>((set) => ({
     set({
       running: game,
       starting: false,
+      restarting: null,
       error: null,
       lastVersion: game.version_id,
     }),
 
-  exited: (versionId, success) =>
+  willRestart: (attempt) => set({ restarting: attempt }),
+
+  exited: (versionId, success, stopped) =>
     set({
       running: null,
       starting: false,
+      restarting: null,
       lastVersion: versionId,
-      error: success ? null : `the game ${versionId} ended with an error`,
+      // A game the player closed is not a failure, and the interface
+      // must not say that it was.
+      error: success || stopped ? null : `the game ${versionId} ended with an error`,
     }),
 
   failed: (message) => set({ starting: false, error: message }),
@@ -76,7 +87,12 @@ export function applyGameEvent(event: GameEvent, store: typeof useGameStore): vo
     return;
   }
 
-  store.getState().exited(event.version_id, event.success);
+  if (event.kind === "restarting") {
+    store.getState().willRestart(event.attempt);
+    return;
+  }
+
+  store.getState().exited(event.version_id, event.success, event.stopped);
 }
 
 /**

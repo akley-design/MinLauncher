@@ -9,6 +9,7 @@
 //! are changed while the game runs are behind a lock of their own.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use ml_core::{AppPaths, Platform};
 use ml_minecraft::MinecraftService;
@@ -37,6 +38,18 @@ pub struct AppState {
     service: MinecraftService,
     /// The game that is currently running, if any.
     running: Mutex<Option<crate::commands::launch::RunningGame>>,
+    /// The flag that tells the watcher of the game that the player
+    /// stopped it.
+    ///
+    /// A game the player closed is not a game that fell over, and the
+    /// one that watches the game must not start it again.
+    ///
+    /// Every run gets a flag of its own. The flag of a run that has
+    /// been replaced must not be touched by the run that came after it,
+    /// and the watcher of a run reads the flag of that run only — that
+    /// is what keeps a game that the player stopped from being started
+    /// again by a run that came after it.
+    current_run: Mutex<Option<Arc<AtomicBool>>>,
 }
 
 impl AppState {
@@ -69,6 +82,7 @@ impl AppState {
             platform,
             service,
             running: Mutex::new(None),
+            current_run: Mutex::new(None),
         })
     }
 
@@ -127,6 +141,26 @@ impl AppState {
     pub fn set_running(&self, game: Option<crate::commands::launch::RunningGame>) {
         *self.running.lock() = game;
     }
+
+    /// Begin a run of the game and return the flag of that run.
+    ///
+    /// The flag starts out false: a game that has just been started was
+    /// not stopped by the player.
+    pub fn begin_run(&self) -> Arc<AtomicBool> {
+        let flag = Arc::new(AtomicBool::new(false));
+        *self.current_run.lock() = Some(Arc::clone(&flag));
+        flag
+    }
+
+    /// Remember that the player stopped the game that is running.
+    ///
+    /// The flag of the run that is running now is set, and only that
+    /// one: a run that has already ended keeps the answer it had.
+    pub fn stop_current_run(&self) {
+        if let Some(flag) = self.current_run.lock().as_ref() {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
 }
 
 /// The state as it is stored in the managed state of Tauri.
@@ -165,5 +199,26 @@ mod tests {
 
         state.set_running(None);
         assert!(state.running().is_none());
+    }
+
+    #[test]
+    fn every_run_gets_a_flag_of_its_own() {
+        let (_dir, state) = state();
+
+        let first = state.begin_run();
+        state.stop_current_run();
+        assert!(first.load(Ordering::Relaxed), "the run was stopped");
+
+        // The run that came after it does not inherit the answer of the
+        // one before it, and the old run keeps the answer it had.
+        let second = state.begin_run();
+        assert!(
+            !second.load(Ordering::Relaxed),
+            "the run that came after was not stopped"
+        );
+        assert!(
+            first.load(Ordering::Relaxed),
+            "the old run keeps its answer"
+        );
     }
 }

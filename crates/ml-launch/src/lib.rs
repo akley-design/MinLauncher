@@ -33,7 +33,7 @@ pub use args::{Session, build_classpath, substitute, substitute_all};
 pub use command::{LaunchCommand, LaunchRequest, build_command};
 pub use jvm::{JavaInstallation, JavaOrigin, find_runtime, probe_version};
 pub use natives::{ExtractionReport, NativeJar, NativeLayout, extract_all, extract_jar};
-pub use supervisor::{ExitStatus, GameProcess, Supervisor};
+pub use supervisor::{ExitStatus, GameProcess, RestartPolicy, Supervisor};
 
 use ml_core::{Error, FeatureSet, Platform, Result};
 use ml_minecraft::version::VersionJson;

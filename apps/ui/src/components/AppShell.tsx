@@ -42,6 +42,7 @@ const NAV_ITEMS: NavItem[] = [
 export function AppShell() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const running = useGameStore((state) => state.running);
+  const restarting = useGameStore((state) => state.restarting);
   const installing = useInstallStore((state) => state.versionId);
   const installCompleted = useInstallStore((state) => state.completed);
   const installTotal = useInstallStore((state) => state.total);
@@ -139,6 +140,14 @@ export function AppShell() {
                 <div className="shell__status-sub">
                   {installing} — {installCompleted} из {installTotal}
                 </div>
+              </div>
+            </div>
+          ) : restarting ? (
+            <div className="shell__status shell__status--running">
+              <span className="shell__dot" aria-hidden="true" />
+              <div>
+                <div className="shell__status-title">Игра перезапускается</div>
+                <div className="shell__status-sub">Попытка {restarting}</div>
               </div>
             </div>
           ) : running ? (

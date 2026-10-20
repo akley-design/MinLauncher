@@ -104,7 +104,29 @@ export interface JvmConfig {
   enable_agent: boolean;
 }
 
-/** The launcher's complete settings. */
+/** The settings of the mods. */
+export interface ModConfig {
+  enabled: boolean;
+  loader_version: string;
+  mod_jar: string;
+  preset: string;
+}
+
+/** The rules of the restart of a game that fell over. */
+export interface RestartConfig {
+  enabled: boolean;
+  max_restarts: number;
+  backoff_ms: number;
+  window_ms: number;
+}
+
+/**
+ * The launcher's complete settings.
+ *
+ * The copy of the Rust type has to be whole: the settings are read
+ * whole and written whole, and a field that is missing here is a field
+ * that goes back to its default when the player presses «Сохранить».
+ */
 export interface LauncherConfig {
   schema_version: number;
   language: string;
@@ -115,6 +137,8 @@ export interface LauncherConfig {
   show_console: boolean;
   downloads: DownloadConfig;
   jvm: JvmConfig;
+  mods: ModConfig;
+  restart: RestartConfig;
   telemetry_enabled: boolean;
 }
 
@@ -205,10 +229,23 @@ export interface LaunchOptions {
   java_path?: string;
 }
 
-/** What the launcher tells the frontend while the game runs. */
+/**
+ * What the launcher tells the frontend while the game runs.
+ *
+ * The three kinds are the three moments of a run of the game: it
+ * started, it fell over and is being started again, it ended.
+ */
 export type GameEvent =
   | { kind: "started"; game: RunningGame }
-  | { kind: "exited"; version_id: string; success: boolean; code: number | null };
+  | { kind: "restarting"; version_id: string; attempt: number }
+  | {
+      kind: "exited";
+      version_id: string;
+      success: boolean;
+      code: number | null;
+      /** Whether the player stopped the game on purpose. */
+      stopped: boolean;
+    };
 
 /** The request of an installation. */
 export interface InstallOptions {

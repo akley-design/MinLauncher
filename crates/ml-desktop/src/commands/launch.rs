@@ -16,6 +16,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use ml_core::{Account, AppPaths, FeatureSet, JavaRuntime};
 use ml_launch::args::Session;
@@ -92,35 +93,8 @@ pub async fn launch_game(
         return Err(IpcError::invalid("the game is already running"));
     }
 
-    let storage = state.storage();
-
-    // --- the account ------------------------------------------------
-    let account: Account = storage
-        .accounts()
-        .selected()
-        .map_err(|error| {
-            IpcError::with_detail(
-                ErrorCode::Storage,
-                "cannot read the accounts",
-                error.to_string(),
-            )
-        })?
-        .ok_or_else(|| IpcError::invalid("no account is selected"))?;
-
-    // --- the version ------------------------------------------------
-    let meta = storage
-        .versions()
-        .get(&options.version_id)
-        .map_err(|error| {
-            IpcError::with_detail(
-                ErrorCode::Storage,
-                "cannot read the versions",
-                error.to_string(),
-            )
-        })?
-        .ok_or_else(|| {
-            IpcError::not_found(format!("there is no version `{}`", options.version_id))
-        })?;
+    // --- the account and the version --------------------------------
+    let (account, meta) = read_context(&state, &options)?;
 
     // --- the request ------------------------------------------------
     let mut request = build_request(&state, &account, &meta, &options)?;
@@ -147,7 +121,7 @@ pub async fn launch_game(
     let command_line = prepared.display();
 
     let supervisor = Supervisor::new(prepared.command);
-    let mut process = supervisor.start().map_err(|error| {
+    let process = supervisor.start().map_err(|error| {
         IpcError::with_detail(
             ErrorCode::Launch,
             "cannot start the game",
@@ -158,45 +132,178 @@ pub async fn launch_game(
     let game = RunningGame {
         pid: process.id(),
         version_id: meta.id.clone(),
-        command: command_line,
+        command: command_line.clone(),
         started_at: chrono::Utc::now().timestamp_millis(),
     };
 
     state.set_running(Some(game.clone()));
+    // Every run gets a flag of its own. The watcher of this run reads
+    // this flag and not the one of the run before it.
+    let run_flag = state.begin_run();
 
     // The frontend is told that the game started, and that the window
     // of the launcher can be closed.
-    let _ = app.emit(GAME_EVENT, &game);
+    let _ = app.emit(GAME_EVENT, &GameEvent::Started { game: game.clone() });
 
     // The process is watched in the background: the launcher stays
     // usable while the game runs, and the frontend is told when the
     // game ends.
-    let handle = app.clone();
-    let shared = Arc::clone(&state);
-    let report_path = request.agent_report.clone();
-    tauri::async_runtime::spawn(async move {
-        let status = process.wait().await;
-        shared.set_running(None);
-
-        // The agent writes its report when the game ends, and it is
-        // read now that the game is gone. What it says becomes the
-        // measurements of the metrics M5, M6 and M8.
-        if let Some(path) = report_path {
-            store_agent_report(&shared, &path);
-        }
-
-        let event = GameEvent::Exited {
-            version_id: meta.id.clone(),
-            success: status.as_ref().is_ok_and(ml_launch::ExitStatus::is_success),
-            code: status.as_ref().ok().and_then(|status| status.code),
-        };
-        let _ = handle.emit(GAME_EVENT, &event);
-    });
+    tauri::async_runtime::spawn(watch_game(Watch {
+        app: app.clone(),
+        state: Arc::clone(&state),
+        supervisor,
+        process,
+        game: game.clone(),
+        report_path: request.agent_report.clone(),
+        run_flag,
+    }));
 
     Ok(LaunchResult {
         game,
         prepare_ms: started_at.elapsed().as_millis() as u64,
     })
+}
+
+/// The account and the version a launch needs.
+fn read_context(
+    state: &SharedState,
+    options: &LaunchOptions,
+) -> IpcResult<(Account, ml_core::VersionMeta)> {
+    let storage = state.storage();
+
+    let account = storage
+        .accounts()
+        .selected()
+        .map_err(|error| {
+            IpcError::with_detail(
+                ErrorCode::Storage,
+                "cannot read the accounts",
+                error.to_string(),
+            )
+        })?
+        .ok_or_else(|| IpcError::invalid("no account is selected"))?;
+
+    let meta = storage
+        .versions()
+        .get(&options.version_id)
+        .map_err(|error| {
+            IpcError::with_detail(
+                ErrorCode::Storage,
+                "cannot read the versions",
+                error.to_string(),
+            )
+        })?
+        .ok_or_else(|| {
+            IpcError::not_found(format!("there is no version `{}`", options.version_id))
+        })?;
+
+    Ok((account, meta))
+}
+
+/// What the watcher of a game needs to know.
+struct Watch {
+    /// The handle of the application, for the events.
+    app: AppHandle,
+    /// The state of the launcher.
+    state: SharedState,
+    /// The supervisor that starts the game.
+    supervisor: Supervisor,
+    /// The game that is running now.
+    process: GameProcess,
+    /// The game as the frontend knows it.
+    game: RunningGame,
+    /// Where the agent writes its report.
+    report_path: Option<PathBuf>,
+    /// The flag that says the player stopped the game.
+    run_flag: Arc<AtomicBool>,
+}
+
+/// Watch a game that was started, and start it again when it falls over.
+///
+/// The task lives as long as the game does. It tells the frontend about
+/// the start, about the restart and about the end.
+async fn watch_game(watch: Watch) {
+    let Watch {
+        app,
+        state,
+        supervisor,
+        process,
+        game,
+        report_path,
+        run_flag,
+    } = watch;
+
+    let policy = restart_policy(&state);
+
+    // The game is started again when it falls over. The frontend is
+    // told about it, so that the player is not left in front of a
+    // screen that says the game ended and does not explain why it is
+    // still running.
+    let mut on_started = |attempt: u32, pid: Option<u32>| {
+        let started = RunningGame {
+            pid,
+            version_id: game.version_id.clone(),
+            command: game.command.clone(),
+            started_at: chrono::Utc::now().timestamp_millis(),
+        };
+        state.set_running(Some(started.clone()));
+        let _ = app.emit(GAME_EVENT, &GameEvent::Started { game: started });
+        tracing::info!("the game was started again, attempt {attempt}");
+    };
+
+    // A game the player closed is not a game that fell over, and a game
+    // that ended quietly is not one either — the player closed the
+    // window. Only a game that ended with a failure is started again.
+    let mut on_ended = |attempt: u32, status: &ml_launch::ExitStatus| -> bool {
+        if run_flag.load(Ordering::Relaxed) || status.is_success() {
+            return false;
+        }
+        let _ = app.emit(
+            GAME_EVENT,
+            &GameEvent::Restarting {
+                version_id: game.version_id.clone(),
+                attempt: attempt + 1,
+            },
+        );
+        true
+    };
+
+    let status = supervisor
+        .watch_with_restart(process, &policy, &mut on_started, &mut on_ended)
+        .await;
+    state.set_running(None);
+
+    // The agent writes its report when the game ends, and it is read
+    // now that the game is gone. What it says becomes the measurements
+    // of the metrics M5, M6 and M8.
+    if let Some(path) = report_path {
+        store_agent_report(&state, &path);
+    }
+
+    let stopped = run_flag.load(Ordering::Relaxed);
+    let event = GameEvent::Exited {
+        version_id: game.version_id.clone(),
+        success: status.as_ref().is_ok_and(ml_launch::ExitStatus::is_success),
+        code: status.as_ref().ok().and_then(|status| status.code),
+        stopped,
+    };
+    let _ = app.emit(GAME_EVENT, &event);
+}
+
+/// The rules of the restart of a game that fell over.
+///
+/// The settings are read once, when the game is started: a rule that
+/// changes while the game runs would change the meaning of the run that
+/// is already under way.
+fn restart_policy(state: &SharedState) -> ml_launch::RestartPolicy {
+    let config = state.storage().load_settings().unwrap_or_default();
+
+    ml_launch::RestartPolicy {
+        enabled: config.restart.enabled,
+        max_restarts: config.restart.max_restarts,
+        backoff: std::time::Duration::from_millis(config.restart.backoff_ms),
+        window: std::time::Duration::from_millis(config.restart.window_ms),
+    }
 }
 
 /// Read the report of the agent and store what it says.
@@ -236,6 +343,13 @@ pub enum GameEvent {
         /// The state of the running game.
         game: RunningGame,
     },
+    /// The game ended and is being started again.
+    Restarting {
+        /// The version that was running.
+        version_id: String,
+        /// The number of the attempt that is coming, counting from one.
+        attempt: u32,
+    },
     /// The game ended.
     Exited {
         /// The version that was running.
@@ -244,6 +358,11 @@ pub enum GameEvent {
         success: bool,
         /// The exit code, when the platform gives one.
         code: Option<i32>,
+        /// Whether the player stopped the game on purpose.
+        ///
+        /// A game the player closed is not a failure, and the interface
+        /// must not say that it was.
+        stopped: bool,
     },
 }
 
@@ -256,6 +375,11 @@ pub async fn stop_game(state: State<'_, SharedState>) -> IpcResult<()> {
     let game = state
         .running()
         .ok_or_else(|| IpcError::invalid("no game is running"))?;
+
+    // The flag is set before the process is killed: the watcher of the
+    // game must know that the player closed it, and it must know it
+    // before the process is gone.
+    state.stop_current_run();
 
     // The process is stopped by its identifier, because the handle the
     // launcher kept belongs to the background task.
@@ -640,6 +764,27 @@ mod tests {
 
         let args = extra_jvm_args(&state);
         assert!(args.is_empty(), "{args:?}");
+    }
+
+    #[test]
+    fn the_rules_of_the_restart_follow_the_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
+        let platform = Platform::new(OsName::Windows, OsArch::X86_64);
+        let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
+
+        let mut config = state.storage().load_settings().unwrap();
+        config.restart.enabled = false;
+        config.restart.max_restarts = 7;
+        config.restart.backoff_ms = 1500;
+        config.restart.window_ms = 60_000;
+        state.storage().save_settings(&config).unwrap();
+
+        let policy = restart_policy(&state);
+        assert!(!policy.enabled, "the restart is switched off");
+        assert_eq!(policy.max_restarts, 7);
+        assert_eq!(policy.backoff, std::time::Duration::from_millis(1500));
+        assert_eq!(policy.window, std::time::Duration::from_secs(60));
     }
 
     #[test]

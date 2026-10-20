@@ -96,6 +96,39 @@ impl Default for ModConfig {
     }
 }
 
+/// The rules of the restart of a game that ended on its own.
+///
+/// The game is started again only when it ended by itself: a game the
+/// player closed is not a game that crashed, and starting it again would
+/// be exactly the wrong thing to do.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RestartConfig {
+    /// Whether the game is started again when it ends on its own.
+    pub enabled: bool,
+    /// How many restarts are allowed inside the window.
+    pub max_restarts: u32,
+    /// How long to wait before the next start, in milliseconds.
+    pub backoff_ms: u64,
+    /// The window the restarts are counted in, in milliseconds.
+    pub window_ms: u64,
+}
+
+impl Default for RestartConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            // Three restarts in five minutes: enough for the game that
+            // fell over because of a hiccup of the network, and few
+            // enough for the game that falls over every time to stop
+            // instead of looping until the machine is unusable.
+            max_restarts: 3,
+            backoff_ms: 5000,
+            window_ms: 300_000,
+        }
+    }
+}
+
 /// The launcher's complete settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -120,6 +153,8 @@ pub struct LauncherConfig {
     pub jvm: JvmConfig,
     /// The settings of the mods.
     pub mods: ModConfig,
+    /// The rules of the restart of a crashed game.
+    pub restart: RestartConfig,
     /// Whether to collect anonymous performance samples.
     pub telemetry_enabled: bool,
 }
@@ -137,6 +172,7 @@ impl Default for LauncherConfig {
             downloads: DownloadConfig::default(),
             jvm: JvmConfig::default(),
             mods: ModConfig::default(),
+            restart: RestartConfig::default(),
             telemetry_enabled: false,
         }
     }

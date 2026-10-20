@@ -13,9 +13,11 @@
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Duration;
 
 use ml_core::{Error, Result};
 use tokio::process::{Child, Command};
+use tokio::time::Instant;
 
 use crate::command::LaunchCommand;
 
@@ -38,11 +40,41 @@ impl ExitStatus {
     }
 }
 
+/// The rules of the restart of a game that ended on its own.
+///
+/// The rules answer two questions: may the game be started again, and
+/// how many times. The second one matters as much as the first: a game
+/// that falls over every time it is started would otherwise be started
+/// again forever.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestartPolicy {
+    /// Whether the game may be started again at all.
+    pub enabled: bool,
+    /// How many restarts are allowed inside the window.
+    pub max_restarts: u32,
+    /// How long to wait before the next start.
+    pub backoff: Duration,
+    /// The window the restarts are counted in.
+    pub window: Duration,
+}
+
+impl Default for RestartPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_restarts: 3,
+            backoff: Duration::from_secs(5),
+            window: Duration::from_secs(300),
+        }
+    }
+}
+
 /// A handle to a running game.
 #[derive(Debug)]
 pub struct GameProcess {
     child: Child,
     pid: Option<u32>,
+    stopped: bool,
 }
 
 impl GameProcess {
@@ -60,9 +92,14 @@ impl GameProcess {
 
     /// Ask the process to stop.
     ///
+    /// The process is remembered as stopped, so that the code that waits
+    /// for it can tell a game the player closed from a game that fell
+    /// over.
+    ///
     /// # Errors
     /// Fails if the process cannot be signalled.
     pub async fn stop(&mut self) -> Result<()> {
+        self.stopped = true;
         self.child
             .kill()
             .await
@@ -83,7 +120,7 @@ impl GameProcess {
         Ok(ExitStatus {
             code: status.code(),
             signal: exit_signal(&status),
-            stopped: false,
+            stopped: self.stopped,
         })
     }
 }
@@ -156,7 +193,11 @@ impl Supervisor {
             spawn_drain(stderr, self.log_path.clone(), true);
         }
 
-        Ok(GameProcess { child, pid })
+        Ok(GameProcess {
+            child,
+            pid,
+            stopped: false,
+        })
     }
 
     /// Start the game and wait for it to end.
@@ -166,6 +207,86 @@ impl Supervisor {
     pub async fn run(&self) -> Result<ExitStatus> {
         let mut process = self.start()?;
         process.wait().await
+    }
+
+    /// Start the game and start it again when it ends on its own.
+    ///
+    /// The two callbacks are how the caller stays in the loop:
+    ///
+    /// * `on_ended` is asked, every time the game ends, whether it may
+    ///   be started again. The caller answers `false` for a game the
+    ///   player closed — that game is not a game that fell over, and
+    ///   starting it again would be exactly the wrong thing to do;
+    /// * `on_started` is called after every start the supervisor made,
+    ///   with the number of the attempt and the identifier of the new
+    ///   process, so that the caller can show the game that is running.
+    ///
+    /// The supervisor keeps the rules: the number of restarts inside the
+    /// window, the wait between them, and the backoff.
+    ///
+    /// # Errors
+    /// Fails when the process cannot be started.
+    pub async fn run_with_restart(
+        &self,
+        policy: &RestartPolicy,
+        on_started: &mut (dyn FnMut(u32, Option<u32>) + Send),
+        on_ended: &mut (dyn FnMut(u32, &ExitStatus) -> bool + Send),
+    ) -> Result<ExitStatus> {
+        let process = self.start()?;
+        self.watch_with_restart(process, policy, on_started, on_ended)
+            .await
+    }
+
+    /// Wait for a game that is already running and start it again when
+    /// it ends on its own.
+    ///
+    /// It is the same thing [`Supervisor::run_with_restart`] does, but
+    /// for a caller that started the game itself and needs to know its
+    /// identifier before the game is watched.
+    ///
+    /// # Errors
+    /// Fails when the process cannot be started again.
+    pub async fn watch_with_restart(
+        &self,
+        mut process: GameProcess,
+        policy: &RestartPolicy,
+        on_started: &mut (dyn FnMut(u32, Option<u32>) + Send),
+        on_ended: &mut (dyn FnMut(u32, &ExitStatus) -> bool + Send),
+    ) -> Result<ExitStatus> {
+        let mut attempt = 1u32;
+        let mut restarts: Vec<Instant> = Vec::new();
+
+        loop {
+            let status = process.wait().await?;
+
+            if !policy.enabled {
+                return Ok(status);
+            }
+
+            // The restarts that are too old do not count: a game that
+            // fell over three times in a week and once in the last
+            // minute is not a game that is in a loop.
+            let now = Instant::now();
+            restarts.retain(|at| now.duration_since(*at) < policy.window);
+            if restarts.len() >= policy.max_restarts as usize {
+                tracing::warn!(
+                    "the game is not started again: the limit of the restarts is reached"
+                );
+                return Ok(status);
+            }
+
+            if !on_ended(attempt, &status) {
+                return Ok(status);
+            }
+
+            restarts.push(now);
+            attempt += 1;
+
+            tokio::time::sleep(policy.backoff).await;
+
+            process = self.start()?;
+            on_started(attempt, process.id());
+        }
     }
 }
 
@@ -256,6 +377,102 @@ mod tests {
             .unwrap();
         let status = runtime.block_on(supervisor.run()).unwrap();
         assert!(status.is_success());
+    }
+
+    /// A command that ends at once with a failure.
+    fn failing_command() -> LaunchCommand {
+        #[cfg(windows)]
+        {
+            let mut command = command("cmd");
+            command.arguments = vec!["/C".into(), "exit".into(), "1".into()];
+            command
+        }
+        #[cfg(not(windows))]
+        {
+            let mut command = command("/bin/sh");
+            command.arguments = vec!["-c".into(), "exit 1".into()];
+            command
+        }
+    }
+
+    /// A policy that waits as little as the test can afford.
+    fn quick_policy(max_restarts: u32) -> RestartPolicy {
+        RestartPolicy {
+            enabled: true,
+            max_restarts,
+            backoff: Duration::from_millis(10),
+            window: Duration::from_secs(600),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failing_game_is_started_again_until_the_limit() {
+        let supervisor = Supervisor::new(failing_command());
+        let policy = quick_policy(2);
+
+        let mut started = Vec::new();
+        let mut on_started = |attempt: u32, _pid: Option<u32>| started.push(attempt);
+        let mut on_ended = |_attempt: u32, _status: &ExitStatus| true;
+
+        let status = supervisor
+            .run_with_restart(&policy, &mut on_started, &mut on_ended)
+            .await
+            .unwrap();
+
+        assert!(!status.is_success());
+        assert_eq!(started, vec![2, 3], "two restarts, and no more");
+    }
+
+    #[tokio::test]
+    async fn a_game_the_player_stopped_is_not_started_again() {
+        let supervisor = Supervisor::new(failing_command());
+        let policy = quick_policy(3);
+
+        let mut started = Vec::new();
+        let mut on_started = |attempt: u32, _pid: Option<u32>| started.push(attempt);
+        // The player closed the game: the answer is no.
+        let mut on_ended = |_attempt: u32, _status: &ExitStatus| false;
+
+        supervisor
+            .run_with_restart(&policy, &mut on_started, &mut on_ended)
+            .await
+            .unwrap();
+
+        assert!(started.is_empty(), "the game was not started again");
+    }
+
+    #[tokio::test]
+    async fn the_wait_between_the_restarts_is_kept() {
+        let supervisor = Supervisor::new(failing_command());
+        let policy = RestartPolicy {
+            backoff: Duration::from_millis(300),
+            ..quick_policy(1)
+        };
+
+        let mut on_started = |_attempt: u32, _pid: Option<u32>| {};
+        let mut on_ended = |_attempt: u32, _status: &ExitStatus| true;
+
+        let started_at = Instant::now();
+        supervisor
+            .run_with_restart(&policy, &mut on_started, &mut on_ended)
+            .await
+            .unwrap();
+        let elapsed = started_at.elapsed();
+
+        assert!(
+            elapsed >= Duration::from_millis(300),
+            "the game was started again after {elapsed:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_process_that_was_asked_to_stop_says_so() {
+        let supervisor = Supervisor::new(failing_command());
+        let mut process = supervisor.start().unwrap();
+        process.stop().await.unwrap();
+        let status = process.wait().await.unwrap();
+
+        assert!(status.stopped, "the process was stopped on purpose");
     }
 
     #[test]
