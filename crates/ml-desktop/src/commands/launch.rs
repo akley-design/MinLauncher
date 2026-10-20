@@ -108,7 +108,7 @@ pub async fn launch_game(
 
     // --- the command ------------------------------------------------
     let platform = state.platform();
-    let features = FeatureSet::none();
+    let features = features_for(&request);
     let prepared = ml_launch::prepare(&request, platform, &features, meta.kind.as_manifest_str())
         .map_err(|error| {
         IpcError::with_detail(
@@ -467,7 +467,7 @@ fn build_request(
     let version = ml_minecraft::version::VersionJson::parse(&version_bytes)?;
 
     // --- the java runtime -------------------------------------------
-    let java = find_java(state, meta.java_major, options.java_path.as_deref())?;
+    let java = find_java(state, meta, options.java_path.as_deref())?;
 
     // --- the libraries ----------------------------------------------
     //
@@ -599,18 +599,31 @@ fn agent_for(state: &SharedState, version_id: &str) -> Option<crate::commands::a
     crate::commands::agent::prepare(state.paths(), version_id)
 }
 
+/// The runtime a version needs.
+///
+/// The component is the name the runtime is stored under, and the major
+/// version alone does not give it: `java-runtime-21` is not a directory
+/// anybody writes, `java-runtime-delta` is. The document of the version
+/// carries the right name, so it is used whenever it is known.
+fn runtime_for(meta: &ml_core::VersionMeta) -> JavaRuntime {
+    let fallback = JavaRuntime::fallback_for(&meta.id);
+    JavaRuntime {
+        component: meta
+            .java_component
+            .clone()
+            .filter(|component| !component.is_empty())
+            .unwrap_or(fallback.component),
+        major_version: meta.java_major.unwrap_or(fallback.major_version),
+    }
+}
+
 /// Find the Java runtime the version needs.
 fn find_java(
     state: &SharedState,
-    java_major: Option<u32>,
+    meta: &ml_core::VersionMeta,
     explicit: Option<&str>,
 ) -> IpcResult<JavaInstallation> {
-    let runtime = JavaRuntime {
-        component: java_major
-            .map(|major| format!("java-runtime-{major}"))
-            .unwrap_or_default(),
-        major_version: java_major.unwrap_or(8),
-    };
+    let runtime = runtime_for(meta);
 
     let explicit = explicit.map(PathBuf::from);
 
@@ -660,6 +673,21 @@ fn build_session(
 /// The directory the libraries live in.
 fn library_directory(paths: &AppPaths) -> PathBuf {
     paths.cache_dir.join("libraries")
+}
+
+/// The features the launcher can turn on for the rules of the version.
+///
+/// Mojang puts `--width` and `--height` behind the `has_custom_resolution`
+/// feature, so a resolution the player asked for is dropped from the
+/// command line unless the feature is on.
+fn features_for(request: &LaunchRequest) -> FeatureSet {
+    let sized =
+        request.session.resolution_width.is_some() && request.session.resolution_height.is_some();
+    if sized {
+        FeatureSet::of(["has_custom_resolution"])
+    } else {
+        FeatureSet::none()
+    }
 }
 
 /// The extra JVM arguments the settings ask for.
@@ -817,5 +845,69 @@ mod tests {
         // The library has no artifact, so it does not go on the
         // classpath — but the entry point does not panic either.
         assert_eq!(request.classpath_entries().len(), 0);
+    }
+
+    #[test]
+    fn the_runtime_keeps_the_name_of_its_component() {
+        // `java-runtime-25` is not a directory anybody writes: the
+        // runtime of Java 25 is `java-runtime-epsilon`. A component made
+        // up from the major version never matches what was downloaded.
+        let mut meta = ml_core::VersionMeta {
+            id: "26.3".into(),
+            kind: ml_core::VersionKind::Release,
+            release_time: None,
+            java_component: Some("java-runtime-epsilon".into()),
+            java_major: Some(25),
+            main_class: None,
+            asset_index_id: None,
+            asset_index_sha1: None,
+            asset_index_size: None,
+            client_sha1: None,
+            client_size: None,
+            json_sha1: None,
+        };
+
+        assert_eq!(runtime_for(&meta).component, "java-runtime-epsilon");
+        assert_eq!(runtime_for(&meta).major_version, 25);
+
+        // A version whose document was not read falls back to the table.
+        meta.java_component = None;
+        meta.java_major = None;
+        assert_eq!(runtime_for(&meta).component, "java-runtime-epsilon");
+        assert_eq!(runtime_for(&meta).major_version, 25);
+    }
+
+    #[test]
+    fn a_resolution_is_only_announced_when_it_is_complete() {
+        let mut request = LaunchRequest {
+            version: ml_minecraft::version::VersionJson::parse(
+                br#"{"id":"26.3","type":"release","mainClass":"Main"}"#,
+            )
+            .unwrap(),
+            libraries: Vec::new(),
+            java: JavaInstallation {
+                executable: PathBuf::from("java"),
+                windowless_executable: None,
+                major_version: 25,
+                version: "25.0.1".into(),
+                origin: ml_launch::jvm::JavaOrigin::System,
+            },
+            session: Session::default(),
+            client_jar: PathBuf::from("C:/v/client.jar"),
+            library_directory: PathBuf::from("C:/cache/libraries"),
+            extra_jvm_args: Vec::new(),
+            agent_jar: None,
+            agent_report: None,
+            loader: None,
+            mod_jars: Vec::new(),
+        };
+
+        assert!(!features_for(&request).is_enabled("has_custom_resolution"));
+
+        request.session.resolution_width = Some(1920);
+        assert!(!features_for(&request).is_enabled("has_custom_resolution"));
+
+        request.session.resolution_height = Some(1080);
+        assert!(features_for(&request).is_enabled("has_custom_resolution"));
     }
 }
