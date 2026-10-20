@@ -94,6 +94,7 @@ pub fn run() {
             commands::versions::install_version,
             commands::runtimes::list_runtimes,
             commands::runtimes::install_runtime,
+            commands::downloads::list_downloads,
             commands::accounts::list_accounts,
             commands::accounts::selected_account,
             commands::accounts::select_account,

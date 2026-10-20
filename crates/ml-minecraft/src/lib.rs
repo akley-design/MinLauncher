@@ -63,10 +63,11 @@ pub mod library;
 pub mod manifest;
 pub mod version;
 
+use std::path::Path;
 use std::sync::Arc;
 
 use ml_core::{AppPaths, Error, Platform, Result};
-use ml_storage::Storage;
+use ml_storage::{DownloadEntry, DownloadState, DownloadUpdate, Storage};
 
 pub use assets::{AssetIndex, AssetObject, AssetRoots, AssetStore};
 pub use download::{
@@ -292,8 +293,7 @@ impl MinecraftService {
         on_progress: ProgressCallback,
     ) -> Result<BatchResult> {
         let result = self
-            .downloader
-            .download_all_with_progress(jre::runtime_tasks(plan), on_progress)
+            .download_and_record(jre::runtime_tasks(plan), on_progress)
             .await?;
 
         if !result.is_success() {
@@ -356,7 +356,8 @@ impl MinecraftService {
     /// Fails only when the batch cannot be started; individual failures are
     /// reported in the result.
     pub async fn install(&self, plan: &InstallPlan) -> Result<BatchResult> {
-        self.downloader.download_all(plan.to_tasks()).await
+        self.download_and_record(plan.to_tasks(), Arc::new(|_| {}))
+            .await
     }
 
     /// Download every file of a plan and report the progress.
@@ -369,9 +370,85 @@ impl MinecraftService {
         plan: &InstallPlan,
         on_progress: ProgressCallback,
     ) -> Result<BatchResult> {
-        self.downloader
-            .download_all_with_progress(plan.to_tasks(), on_progress)
-            .await
+        self.download_and_record(plan.to_tasks(), on_progress).await
+    }
+
+    /// Download a batch of files and record what happened in the queue.
+    ///
+    /// The queue is a note about the download, not the download itself: a
+    /// database that cannot be written is logged and ignored, because the
+    /// user is waiting for the files, not for the record.
+    async fn download_and_record(
+        &self,
+        tasks: Vec<DownloadTask>,
+        on_progress: ProgressCallback,
+    ) -> Result<BatchResult> {
+        self.start_queue(&tasks);
+
+        let result = self
+            .downloader
+            .download_all_with_progress(tasks, on_progress)
+            .await?;
+
+        self.settle_queue(&result);
+        Ok(result)
+    }
+
+    /// Put a batch of tasks into the queue and move them to work.
+    fn start_queue(&self, tasks: &[DownloadTask]) {
+        let entries: Vec<DownloadEntry> = tasks.iter().map(queue_entry).collect();
+        if let Err(error) = self.storage.downloads().enqueue_all(&entries) {
+            tracing::warn!("cannot write the download queue: {error}");
+        }
+
+        // The engine fetches the files at the same time, so there is no
+        // point in telling apart the ones that wait for a slot from the
+        // ones that are already in flight.
+        let updates: Vec<DownloadUpdate> = tasks
+            .iter()
+            .map(|task| DownloadUpdate {
+                url: task.url.clone(),
+                state: DownloadState::Downloading,
+                error: None,
+                bytes_done: None,
+                attempts: None,
+            })
+            .collect();
+        if let Err(error) = self.storage.downloads().update_all(&updates) {
+            tracing::warn!("cannot mark the downloads as running: {error}");
+        }
+    }
+
+    /// Move the entries of a finished batch to their final state.
+    fn settle_queue(&self, result: &BatchResult) {
+        let mut updates: Vec<DownloadUpdate> =
+            Vec::with_capacity(result.completed.len() + result.failed.len());
+
+        for outcome in &result.completed {
+            updates.push(DownloadUpdate {
+                url: outcome.url.clone(),
+                state: DownloadState::Completed,
+                error: None,
+                // The size on the disk is the truth; the size the server
+                // promised is only a guess.
+                bytes_done: Some(file_size(&outcome.target)),
+                attempts: Some(i64::from(outcome.attempts)),
+            });
+        }
+
+        for (url, reason) in &result.failed {
+            updates.push(DownloadUpdate {
+                url: url.clone(),
+                state: DownloadState::Failed,
+                error: Some(reason.clone()),
+                bytes_done: None,
+                attempts: None,
+            });
+        }
+
+        if let Err(error) = self.storage.downloads().update_all(&updates) {
+            tracing::warn!("cannot settle the download queue: {error}");
+        }
     }
 
     /// Fetch a URL and return the body.
@@ -407,6 +484,30 @@ impl MinecraftService {
     }
 }
 
+/// The queue entry of a task that is about to be fetched.
+///
+/// The repository writes the timestamp itself, so the field is left empty.
+fn queue_entry(task: &DownloadTask) -> DownloadEntry {
+    DownloadEntry {
+        url: task.url.clone(),
+        sha1: task.sha1.clone(),
+        size: task.size,
+        target_path: task.target.to_string_lossy().into_owned(),
+        state: DownloadState::Queued,
+        bytes_done: 0,
+        attempts: 0,
+        error: None,
+        updated_at: String::new(),
+    }
+}
+
+/// The size of a file on the disk, or zero when it is not there.
+fn file_size(path: &Path) -> i64 {
+    std::fs::metadata(path).map_or(0, |metadata| {
+        i64::try_from(metadata.len()).unwrap_or(i64::MAX)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -437,5 +538,71 @@ mod tests {
         let service = service(&dir);
         let clone = service.clone();
         assert_eq!(clone.paths().data_dir, service.paths().data_dir);
+    }
+
+    #[test]
+    fn the_queue_remembers_a_finished_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = service(&dir);
+        let target = dir.path().join("payload.jar");
+        std::fs::write(&target, b"0123456789").unwrap();
+
+        let task = DownloadTask::new("https://example.invalid/payload.jar", &target, None);
+        service.start_queue(std::slice::from_ref(&task));
+
+        let entry = service
+            .storage()
+            .downloads()
+            .get(&task.url)
+            .unwrap()
+            .unwrap();
+        assert_eq!(entry.state, DownloadState::Downloading);
+        assert_eq!(entry.target_path, target.to_string_lossy());
+
+        service.settle_queue(&BatchResult {
+            completed: vec![DownloadOutcome {
+                url: task.url.clone(),
+                target: target.clone(),
+                bytes: 10,
+                skipped: false,
+                attempts: 1,
+            }],
+            failed: Vec::new(),
+            bytes: 10,
+        });
+
+        let entry = service
+            .storage()
+            .downloads()
+            .get(&task.url)
+            .unwrap()
+            .unwrap();
+        assert_eq!(entry.state, DownloadState::Completed);
+        assert_eq!(entry.bytes_done, 10, "the size on the disk");
+        assert_eq!(entry.attempts, 1);
+    }
+
+    #[test]
+    fn the_queue_remembers_a_failed_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = service(&dir);
+        let target = dir.path().join("payload.jar");
+
+        let task = DownloadTask::new("https://example.invalid/payload.jar", &target, None);
+        service.start_queue(std::slice::from_ref(&task));
+        service.settle_queue(&BatchResult {
+            completed: Vec::new(),
+            failed: vec![(task.url.clone(), "the network is down".to_string())],
+            bytes: 0,
+        });
+
+        let entry = service
+            .storage()
+            .downloads()
+            .get(&task.url)
+            .unwrap()
+            .unwrap();
+        assert_eq!(entry.state, DownloadState::Failed);
+        assert_eq!(entry.error.as_deref(), Some("the network is down"));
     }
 }

@@ -43,7 +43,7 @@ pub use migrations::{MIGRATION_TABLE, MIGRATIONS, Migration, latest_version};
 pub use repo::accounts::AccountRepo;
 pub use repo::assets::{AssetIndex, AssetObject, AssetRepo};
 pub use repo::benchmarks::{BenchmarkRecord, BenchmarkRepo};
-pub use repo::downloads::{DownloadEntry, DownloadRepo, DownloadState};
+pub use repo::downloads::{DownloadEntry, DownloadRepo, DownloadState, DownloadUpdate};
 pub use repo::instances::{Instance, InstanceMod, InstanceRepo};
 pub use repo::jres::{JreEntry, JreRepo, JreStatus};
 pub use repo::libraries::{LibraryEntry, LibraryRepo};

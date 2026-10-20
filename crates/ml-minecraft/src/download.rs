@@ -21,8 +21,10 @@ use std::time::Duration;
 
 use futures::stream::StreamExt;
 use ml_core::{Error, Result};
+use reqwest::StatusCode;
+use reqwest::header::RANGE;
 use sha1::{Digest, Sha1};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// The default number of parallel downloads.
 ///
@@ -420,11 +422,32 @@ async fn download_once(http: &reqwest::Client, task: &DownloadTask) -> Result<Do
     // a corrupt file behind.
     let partial = partial_path(&task.target);
 
-    let response = http
-        .get(&task.url)
-        .send()
-        .await
-        .map_err(|e| Error::network(&task.url, e))?;
+    // What is on the disk is the beginning of the payload, so the download
+    // continues where it stopped instead of starting over.
+    let mut offset = partial_size(&partial);
+
+    let response = loop {
+        let mut request = http.get(&task.url);
+        if offset > 0 {
+            request = request.header(RANGE, format!("bytes={offset}-"));
+        }
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| Error::network(&task.url, e))?;
+
+        // The partial file is longer than the payload: it belongs to
+        // something else. It is thrown away and fetched from the start.
+        // The attempt is not spent — the file is still to be downloaded.
+        if response.status() == StatusCode::RANGE_NOT_SATISFIABLE && offset > 0 {
+            let _ = tokio::fs::remove_file(&partial).await;
+            offset = 0;
+            continue;
+        }
+
+        break response;
+    };
 
     if !response.status().is_success() {
         return Err(Error::HttpStatus {
@@ -433,11 +456,21 @@ async fn download_once(http: &reqwest::Client, task: &DownloadTask) -> Result<Do
         });
     }
 
-    let file = tokio::fs::File::create(&partial)
-        .await
-        .map_err(|e| Error::io(&partial, e))?;
+    // The server continued the file, so what is on the disk is kept and
+    // the payload is written behind it. A server that ignored the range
+    // sends the whole file, and what is on the disk has to go.
+    let (file, mut hasher) = if response.status() == StatusCode::PARTIAL_CONTENT {
+        resume_file(&partial).await?
+    } else {
+        (
+            tokio::fs::File::create(&partial)
+                .await
+                .map_err(|e| Error::io(&partial, e))?,
+            Sha1::new(),
+        )
+    };
+
     let mut file = tokio::io::BufWriter::with_capacity(64 * 1024, file);
-    let mut hasher = Sha1::new();
     let mut bytes = 0u64;
 
     let mut stream = response.bytes_stream();
@@ -476,6 +509,48 @@ async fn download_once(http: &reqwest::Client, task: &DownloadTask) -> Result<Do
         skipped: false,
         attempts: 1,
     })
+}
+
+/// The size of the partial file, or zero when there is none.
+fn partial_size(partial: &Path) -> u64 {
+    std::fs::metadata(partial).map_or(0, |metadata| metadata.len())
+}
+
+/// Open the partial file for a download that continues, and hash what is
+/// already there.
+///
+/// The file is opened for appending, so the payload that arrives now
+/// lands behind the bytes that are already on the disk. The hash is
+/// seeded with those bytes, because the hash of the finished file has to
+/// cover the whole file and not only its tail.
+///
+/// # Errors
+/// Fails if the file cannot be opened or read.
+async fn resume_file(partial: &Path) -> Result<(tokio::fs::File, Sha1)> {
+    let mut file = tokio::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .append(true)
+        .create(true)
+        .open(partial)
+        .await
+        .map_err(|e| Error::io(partial, e))?;
+
+    let mut hasher = Sha1::new();
+    let mut buffer = vec![0u8; 64 * 1024];
+
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .await
+            .map_err(|e| Error::io(partial, e))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+
+    Ok((file, hasher))
 }
 
 /// The path a payload is written to while it is being downloaded.
@@ -564,7 +639,168 @@ pub async fn fetch_all(
 
 #[cfg(test)]
 mod tests {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::{SocketAddr, TcpListener, TcpStream};
+
     use super::*;
+
+    /// A server that answers with a fixed payload.
+    ///
+    /// The server runs in a thread of its own and records the head of
+    /// every request it got, so that a test can see what the engine
+    /// asked for. It knows two ways to answer: honour the `Range` header
+    /// of the request, or ignore it and send the whole payload.
+    struct FakeServer {
+        url: String,
+        address: SocketAddr,
+        requests: Arc<std::sync::Mutex<Vec<String>>>,
+        stop: Arc<std::sync::atomic::AtomicBool>,
+        handle: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl FakeServer {
+        /// Start a server that answers with the payload.
+        ///
+        /// When `honour_range` is false the server ignores the `Range`
+        /// header and always sends the whole payload.
+        fn start(payload: Vec<u8>, honour_range: bool) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+            let seen = Arc::clone(&requests);
+            let flag = Arc::clone(&stop);
+            let handle = std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    if flag.load(std::sync::atomic::Ordering::Relaxed) {
+                        break;
+                    }
+                    let Ok(mut stream) = stream else {
+                        continue;
+                    };
+                    let head = read_head(&stream);
+                    seen.lock().unwrap().push(head.clone());
+                    let answer = answer(&head, &payload, honour_range);
+                    let _ = stream.write_all(&answer);
+                    let _ = stream.flush();
+                }
+            });
+
+            Self {
+                url: format!("http://{address}/payload"),
+                address,
+                requests,
+                stop,
+                handle: Some(handle),
+            }
+        }
+
+        /// The heads of the requests the server got.
+        fn requests(&self) -> Vec<String> {
+            self.requests.lock().unwrap().clone()
+        }
+    }
+
+    impl Drop for FakeServer {
+        fn drop(&mut self) {
+            self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            // Wake the server up, so that it notices the flag.
+            let _ = TcpStream::connect(self.address);
+            if let Some(handle) = self.handle.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    /// Read the head of a request, up to the empty line.
+    fn read_head(stream: &TcpStream) -> String {
+        let Ok(clone) = stream.try_clone() else {
+            return String::new();
+        };
+        let mut reader = BufReader::new(clone);
+        let mut head = String::new();
+
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+            if line == "\r\n" {
+                break;
+            }
+            head.push_str(&line);
+        }
+
+        head
+    }
+
+    /// The value of a header of a request, if it has one.
+    ///
+    /// The name of a header does not care about the case: the engine
+    /// sends `range`, the tests may look for `Range`.
+    fn header(head: &str, name: &str) -> Option<String> {
+        head.lines().find_map(|line| {
+            let (header, value) = line.split_once(':')?;
+            header
+                .trim()
+                .eq_ignore_ascii_case(name)
+                .then(|| value.trim().to_string())
+        })
+    }
+
+    /// The answer of the server to a request.
+    fn answer(head: &str, payload: &[u8], honour_range: bool) -> Vec<u8> {
+        let Some(range) = header(head, "range").filter(|_| honour_range) else {
+            return response("200 OK", payload, "");
+        };
+
+        let start = range
+            .strip_prefix("bytes=")
+            .and_then(|rest| rest.split('-').next())
+            .and_then(|number| number.trim().parse::<usize>().ok())
+            .unwrap_or(0);
+
+        if start >= payload.len() {
+            return response("416 Range Not Satisfiable", &[], "");
+        }
+
+        let tail = &payload[start..];
+        let extra = format!(
+            "Content-Range: bytes {}-{}/{}\r\n",
+            start,
+            payload.len() - 1,
+            payload.len()
+        );
+        response("206 Partial Content", tail, &extra)
+    }
+
+    /// An answer with a body.
+    fn response(status: &str, body: &[u8], extra: &str) -> Vec<u8> {
+        let mut answer = format!(
+            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\n{extra}Connection: close\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        answer.extend_from_slice(body);
+        answer
+    }
+
+    /// A payload of a size that is not a round number.
+    fn sample_payload() -> Vec<u8> {
+        (0..4096u32).map(|index| (index % 251) as u8).collect()
+    }
+
+    /// The task that fetches the payload of the server.
+    fn task(server: &FakeServer, target: &Path, payload: &[u8]) -> DownloadTask {
+        DownloadTask::new(
+            server.url.clone(),
+            target,
+            Some(hex::encode(Sha1::digest(payload))),
+        )
+        .with_size(Some(i64::try_from(payload.len()).unwrap()))
+    }
 
     #[test]
     fn partial_path_appends_the_suffix() {
@@ -685,5 +921,106 @@ mod tests {
         let last = seen.last().unwrap();
         assert!(last.is_finished());
         assert_eq!(last.completed, 1);
+    }
+
+    #[tokio::test]
+    async fn a_download_continues_where_it_stopped() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("payload.bin");
+        let payload = sample_payload();
+
+        // The beginning of the payload is already on the disk.
+        let partial = partial_path(&target);
+        std::fs::write(&partial, &payload[..1000]).unwrap();
+
+        let server = FakeServer::start(payload.clone(), true);
+        let downloader = Downloader::new().unwrap();
+
+        let result = downloader
+            .download_all(vec![task(&server, &target, &payload)])
+            .await
+            .unwrap();
+
+        assert!(result.is_success(), "{:?}", result.failed);
+        assert_eq!(std::fs::read(&target).unwrap(), payload);
+        assert!(
+            !partial.exists(),
+            "the partial file must be moved into place"
+        );
+
+        let requests = server.requests();
+        assert!(
+            requests
+                .iter()
+                .any(|head| header(head, "range").as_deref() == Some("bytes=1000-")),
+            "{requests:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_server_that_ignores_the_range_starts_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("payload.bin");
+        let payload = sample_payload();
+
+        // The beginning of the payload is already on the disk, but the
+        // server does not know how to continue it.
+        let partial = partial_path(&target);
+        std::fs::write(&partial, &payload[..1000]).unwrap();
+
+        let server = FakeServer::start(payload.clone(), false);
+        let downloader = Downloader::new().unwrap();
+
+        let result = downloader
+            .download_all(vec![task(&server, &target, &payload)])
+            .await
+            .unwrap();
+
+        assert!(result.is_success(), "{:?}", result.failed);
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            payload,
+            "the file must hold the payload once, not twice"
+        );
+
+        let requests = server.requests();
+        assert!(
+            requests
+                .iter()
+                .any(|head| header(head, "range").as_deref() == Some("bytes=1000-")),
+            "{requests:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_partial_that_is_too_long_is_thrown_away() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("payload.bin");
+        let payload = sample_payload();
+
+        // The partial file is longer than the payload: it belongs to
+        // something else.
+        let partial = partial_path(&target);
+        std::fs::write(&partial, vec![0u8; payload.len() + 100]).unwrap();
+
+        let server = FakeServer::start(payload.clone(), true);
+        let downloader = Downloader::new().unwrap();
+
+        let result = downloader
+            .download_all(vec![task(&server, &target, &payload)])
+            .await
+            .unwrap();
+
+        assert!(result.is_success(), "{:?}", result.failed);
+        assert_eq!(std::fs::read(&target).unwrap(), payload);
+
+        let requests = server.requests();
+        assert_eq!(requests.len(), 2, "{requests:?}");
+        assert!(
+            header(&requests[0], "range")
+                .is_some_and(|value| value == format!("bytes={}-", payload.len() + 100)),
+            "{requests:?}"
+        );
+        assert!(header(&requests[1], "range").is_none(), "{requests:?}");
     }
 }
