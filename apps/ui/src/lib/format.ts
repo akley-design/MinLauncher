@@ -54,6 +54,23 @@ export function formatValue(value: number, unit: string): string {
 }
 
 /**
+ * The change a comparison brought, in percent.
+ *
+ * A positive number means the game got better, and it is written with
+ * a plus sign: a reader should not have to remember which way the sign
+ * goes. A number that is not there is written as a dash — there was
+ * nothing to compare.
+ */
+export function formatImprovement(percent: number | null): string {
+  if (percent === null || !Number.isFinite(percent)) {
+    return "—";
+  }
+
+  const sign = percent > 0 ? "+" : percent < 0 ? "-" : "";
+  return `${sign}${Math.abs(percent).toFixed(1)} %`;
+}
+
+/**
  * A number of bytes, in the unit a person reads.
  *
  * An installation of a modern version of the game moves a few hundred

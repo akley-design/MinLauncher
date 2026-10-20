@@ -232,6 +232,43 @@ export interface BenchmarkList {
   records: BenchmarkView[];
 }
 
+/**
+ * The verdict on a comparison.
+ *
+ * The names are the ones the Rust side writes: a target that was
+ * reached, a target that was missed, and a comparison that could not
+ * be made at all.
+ */
+export type Verdict = "met" | "missed" | "unknown";
+
+/**
+ * One metric of the game, measured with the mod and without it.
+ *
+ * The run without the mod is the base, and the run with it is what the
+ * mod changed. Both of them are the medians of their own series.
+ */
+export interface InGameComparison {
+  metric: string;
+  unit: string;
+  /** The scenario of the run with the mod, e.g. `in_game/balanced`. */
+  with_mod_scenario: string;
+  /** The median of the run with the mod. */
+  with_mod: number;
+  /** The scenario of the run without the mod, e.g. `in_game/off`. */
+  without_mod_scenario: string;
+  /** The median of the run without the mod. */
+  without_mod: number;
+  /** How much the mod changed the game, in percent. */
+  improvement_percent: number | null;
+  /** The verdict on the target of the metric. */
+  verdict: Verdict | null;
+}
+
+/** The comparisons of the game: the metrics M5 and M6. */
+export interface InGameComparisons {
+  comparisons: InGameComparison[];
+}
+
 /** The state of the running game. */
 export interface RunningGame {
   pid: number | null;

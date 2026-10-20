@@ -14,9 +14,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
-import { latestBenchmarks } from "../ipc/client";
+import { compareInGame, latestBenchmarks } from "../ipc/client";
 import { queryKeys } from "../ipc/queries";
-import { formatValue } from "../lib/format";
+import { formatImprovement, formatValue } from "../lib/format";
 
 /** The screen of the performance. */
 export function PerformanceRoute() {
@@ -25,7 +25,13 @@ export function PerformanceRoute() {
     queryFn: latestBenchmarks,
   });
 
+  const inGame = useQuery({
+    queryKey: queryKeys.inGameComparison(),
+    queryFn: compareInGame,
+  });
+
   const records = useMemo(() => benchmarks.data?.records ?? [], [benchmarks.data]);
+  const comparisons = useMemo(() => inGame.data?.comparisons ?? [], [inGame.data]);
 
   if (benchmarks.isPending) {
     return <LoadingState label="Читаем результаты замеров…" />;
@@ -43,6 +49,44 @@ export function PerformanceRoute() {
           <p className="screen__subtitle">Результаты измерителя, а не оценка на глаз</p>
         </div>
       </div>
+
+      <section className="card">
+        <div className="card__title">Игра с модом и без него</div>
+        {comparisons.length === 0 ? (
+          <p className="field__hint">
+            Сравнение появляется, когда один и тот же билд запущен дважды: один раз с модом
+            оптимизаций, другой — без него. Оба запуска хранятся рядом и не затирают друг друга.
+          </p>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Метрика</th>
+                <th>Без мода</th>
+                <th>С модом</th>
+                <th>Разница</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparisons.map((comparison) => (
+                <tr key={comparison.metric}>
+                  <td>{METRIC_LABELS[comparison.metric] ?? comparison.metric}</td>
+                  <td className="mono">{formatValue(comparison.without_mod, comparison.unit)}</td>
+                  <td className="mono">{formatValue(comparison.with_mod, comparison.unit)}</td>
+                  <td className="mono">
+                    {formatImprovement(comparison.improvement_percent)}
+                    {comparison.verdict === "met" ? (
+                      <span className="badge badge--success">цель достигнута</span>
+                    ) : comparison.verdict === "missed" ? (
+                      <span className="badge badge--warning">цель не достигнута</span>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
 
       {records.length === 0 ? (
         <EmptyState

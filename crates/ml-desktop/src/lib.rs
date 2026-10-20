@@ -125,6 +125,7 @@ pub fn run() {
             commands::updater::install_update,
             commands::benchmarks::latest_benchmarks,
             commands::benchmarks::list_benchmarks,
+            commands::benchmarks::compare_in_game,
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {

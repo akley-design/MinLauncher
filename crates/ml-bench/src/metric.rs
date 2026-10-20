@@ -166,7 +166,11 @@ pub enum Direction {
 }
 
 /// The verdict of a comparison between two measurements.
+///
+/// The names of the variants are the ones the interface shows, so they
+/// are written the way every other name of the interface is written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Verdict {
     /// The target was reached.
     Met,

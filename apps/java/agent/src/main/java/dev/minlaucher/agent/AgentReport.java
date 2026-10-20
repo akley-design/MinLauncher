@@ -81,10 +81,10 @@ final class AgentReport {
      *
      * <p>The names of the fields are the names the Rust side knows:
      * the launcher reads this document and turns it into the
-     * measurements of the metrics M3, M5, M6 and M8.
+     * measurements of the metrics M5 and M6.
      *
      * @param counter the counter of the frames
-     * @param memoryUsed the memory the game uses, in bytes
+     * @param memoryUsed the heap the game uses, in bytes
      * @return the JSON document
      */
     synchronized String toJson(FrameCounter counter, long memoryUsed) {
@@ -121,8 +121,10 @@ final class AgentReport {
                 .append(Report.number(statistics.onePercentLow()))
                 .append(",\n");
 
-        // The memory the game uses, in mebibytes: the metric M8 is
-        // measured in them.
+        // The heap of the virtual machine, in mebibytes. It is not the
+        // memory of the process: the metric M8 is the working set of
+        // the game and is measured from the outside. The heap is a
+        // part of the run, and it goes into the metadata of it.
         out.append("  \"heap_used_mib\": ")
                 .append(Report.number(memoryUsed / (1024.0 * 1024.0)))
                 .append(",\n");

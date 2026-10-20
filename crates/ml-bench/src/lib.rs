@@ -43,7 +43,10 @@ pub mod scenario;
 pub mod stats;
 
 pub use compare::{Comparison, DEFAULT_NOISE_LIMIT, check_absolute, compare, compare_with_limit};
-pub use ingame::{IN_GAME_SCENARIO, InGameMeasurements, measurements_of, store_measurements};
+pub use ingame::{
+    IN_GAME_PREFIX, InGameMeasurements, InGamePair, PRESET_OFF, PRESETS, measurements_of, pair_of,
+    scenario_of, scenario_with_mod, scenario_without_mod, store_measurements,
+};
 pub use metric::{Direction, Metric, Verdict};
 pub use record::{Meta, load, load_meta, store, to_record};
 pub use report::Report;

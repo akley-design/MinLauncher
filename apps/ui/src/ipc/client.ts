@@ -23,6 +23,7 @@ import type {
   DownloadEntry,
   InstallOptions,
   InstallResult,
+  InGameComparisons,
   IpcError,
   InstanceList,
   LaunchOptions,
@@ -246,6 +247,11 @@ export function latestBenchmarks(): Promise<BenchmarkList> {
 /** The stored measurements of a metric and a scenario. */
 export function listBenchmarks(metric: string, scenario: string): Promise<BenchmarkList> {
   return call<BenchmarkList>("list_benchmarks", { metric, scenario });
+}
+
+/** The comparison of the game with the mod and without it. */
+export function compareInGame(): Promise<InGameComparisons> {
+  return call<InGameComparisons>("compare_in_game");
 }
 
 // --- the game --------------------------------------------------------

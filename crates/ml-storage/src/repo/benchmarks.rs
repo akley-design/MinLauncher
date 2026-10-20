@@ -148,6 +148,27 @@ impl BenchmarkRepo {
             .map_err(|e| storage_error("cannot read benchmarks", &e))
     }
 
+    /// The scenarios a metric was measured in.
+    ///
+    /// A metric can be measured in more than one scenario: the game is
+    /// measured with the mod and without it, and the two live side by
+    /// side under different scenarios.
+    pub fn scenarios(&self, metric: &str) -> Result<Vec<String>> {
+        let conn = self.conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT DISTINCT scenario FROM benchmarks
+                 WHERE metric = ?1
+                 ORDER BY scenario ASC",
+            )
+            .map_err(|e| storage_error("cannot prepare statement", &e))?;
+        let rows = stmt
+            .query_map(params![metric], |row| row.get::<_, String>(0))
+            .map_err(|e| storage_error("cannot query benchmarks", &e))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| storage_error("cannot read benchmarks", &e))
+    }
+
     /// The most recent series recorded for a metric and scenario.
     pub fn latest(&self, metric: &str, scenario: &str) -> Result<Option<BenchmarkRecord>> {
         let conn = self.conn()?;
@@ -234,6 +255,24 @@ mod tests {
         let (_db, repo) = repo();
         repo.insert(&record("a")).unwrap();
         assert!(repo.latest("cold_start", "1.20.5").unwrap().is_none());
+    }
+
+    #[test]
+    fn the_scenarios_of_a_metric_are_told_apart() {
+        let (_db, repo) = repo();
+        repo.insert(&record("a")).unwrap();
+
+        let mut other = record("b");
+        other.id = "launcher/cold_start/27.1".into();
+        other.scenario = "27.1".into();
+        repo.insert(&other).unwrap();
+
+        let mut foreign = record("c");
+        foreign.id = "launcher/warm_start/26.3".into();
+        foreign.metric = "warm_start".into();
+        repo.insert(&foreign).unwrap();
+
+        assert_eq!(repo.scenarios("cold_start").unwrap(), vec!["26.3", "27.1"]);
     }
 
     #[test]

@@ -1,0 +1,130 @@
+/**
+ * The screen of the performance.
+ *
+ * The screen shows what was measured, and nothing else. The two things
+ * it has to get right are the table of the stored measurements and the
+ * pair of the game — the run with the mod and the run without it, which
+ * only exists when both of them were measured.
+ */
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { BenchmarkList, InGameComparisons } from "../ipc/types";
+import { PerformanceRoute } from "./performance";
+
+// The backend is replaced by a mock, so that the test does not need a
+// running desktop application.
+const latestBenchmarks = vi.fn<() => Promise<BenchmarkList>>();
+const compareInGame = vi.fn<() => Promise<InGameComparisons>>();
+
+vi.mock("../ipc/client", async () => {
+  const actual = await vi.importActual<typeof import("../ipc/client")>("../ipc/client");
+  return {
+    ...actual,
+    latestBenchmarks: () => latestBenchmarks(),
+    compareInGame: () => compareInGame(),
+  };
+});
+
+/** The screen, with a fresh query cache around it. */
+function renderScreen() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+
+  return render(
+    <QueryClientProvider client={client}>
+      <PerformanceRoute />
+    </QueryClientProvider>,
+  );
+}
+
+describe("the screen of the performance", () => {
+  beforeEach(() => {
+    latestBenchmarks.mockReset();
+    compareInGame.mockReset();
+    latestBenchmarks.mockResolvedValue({ records: [] });
+    compareInGame.mockResolvedValue({ comparisons: [] });
+  });
+
+  it("shows the pair of the game when both of its runs were measured", async () => {
+    compareInGame.mockResolvedValue({
+      comparisons: [
+        {
+          metric: "in_game_fps",
+          unit: "fps",
+          with_mod_scenario: "in_game/balanced",
+          with_mod: 120,
+          without_mod_scenario: "in_game/off",
+          without_mod: 60,
+          improvement_percent: 100,
+          verdict: "met",
+        },
+      ],
+    });
+    renderScreen();
+
+    expect(await screen.findByText("FPS в игре")).toBeInTheDocument();
+    expect(screen.getByText("60.0")).toBeInTheDocument();
+    expect(screen.getByText("120.0")).toBeInTheDocument();
+    expect(screen.getByText("+100.0 %")).toBeInTheDocument();
+    expect(screen.getByText("цель достигнута")).toBeInTheDocument();
+  });
+
+  it("shows nothing about the pair when only one of the runs was made", async () => {
+    // A run with the mod alone has no base to be compared against, so
+    // there is no pair to show.
+    compareInGame.mockResolvedValue({ comparisons: [] });
+    renderScreen();
+
+    expect(
+      await screen.findByText(/Сравнение появляется, когда один и тот же билд запущен дважды/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("+100.0 %")).not.toBeInTheDocument();
+  });
+
+  it("shows the stored measurements of every scenario", async () => {
+    latestBenchmarks.mockResolvedValue({
+      records: [
+        {
+          suite: "game",
+          metric: "in_game_fps",
+          scenario: "in_game/off",
+          samples: 1,
+          p50: 60,
+          p95: 60,
+          p99: 60,
+          mean: 60,
+          stddev: 0,
+          unit: "fps",
+          created_at: "2026-10-20T10:00:00Z",
+        },
+        {
+          suite: "game",
+          metric: "in_game_fps",
+          scenario: "in_game/balanced",
+          samples: 1,
+          p50: 120,
+          p95: 120,
+          p99: 120,
+          mean: 120,
+          stddev: 0,
+          unit: "fps",
+          created_at: "2026-10-20T10:00:00Z",
+        },
+      ],
+    });
+    renderScreen();
+
+    expect(await screen.findByText("in_game/off")).toBeInTheDocument();
+    expect(screen.getByText("in_game/balanced")).toBeInTheDocument();
+  });
+
+  it("says that there are no measurements yet", async () => {
+    renderScreen();
+
+    expect(await screen.findByText("Замеров пока нет")).toBeInTheDocument();
+  });
+});

@@ -106,6 +106,11 @@ pub async fn launch_game(
     // it, and the game is a little slower but works.
     prepare_loader(&state, &mut request, &meta.id).await;
 
+    // The scenario of the run is known now: the preset of the mod that
+    // was in the game. The runs with the mod and without it are stored
+    // apart, because they are compared against each other.
+    let scenario = scenario_of_run(&state, !request.mod_jars.is_empty());
+
     // --- the command ------------------------------------------------
     let platform = state.platform();
     let features = features_for(&request);
@@ -155,6 +160,7 @@ pub async fn launch_game(
         process,
         game: game.clone(),
         report_path: request.agent_report.clone(),
+        scenario,
         run_flag,
     }));
 
@@ -214,6 +220,8 @@ struct Watch {
     game: RunningGame,
     /// Where the agent writes its report.
     report_path: Option<PathBuf>,
+    /// The scenario the measurements of the run are stored under.
+    scenario: String,
     /// The flag that says the player stopped the game.
     run_flag: Arc<AtomicBool>,
 }
@@ -230,6 +238,7 @@ async fn watch_game(watch: Watch) {
         process,
         game,
         report_path,
+        scenario,
         run_flag,
     } = watch;
 
@@ -275,9 +284,9 @@ async fn watch_game(watch: Watch) {
 
     // The agent writes its report when the game ends, and it is read
     // now that the game is gone. What it says becomes the measurements
-    // of the metrics M5, M6 and M8.
+    // of the metrics M5 and M6.
     if let Some(path) = report_path {
-        store_agent_report(&state, &path);
+        store_agent_report(&state, &path, &scenario);
     }
 
     let stopped = run_flag.load(Ordering::Relaxed);
@@ -311,7 +320,7 @@ fn restart_policy(state: &SharedState) -> ml_launch::RestartPolicy {
 /// A report that is missing, or that holds nothing usable, is not an
 /// error: the game may have been started without the agent, and a game
 /// that was not measured is not a broken game.
-fn store_agent_report(state: &SharedState, path: &std::path::Path) {
+fn store_agent_report(state: &SharedState, path: &std::path::Path, scenario: &str) {
     let Some(report) = ml_launch::read_report(path) else {
         tracing::info!("the agent wrote no report at {}", path.display());
         return;
@@ -330,8 +339,28 @@ fn store_agent_report(state: &SharedState, path: &std::path::Path) {
     meta.set("frames", report.frames.to_string());
     meta.set("agent", "minlaucher-agent");
 
-    let stored = ml_bench::store_measurements(state.storage(), &measurements, &meta);
-    tracing::info!("the agent report was stored as {stored} measurements");
+    let stored = ml_bench::store_measurements(state.storage(), &measurements, &mut meta, scenario);
+    tracing::info!("the agent report was stored as {stored} measurements under {scenario}");
+}
+
+/// The scenario of a run: the preset of the mod that was in the game.
+///
+/// The preset is `off` when the mod of the launcher was not in the
+/// game: either the player switched it off, or the loader was not
+/// there, or its jar could not be put in place. The scenario has to
+/// say what really happened — a run without the mod that calls itself a
+/// run with it would poison the comparison.
+fn scenario_of_run(state: &SharedState, mod_is_in_the_game: bool) -> String {
+    if !mod_is_in_the_game {
+        return ml_bench::scenario_without_mod();
+    }
+
+    let preset = match state.storage().load_settings() {
+        Ok(config) => config.mods.preset,
+        Err(_) => ml_bench::PRESET_OFF.to_string(),
+    };
+
+    ml_bench::scenario_of(&preset)
 }
 
 /// What the launcher tells the frontend while the game runs.
@@ -909,5 +938,26 @@ mod tests {
 
         request.session.resolution_height = Some(1080);
         assert!(features_for(&request).is_enabled("has_custom_resolution"));
+    }
+
+    #[test]
+    fn the_scenario_of_a_run_says_what_was_in_the_game() {
+        // The whole point of the scenario: a run without the mod and a
+        // run with it are two different measurements, and they have to
+        // stand side by side instead of overwriting each other.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
+        let platform = Platform::new(OsName::Windows, OsArch::X86_64);
+        let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
+
+        // Without the mod in the game.
+        assert_eq!(scenario_of_run(&state, false), "in_game/off");
+
+        // With the mod, under the preset of the settings.
+        let mut config = state.storage().load_settings().unwrap();
+        config.mods.preset = "fast".into();
+        state.storage().save_settings(&config).unwrap();
+
+        assert_eq!(scenario_of_run(&state, true), "in_game/fast");
     }
 }

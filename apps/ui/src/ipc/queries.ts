@@ -21,6 +21,7 @@ export const queryKeys = {
   downloads: () => ["downloads"] as const,
   benchmarks: () => ["benchmarks"] as const,
   benchmarkSeries: (metric: string, scenario: string) => ["benchmarks", metric, scenario] as const,
+  inGameComparison: () => ["benchmarks", "in-game"] as const,
 } as const;
 
 /** The shape of the cached data, used by the invalidation helpers. */
