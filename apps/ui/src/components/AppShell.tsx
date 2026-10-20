@@ -12,6 +12,7 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 
+import iconUrl from "../assets/icon.png";
 import { watchGame } from "../stores/game";
 import { useGameStore } from "../stores/game";
 import { useInstallStore } from "../stores/install";
@@ -110,7 +111,7 @@ export function AppShell() {
     <div className="shell">
       <aside className="shell__sidebar">
         <div className="shell__brand">
-          <span className="shell__logo">ML</span>
+          <img className="shell__logo" src={iconUrl} alt="MinLauncher" />
           <span className="shell__name">MinLauncher</span>
         </div>
 

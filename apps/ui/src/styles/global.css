@@ -130,16 +130,11 @@ button {
 }
 
 .shell__logo {
-  display: grid;
-  place-items: center;
   width: 30px;
   height: 30px;
   border-radius: var(--radius);
-  background: var(--accent);
-  color: var(--accent-text);
-  font-size: var(--text-sm);
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  object-fit: cover;
+  flex: none;
 }
 
 .shell__name {

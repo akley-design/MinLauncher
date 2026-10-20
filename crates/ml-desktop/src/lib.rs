@@ -192,9 +192,16 @@ fn build_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
 
     let menu = Menu::with_items(app, &[&show, &launch, &separator, &quit])?;
 
-    TrayIconBuilder::with_id(TRAY_ID)
+    let builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
-        .tooltip("MinLauncher")
+        .tooltip("MinLauncher");
+    // The tray reuses the icon of the window (the neon cube from
+    // `bundle.icon`), so no old glyph can survive here either.
+    let builder = match app.default_window_icon() {
+        Some(icon) => builder.icon(icon.clone()),
+        None => builder,
+    };
+    builder
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => {
