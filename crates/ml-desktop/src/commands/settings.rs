@@ -19,6 +19,11 @@ pub struct SettingsView {
     /// The directories the launcher uses, so that the frontend can show
     /// them and let the player open them.
     pub directories: Directories,
+    /// Whether this system can start the launcher with itself.
+    ///
+    /// The interface hides the toggle of the autostart when the answer
+    /// is no: a toggle that does nothing is worse than no toggle.
+    pub autostart_supported: bool,
 }
 
 /// The directories the launcher uses.
@@ -55,18 +60,42 @@ pub fn read_settings(state: State<'_, SharedState>) -> IpcResult<SettingsView> {
             cache: paths.cache_dir.to_string_lossy().into_owned(),
             database: paths.database_path.to_string_lossy().into_owned(),
         },
+        autostart_supported: ml_core::autostart::is_supported(),
     })
 }
 
 /// Write the settings.
 ///
 /// # Errors
-/// Fails when the settings file cannot be written.
+/// Fails when the settings file cannot be written, or when the machine
+/// cannot be told to start the launcher with it.
 #[tauri::command]
 pub fn write_settings(
     config: LauncherConfig,
     state: State<'_, SharedState>,
 ) -> IpcResult<SettingsView> {
+    // The autostart is not a setting of the file alone: it is a setting
+    // of the machine. The old value is read before anything changes,
+    // so that the registry is touched only when the setting really
+    // changed.
+    let was_enabled = state
+        .storage()
+        .load_settings()
+        .is_ok_and(|previous| previous.autostart);
+
+    // The machine is told first: if it cannot be told, nothing changes
+    // at all, and the setting does not end up lying about itself.
+    apply_when_changed(was_enabled, config.autostart, |enabled| {
+        ml_core::autostart::set_enabled(enabled)
+    })
+    .map_err(|error| {
+        IpcError::with_detail(
+            ErrorCode::Storage,
+            "cannot change the autostart",
+            error.to_string(),
+        )
+    })?;
+
     state.storage().save_settings(&config).map_err(|error| {
         IpcError::with_detail(
             ErrorCode::Storage,
@@ -76,6 +105,37 @@ pub fn write_settings(
     })?;
 
     read_settings(state)
+}
+
+/// Apply the autostart when the setting really changed.
+///
+/// The registry is touched only when the value changed: the player
+/// presses «Сохранить» after every change of the settings, and the
+/// record in the registry does not have to be rewritten every time.
+///
+/// # Errors
+/// Fails when the machine cannot be told about the autostart.
+fn apply_when_changed(
+    was_enabled: bool,
+    is_enabled: bool,
+    apply: impl FnOnce(bool) -> ml_core::Result<()>,
+) -> ml_core::Result<()> {
+    if was_enabled != is_enabled {
+        apply(is_enabled)?;
+    }
+    Ok(())
+}
+
+/// Bring the autostart of the machine in line with the settings.
+///
+/// The settings file is the truth: the record in the registry is
+/// written from it every time the launcher starts, so a record that
+/// was removed by hand comes back.
+///
+/// # Errors
+/// Fails when the registry cannot be written.
+pub fn apply_autostart(config: &LauncherConfig) -> ml_core::Result<()> {
+    ml_core::autostart::set_enabled(config.autostart)
 }
 
 /// The directories the launcher uses.
@@ -120,6 +180,48 @@ mod tests {
         let read = storage.load_settings().unwrap();
         assert_eq!(read.language, "en-US");
         assert_eq!(read.downloads.max_concurrent, 4);
+    }
+
+    #[test]
+    fn the_machine_is_told_only_when_the_setting_changed() {
+        let mut told = Vec::new();
+
+        // Nothing changed: the registry is not touched at all.
+        apply_when_changed(false, false, |enabled| {
+            told.push(enabled);
+            Ok(())
+        })
+        .unwrap();
+        assert!(told.is_empty(), "the registry was touched for nothing");
+
+        // The setting changed: the machine is told.
+        apply_when_changed(false, true, |enabled| {
+            told.push(enabled);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(told, vec![true]);
+
+        // And the other way around: the autostart is switched off.
+        apply_when_changed(true, false, |enabled| {
+            told.push(enabled);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(told, vec![true, false]);
+    }
+
+    #[test]
+    fn a_failure_of_the_machine_is_reported() {
+        let error = apply_when_changed(false, true, |_| {
+            Err(ml_core::Error::Storage("the registry is locked".into()))
+        })
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("the registry is locked"),
+            "{error}"
+        );
     }
 
     #[test]

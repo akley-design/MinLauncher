@@ -81,7 +81,17 @@ pub fn run() {
             })?;
 
             let shared: SharedState = Arc::new(state);
-            handle.manage(shared);
+
+            // The autostart of the machine is brought in line with the
+            // settings every time the launcher starts: a record that
+            // was removed by hand comes back.
+            if let Ok(config) = shared.storage().load_settings()
+                && let Err(error) = commands::settings::apply_autostart(&config)
+            {
+                tracing::warn!("cannot change the autostart: {error}");
+            }
+
+            handle.manage(Arc::clone(&shared));
 
             build_tray(handle)?;
 

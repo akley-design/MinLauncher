@@ -153,6 +153,8 @@ export interface Directories {
 export interface SettingsView {
   config: LauncherConfig;
   directories: Directories;
+  /** Whether this system can start the launcher with itself. */
+  autostart_supported: boolean;
 }
 
 /** The state of one entry of the download queue. */

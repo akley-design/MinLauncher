@@ -66,6 +66,7 @@ export function SettingsRoute() {
         key={JSON.stringify(settings.data.config)}
         config={settings.data.config}
         directories={settings.data.directories}
+        autostartSupported={settings.data.autostart_supported}
         busy={save.isPending}
         onSave={(config) => save.mutate(config)}
       />
@@ -78,6 +79,8 @@ interface SettingsFormProps {
   config: LauncherConfig;
   /** The directories the launcher uses. */
   directories: Directories;
+  /** Whether this system can start the launcher with itself. */
+  autostartSupported: boolean;
   /** Whether a save is under way. */
   busy: boolean;
   /** The player asked to save the copy. */
@@ -85,7 +88,13 @@ interface SettingsFormProps {
 }
 
 /** The editable copy of the settings. */
-function SettingsForm({ config, directories, busy, onSave }: SettingsFormProps) {
+function SettingsForm({
+  config,
+  directories,
+  autostartSupported,
+  busy,
+  onSave,
+}: SettingsFormProps) {
   const [draft, setDraft] = useState<LauncherConfig>(config);
 
   const patch = (change: Partial<LauncherConfig>) => {
@@ -112,17 +121,19 @@ function SettingsForm({ config, directories, busy, onSave }: SettingsFormProps) 
             </span>
           </label>
 
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={draft.autostart}
-              onChange={(event) => patch({ autostart: event.target.checked })}
-            />
-            <span>
-              <span className="toggle__title">Запускать вместе с системой</span>
-              <span className="toggle__hint">Лаунчер открывается при входе в Windows</span>
-            </span>
-          </label>
+          {autostartSupported ? (
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={draft.autostart}
+                onChange={(event) => patch({ autostart: event.target.checked })}
+              />
+              <span>
+                <span className="toggle__title">Запускать вместе с системой</span>
+                <span className="toggle__hint">Лаунчер открывается при входе в Windows</span>
+              </span>
+            </label>
+          ) : null}
 
           <label className="toggle">
             <input

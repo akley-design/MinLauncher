@@ -12,6 +12,7 @@
 #![warn(missing_docs)]
 
 pub mod account;
+pub mod autostart;
 pub mod config;
 pub mod error;
 pub mod paths;

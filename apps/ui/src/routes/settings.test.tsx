@@ -33,7 +33,10 @@ vi.mock("../ipc/client", async () => {
 });
 
 /** The settings the backend sends. */
-function settings(overrides: Partial<LauncherConfig> = {}): SettingsView {
+function settings(
+  overrides: Partial<LauncherConfig> = {},
+  autostartSupported = true,
+): SettingsView {
   const config: LauncherConfig = {
     schema_version: 1,
     language: "ru-RU",
@@ -79,6 +82,7 @@ function settings(overrides: Partial<LauncherConfig> = {}): SettingsView {
       cache: "C:/Users/player/AppData/Local/MinLauncher/cache",
       database: "C:/Users/player/AppData/Roaming/MinLauncher/minlaucher.db",
     },
+    autostart_supported: autostartSupported,
   };
 }
 
@@ -173,6 +177,27 @@ describe("the screen of the settings", () => {
 
     await waitFor(() => expect(writeSettings).toHaveBeenCalledTimes(1));
     expect(writeSettings.mock.calls[0]?.[0]?.restart.enabled).toBe(false);
+  });
+
+  it("hides the autostart where the system cannot do it", async () => {
+    // A toggle that does nothing is worse than no toggle at all.
+    readSettings.mockResolvedValue(settings({}, false));
+    renderScreen();
+
+    await screen.findByLabelText("Максимальная куча");
+    expect(
+      screen.queryByRole("checkbox", { name: /Запускать вместе с системой/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the autostart where the system can do it", async () => {
+    readSettings.mockResolvedValue(settings());
+    renderScreen();
+
+    await screen.findByLabelText("Максимальная куча");
+    expect(
+      screen.getByRole("checkbox", { name: /Запускать вместе с системой/ }),
+    ).toBeInTheDocument();
   });
 
   it("turns the extra arguments into a list of lines", async () => {
