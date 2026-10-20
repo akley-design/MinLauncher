@@ -490,13 +490,14 @@ fn store_install_measurement(state: &SharedState, result: &InstallResult) {
         tracing::warn!("the length of the installation was not written: {error}");
     }
 
-    match stored {
-        Some(_) => tracing::info!(
+    if stored.is_some() {
+        tracing::info!(
             "the installation of {} took {} ms and was measured",
             result.version_id,
             result.elapsed_ms
-        ),
-        None => tracing::warn!("the length of the installation could not be stored"),
+        );
+    } else {
+        tracing::warn!("the length of the installation could not be stored");
     }
 }
 

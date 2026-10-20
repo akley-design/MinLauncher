@@ -1,11 +1,14 @@
 # The continuous integration of MinLauncher.
 #
-# Three parts are checked, and each of them fails the build on its own:
+# Four parts are checked, and each of them fails the build on its own:
 #
 # * the Rust core — the launcher itself;
 # * the interface — TypeScript, React and the tests of the interface;
 # * the Java part — the agent and the mod, the two pieces that make the
-#   game itself faster.
+#   game itself faster;
+# * the benchmarks — the CPU path of a launch, against the base of the
+#   branch, so that a slowdown breaks the build instead of reaching the
+#   player.
 #
 # The whole run must stay green, but a failure of one part does not
 # hide the failure of another: they are separate jobs, and the report
@@ -71,6 +74,63 @@ jobs:
 
       - name: Test
         run: cargo test --workspace --all-targets
+
+  benchmarks:
+    name: The benchmarks (no regressions)
+    # The numbers of a benchmark are comparable within one machine only,
+    # so the base of the branch is measured on the same runner as the
+    # head, right before it. A committed baseline would be the numbers
+    # of somebody else's processor, and comparing them would say
+    # nothing about the change.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      # The commit the head is compared with: the base of a pull request
+      # and the commit before the push.
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The base of the branch has to be there to be measured.
+          fetch-depth: 0
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Put the GNU compiler on the path
+        run: echo "C:\msys64\mingw64\bin" >> "$GITHUB_PATH"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Measure the base of the branch
+        # The first push of a branch has nothing before it, and then
+        # there is nothing to compare the head with.
+        if: env.BASE_SHA != '' && !startsWith(env.BASE_SHA, '0000000')
+        run: |
+          git worktree add ../base "$BASE_SHA"
+          cd ../base
+          # The build directory is shared with the head, so that the
+          # libraries of the build are compiled once and not twice.
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" cargo bench -p ml-bench
+          cd "$GITHUB_WORKSPACE"
+          cargo run --profile bench -p ml-bench --bin bench -- \
+            --criterion target/criterion \
+            --save base-baseline.json
+
+      - name: Measure the head
+        run: cargo bench -p ml-bench
+
+      - name: Compare with the base
+        run: |
+          cargo run --profile bench -p ml-bench --bin bench -- \
+            --criterion target/criterion \
+            --baseline base-baseline.json \
+            --summary "$GITHUB_STEP_SUMMARY"
 
   interface:
     name: The interface (TypeScript)

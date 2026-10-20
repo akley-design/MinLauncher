@@ -17,7 +17,9 @@
 //! * [`ingame`] turns the report of the profiling agent into the
 //!   measurements of the metrics that are about the game itself;
 //! * [`samples`] reads and writes the file of measurements that both
-//!   sides of a comparison share.
+//!   sides of a comparison share;
+//! * [`criterion`] reads the numbers of a benchmark run and compares
+//!   them with the baseline of the same machine.
 //!
 //! # Example
 //!
@@ -37,6 +39,7 @@
 #![warn(missing_docs)]
 
 pub mod compare;
+pub mod criterion;
 pub mod ingame;
 pub mod metric;
 pub mod record;
@@ -49,6 +52,7 @@ pub use compare::{
     Comparison, DEFAULT_NOISE_LIMIT, check_absolute, compare, compare_with_limit, not_measured,
     uncompared,
 };
+pub use criterion::{Baseline, Change, Estimate, compare as compare_benchmarks};
 pub use ingame::{
     IN_GAME_PREFIX, InGameMeasurements, InGamePair, PRESET_OFF, PRESETS, measurements_of, pair_of,
     scenario_of, scenario_with_mod, scenario_without_mod, store_measurements,

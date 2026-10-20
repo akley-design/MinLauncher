@@ -137,8 +137,8 @@ impl fmt::Display for Report {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{:<4} {:<22} {:>16} {:>16} {:>9}  {:<12}  {}",
-            "ID", "metric", "ours", "reference", "ratio", "target", "verdict"
+            "{:<4} {:<22} {:>16} {:>16} {:>9}  {:<12}  verdict",
+            "ID", "metric", "ours", "reference", "ratio", "target"
         )?;
 
         for comparison in &self.comparisons {

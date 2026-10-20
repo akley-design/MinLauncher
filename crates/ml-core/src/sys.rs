@@ -19,6 +19,9 @@ use crate::rules::OsName;
 /// The cached operating system version.
 static OS_VERSION: OnceLock<Option<&'static str>> = OnceLock::new();
 
+/// The cached name of the processor.
+static CPU_NAME: OnceLock<Option<&'static str>> = OnceLock::new();
+
 /// The operating system version of the host, e.g. `10.0.22621`.
 ///
 /// The string is `major.minor.build` on Windows, which is the shape
@@ -93,6 +96,56 @@ pub fn cpu_count() -> usize {
     std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
 }
 
+/// The name of the processor of the host, e.g. `AMD Ryzen 7 5800X`.
+///
+/// The numbers of a measurement mean nothing without the machine they
+/// were taken on, so a record carries the name of the processor with it.
+/// On Windows the name is in the registry; on the other systems there is
+/// no such name to read and the answer is `None`.
+#[must_use]
+pub fn cpu_name() -> Option<&'static str> {
+    *CPU_NAME.get_or_init(detect_cpu_name)
+}
+
+/// The name of the processor, detected once.
+fn detect_cpu_name() -> Option<&'static str> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_cpu_name()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
+/// Read the name of the processor from the registry.
+///
+/// The name is under the description of the system, and the key is
+/// readable without administrative rights.
+#[cfg(target_os = "windows")]
+fn windows_cpu_name() -> Option<&'static str> {
+    use winreg::RegKey;
+    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
+
+    let key = RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0", KEY_READ)
+        .ok()?;
+
+    let name: String = key.get_value("ProcessorNameString").ok()?;
+    let name = name.trim();
+
+    if name.is_empty() {
+        return None;
+    }
+
+    // The string has to outlive this function, and the answer is asked
+    // for once per process, so leaking it here is the cheapest correct
+    // option.
+    Some(Box::leak(name.to_string().into_boxed_str()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,5 +172,12 @@ mod tests {
                 .iter()
                 .all(|segment| segment.parse::<u64>().is_ok())
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn the_processor_has_a_name() {
+        let name = cpu_name().expect("windows reports a processor");
+        assert_ne!(name, "");
     }
 }

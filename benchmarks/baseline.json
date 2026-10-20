@@ -1,0 +1,45 @@
+{
+  "meta": {
+    "launcher": "MinLauncher 0.1.0",
+    "os": "windows",
+    "cpu": "AMD Ryzen 5 PRO 4650G with Radeon Graphics",
+    "recorded_at": "2026-10-20T17:49:25.839762100+00:00"
+  },
+  "scenarios": {
+    "build_classpath": {
+      "point_estimate": 92279.79166666669,
+      "confidence_interval": {
+        "lower_bound": 91192.45901639343,
+        "upper_bound": 93688.75
+      }
+    },
+    "build_command": {
+      "point_estimate": 112286.38888888888,
+      "confidence_interval": {
+        "lower_bound": 111722.695035461,
+        "upper_bound": 114291.15646258504
+      }
+    },
+    "parse_version_json": {
+      "point_estimate": 157569.73214285716,
+      "confidence_interval": {
+        "lower_bound": 156880.15873015873,
+        "upper_bound": 159880.0
+      }
+    },
+    "resolve_arguments": {
+      "point_estimate": 4486.041188994432,
+      "confidence_interval": {
+        "lower_bound": 4476.988687363229,
+        "upper_bound": 4501.70542635659
+      }
+    },
+    "resolve_libraries": {
+      "point_estimate": 50105.19230769231,
+      "confidence_interval": {
+        "lower_bound": 49927.625,
+        "upper_bound": 50399.149305555555
+      }
+    }
+  }
+}

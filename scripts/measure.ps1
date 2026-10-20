@@ -591,14 +591,20 @@ Write-Host "  the file of the measurements is $Out"
 [ClickWatch]::Install()
 try {
     # --- the cold phase ------------------------------------------------
+    #
+    # The started instance is called `$instance` and not `$launcher`,
+    # because the name of the parameter is `$Launcher` and the names of
+    # the variables of PowerShell do not differ in their case. A
+    # `[string]` parameter turns anything assigned to it into a string,
+    # and a string has neither a window nor a time of start.
     for ($run = 1; $run -le $ColdRuns; $run++) {
         Write-Host "cold run $run of $ColdRuns"
         Clear-LauncherCache
 
-        $launcher = Start-Launcher -Path $Launcher -TimeoutSeconds $TimeoutSeconds
-        Add-Sample -Samples $samples -Metric "launcher_cold_start" -Value $launcher.Milliseconds
-        Write-Host ("  the launcher was ready in {0:N1} ms" -f $launcher.Milliseconds)
-        Stop-ProcessQuietly -Process $launcher.Process
+        $instance = Start-Launcher -Path $Launcher -TimeoutSeconds $TimeoutSeconds
+        Add-Sample -Samples $samples -Metric "launcher_cold_start" -Value $instance.Milliseconds
+        Write-Host ("  the launcher was ready in {0:N1} ms" -f $instance.Milliseconds)
+        Stop-ProcessQuietly -Process $instance.Process
     }
 
     # --- the warm-up ---------------------------------------------------
@@ -616,12 +622,12 @@ try {
 
         $known = @(Get-JavaProcesses | ForEach-Object { $_.Id })
 
-        $launcher = Start-Launcher -Path $Launcher -TimeoutSeconds $TimeoutSeconds
-        Add-Sample -Samples $samples -Metric "launcher_warm_start" -Value $launcher.Milliseconds
-        Write-Host ("  the launcher was ready in {0:N1} ms" -f $launcher.Milliseconds)
+        $instance = Start-Launcher -Path $Launcher -TimeoutSeconds $TimeoutSeconds
+        Add-Sample -Samples $samples -Metric "launcher_warm_start" -Value $instance.Milliseconds
+        Write-Host ("  the launcher was ready in {0:N1} ms" -f $instance.Milliseconds)
 
-        $launcher.Process.Refresh()
-        Add-Sample -Samples $samples -Metric "launcher_rss" -Value ($launcher.Process.WorkingSet64 / 1MB)
+        $instance.Process.Refresh()
+        Add-Sample -Samples $samples -Metric "launcher_rss" -Value ($instance.Process.WorkingSet64 / 1MB)
 
         if (-not $NoGame) {
             Write-Host "  click Play in the launcher to start the game"
@@ -629,7 +635,7 @@ try {
 
             if ($null -eq $game) {
                 Write-Warning "  no game appeared within $TimeoutSeconds seconds; the run is not measured"
-                Stop-ProcessQuietly -Process $launcher.Process
+                Stop-ProcessQuietly -Process $instance.Process
                 continue
             }
 
@@ -637,10 +643,10 @@ try {
             # appeared. A click that is older than the start of the
             # launcher belongs to another run and is not taken.
             $click = [ClickWatch]::LastClickMs
-            if ($click -le $launcher.StartedAt) {
+            if ($click -le $instance.StartedAt) {
                 Write-Warning "  no click was seen; the run is not measured"
                 Stop-ProcessQuietly -Process $game
-                Stop-ProcessQuietly -Process $launcher.Process
+                Stop-ProcessQuietly -Process $instance.Process
                 continue
             }
 
@@ -665,7 +671,7 @@ try {
             Start-Sleep -Seconds 10
         }
 
-        Stop-ProcessQuietly -Process $launcher.Process
+        Stop-ProcessQuietly -Process $instance.Process
     }
 } finally {
     [ClickWatch]::Remove()

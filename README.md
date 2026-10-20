@@ -82,6 +82,25 @@ of an installation and the behaviour of the game — so the launcher measures
 those itself and writes them into its own directory, in the same format.
 The measurer picks them up from there.
 
+## The gate of the build
+
+The eight metrics need a player, a game and a mouse, so they are not part
+of the build. The **CPU path** of a launch is: the benchmarks of `ml-bench`
+measure the parsing of a version document, the resolution of its libraries
+and the building of the command of the game — the work the launcher does
+while the player waits.
+
+```bash
+cargo bench -p ml-bench
+```
+
+The CI measures the base of the branch on the same runner as the head and
+compares the two: a scenario is a regression when its median got more than
+10 % slower and the noise of the machine cannot explain it. The numbers go
+into the report of the run, and the job fails on a regression. The game
+metrics (M5, M6) are not among them — they need a graphics card and a live
+game — and the report says so instead of hiding it.
+
 ## The Fabric loader, and why it is in the way
 
 To change the game, the launcher puts the Fabric loader in front of it. The
@@ -199,11 +218,11 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 453 |
+| Rust | 477 |
 | Java agent | 23 |
 | Java mod | 18 |
 | Interface | 68 |
-| **Total** | **562** |
+| **Total** | **586** |
 
 Plus the end-to-end tests against the real game and the real servers of
 Mojang, which are switched on by hand.

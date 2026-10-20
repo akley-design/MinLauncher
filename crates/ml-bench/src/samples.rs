@@ -215,14 +215,13 @@ pub fn scenario_file(paths: &AppPaths, scenario: &str) -> PathBuf {
 /// returned for it.
 #[must_use]
 pub fn of_scenario(paths: &AppPaths, scenario: &str) -> SampleFile {
-    match SampleFile::read(&scenario_file(paths, scenario)) {
-        Ok(file) => file,
-        Err(_) => {
-            let mut file = SampleFile::new();
-            file.scenario = Some(scenario.to_string());
-            file
-        }
+    if let Ok(file) = SampleFile::read(&scenario_file(paths, scenario)) {
+        return file;
     }
+
+    let mut file = SampleFile::new();
+    file.scenario = Some(scenario.to_string());
+    file
 }
 
 /// Add a sample to the measurements of a scenario and write them.

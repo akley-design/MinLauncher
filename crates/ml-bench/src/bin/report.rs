@@ -126,14 +126,14 @@ fn to_json(report: &Report, scenario: &str, ours: &str, theirs: &str) -> Value {
             let reference = if comparison.theirs.samples == 0 {
                 Value::Null
             } else {
-                serde_json::to_value(&comparison.theirs).unwrap_or(Value::Null)
+                serde_json::to_value(comparison.theirs).unwrap_or(Value::Null)
             };
 
             json!({
                 "id": comparison.metric.code(),
                 "metric": comparison.metric.as_str(),
                 "unit": comparison.metric.unit(),
-                "ours": serde_json::to_value(&comparison.ours).unwrap_or(Value::Null),
+                "ours": serde_json::to_value(comparison.ours).unwrap_or(Value::Null),
                 "reference": reference,
                 "ratio_percent": comparison.ratio_percent,
                 "verdict": comparison.verdict,
