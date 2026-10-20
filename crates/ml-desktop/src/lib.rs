@@ -121,6 +121,8 @@ pub fn run() {
             commands::settings::read_settings,
             commands::settings::write_settings,
             commands::settings::read_directories,
+            commands::updater::check_for_update,
+            commands::updater::install_update,
             commands::benchmarks::latest_benchmarks,
             commands::benchmarks::list_benchmarks,
         ])

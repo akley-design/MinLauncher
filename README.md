@@ -164,11 +164,11 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 410 |
+| Rust | 416 |
 | Java agent | 23 |
 | Java mod | 18 |
-| Interface | 60 |
-| **Total** | **511** |
+| Interface | 64 |
+| **Total** | **521** |
 
 Plus the end-to-end tests against the real game and the real servers of
 Mojang, which are switched on by hand.

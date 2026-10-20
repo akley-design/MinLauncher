@@ -157,6 +157,30 @@ export interface SettingsView {
   autostart_supported: boolean;
 }
 
+/**
+ * What the launcher knows about an update of itself.
+ *
+ * The three states of the updater are told apart by the two flags: there
+ * is no server to ask at all, the launcher is the newest one, or a newer
+ * version is waiting. The manifest of the release travels back to the
+ * backend when the update is installed, so that the version that is put
+ * in place is the one that was shown.
+ */
+export interface UpdateView {
+  /** Whether there is a server to ask at all. */
+  configured: boolean;
+  /** Whether a newer version is waiting. */
+  available: boolean;
+  /** The version that is installed. */
+  current_version: string;
+  /** The version that is offered, when there is one. */
+  version: string | null;
+  /** What the author wrote about the release. */
+  notes: string | null;
+  /** The manifest of the release. */
+  raw_json: unknown | null;
+}
+
 /** The state of one entry of the download queue. */
 export type DownloadState = "queued" | "downloading" | "completed" | "failed";
 

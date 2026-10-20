@@ -13,6 +13,7 @@ import { useState } from "react";
 import { Button } from "../components/Button";
 import { JavaRuntimes } from "../components/JavaRuntimes";
 import { ErrorState, LoadingState } from "../components/States";
+import { Updates } from "../components/Updates";
 import { readSettings, toCommandError, writeSettings } from "../ipc/client";
 import { queryKeys } from "../ipc/queries";
 import type { Directories, LauncherConfig } from "../ipc/types";
@@ -416,6 +417,8 @@ function SettingsForm({
       </section>
 
       <JavaRuntimes />
+
+      <Updates />
 
       <section className="card">
         <div className="card__title">Папки</div>

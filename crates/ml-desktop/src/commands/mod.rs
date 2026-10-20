@@ -15,6 +15,7 @@
 //! | [`agent`] | Finding the profiling agent that measures the game |
 //! | [`fabric`] | Putting the Fabric loader in front of the game |
 //! | [`settings`] | The settings of the launcher |
+//! | [`updater`] | The updates of the launcher itself |
 //! | [`benchmarks`] | The results of the measurements |
 //!
 //! The commands do not contain business logic. They translate a call of
@@ -31,4 +32,5 @@ pub mod launch;
 pub mod runtimes;
 pub mod settings;
 pub mod throttle;
+pub mod updater;
 pub mod versions;

@@ -31,6 +31,7 @@ import type {
   RuntimeResult,
   RuntimeView,
   SettingsView,
+  UpdateView,
   VersionList,
   VersionManifest,
 } from "./types";
@@ -211,6 +212,28 @@ export function writeSettings(config: import("./types").LauncherConfig): Promise
 /** The directories the launcher uses. */
 export function readDirectories(): Promise<Directories> {
   return call<Directories>("read_directories");
+}
+
+// --- the updates of the launcher itself -------------------------------
+
+/**
+ * Ask whether there is a newer version of the launcher.
+ *
+ * A launcher that has no server of the updates to ask answers
+ * `configured: false`: that is a state, not a failure.
+ */
+export function checkForUpdate(): Promise<UpdateView> {
+  return call<UpdateView>("check_for_update");
+}
+
+/**
+ * Download the announced update and put it in place.
+ *
+ * The manifest of the release comes from the check, so that the version
+ * that is installed is the one that was shown.
+ */
+export function installUpdate(rawJson: unknown): Promise<void> {
+  return call<void>("install_update", { rawJson });
 }
 
 // --- the measurements ------------------------------------------------
