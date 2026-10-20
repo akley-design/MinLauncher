@@ -5,11 +5,13 @@
 //!
 //! # Why the icons are staged
 //!
-//! On Windows the icon is compiled into the executable by `windres`, which is
-//! part of the MinGW toolchain. Most MinGW builds are linked against the
-//! ANSI code page and therefore cannot open a file whose path contains
-//! non-ASCII characters — a home directory named `C:\Users\Вася` makes
-//! `windres` fail with "can't open icon file: Invalid argument".
+//! On Windows the icon is compiled into the executable by the resource
+//! compiler — `windres` of the MinGW toolchain, `rc.exe` of the Windows
+//! SDK. The compiler writes the path of the icon into a file of its own
+//! and reads *that* file through the ANSI code page, so a path with
+//! non-ASCII characters is lost on the way: a home directory named
+//! `C:\Users\Вася` makes `windres` fail with "can't open icon file:
+//! Invalid argument".
 //!
 //! The fix is to copy the icon into `OUT_DIR`, which lives under the Cargo
 //! target directory, and to hand the staged copy to `tauri-build` through
@@ -40,6 +42,10 @@
 //! `OUT_DIR`, which the build script controls, and add that directory to
 //! the link search path. The linker then resolves the library through an
 //! ASCII-only path.
+//!
+//! Only the GNU toolchain needs this. The linker of MSVC (`link.exe`) is
+//! Unicode-clean, and the import library of the MSVC target of the
+//! `windows` crate is found by itself.
 //!
 //! # Why the `WebView2` loader is copied next to the test binaries
 //!
@@ -75,7 +81,7 @@
 
 use std::path::{Path, PathBuf};
 
-/// The application icon, in the format `windres` needs.
+/// The application icon, in the format the resource compiler needs.
 const WINDOW_ICON: &str = "icon.ico";
 
 /// The import library that `windows_x86_64_gnu` provides.
@@ -132,6 +138,16 @@ fn stage_icon(source_dir: &Path, out_dir: &Path) -> Result<PathBuf, String> {
         )
     })?;
     Ok(target)
+}
+
+/// Whether the build targets Windows with the GNU toolchain.
+///
+/// The GNU driver needs the import library of the `windows` crate to be
+/// staged under a path it can read; the linker of MSVC finds the library by
+/// itself, because it is Unicode-clean.
+fn is_windows_gnu() -> bool {
+    let target = std::env::var("TARGET").unwrap_or_default();
+    target.contains("windows") && target.contains("gnu") && !target.contains("msvc")
 }
 
 /// Copy the Windows import library into `OUT_DIR` and return the directory
@@ -329,18 +345,23 @@ fn main() {
     }
     attributes = attributes.windows_attributes(windows);
 
-    match stage_import_library(&out_dir) {
-        Ok(directory) => {
-            // The directory is added to the link search path, so the linker
-            // finds the import library under an ASCII-only path even when
-            // the registry itself sits below a non-ASCII one.
-            println!("cargo:rustc-link-search=native={}", directory.display());
-        }
-        Err(error) => {
-            // Not fatal: when the registry already lives on an ASCII path the
-            // linker finds the library by itself, and the staged copy is
-            // only needed as a fallback.
-            println!("cargo:warning={error}");
+    // Only the GNU toolchain needs the import library to be staged. The
+    // linker of MSVC is Unicode-clean and finds the library by itself, so
+    // there is nothing to copy there.
+    if is_windows_gnu() {
+        match stage_import_library(&out_dir) {
+            Ok(directory) => {
+                // The directory is added to the link search path, so the linker
+                // finds the import library under an ASCII-only path even when
+                // the registry itself sits below a non-ASCII one.
+                println!("cargo:rustc-link-search=native={}", directory.display());
+            }
+            Err(error) => {
+                // Not fatal: when the registry already lives on an ASCII path
+                // the linker finds the library by itself, and the staged copy
+                // is only needed as a fallback.
+                println!("cargo:warning={error}");
+            }
         }
     }
 

@@ -13,7 +13,11 @@ workspace = true
 
 [lib]
 name = "ml_desktop"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Only the library is built. The `staticlib` and the `cdylib` are what
+# the mobile targets need, and this project has none: every release
+# build paid for three copies of the same code — with the link time
+# that goes with them — to produce two files nobody uses.
+crate-type = ["rlib"]
 
 [[bin]]
 name = "minlaucher"

@@ -11,9 +11,14 @@
   },
   "plugins": {
     "updater": {
-      "//": "The endpoints and the signing key come with the first release. Until then the list is empty, and the check reports that there is no update — the plugin is registered, so the code that asks for an update is already in place.",
-      "endpoints": [],
-      "pubkey": ""
+      "//": "The public key of the release signing key. The private key lives outside the repository — it is the secret TAURI_SIGNING_PRIVATE_KEY of the CI, and it is the only thing that can sign an update.",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkyM0Q0ODIyREJGRjVCM0IKUldRN1cvL2JJa2c5a28wckJHL3RzUXNzMmZ2TnVOY09HNm5FdkhIT3JOaU5GTVZaZ0JFK09OMW0K",
+      "//2": "The manifest of the update. It is the file the release job writes and publishes next to the installers.",
+      "endpoints": [
+        "https://github.com/minlaucher/minlaucher/releases/latest/download/latest.json"
+      ],
+      "//3": "The version of the release is read from the signature itself and has to match the version of the manifest. Without this a crafted answer of the endpoint could pair a new version number with the file of an old release and roll the player back to a genuine but outdated build. The signature of every release carries its version, so this holds from the first release.",
+      "requireSignedVersion": true
     }
   },
   "app": {
@@ -53,7 +58,11 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": [
+      "nsis",
+      "msi"
+    ],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -40,7 +40,8 @@ pub struct JvmConfig {
     pub max_heap: String,
     /// Minimum heap size.
     pub min_heap: String,
-    /// Garbage collector to request (`G1`, `Z`, `Shenandoah`); empty = auto.
+    /// Garbage collector to request (`G1`, `Z`, `Shenandoah`, `Parallel`);
+    /// empty = the one the version of the game asks for.
     pub garbage_collector: String,
     /// Extra JVM arguments appended verbatim.
     pub extra_args: Vec<String>,
@@ -48,16 +49,71 @@ pub struct JvmConfig {
     pub enable_agent: bool,
 }
 
+impl JvmConfig {
+    /// The flag that asks the JVM for the collector the player chose.
+    ///
+    /// An empty choice means "no flag": the version of the game names a
+    /// collector of its own, and the launcher does not argue with it.
+    #[must_use]
+    pub fn collector_flag(&self) -> Option<String> {
+        collector_flag(&self.garbage_collector).map(str::to_string)
+    }
+}
+
 impl Default for JvmConfig {
     fn default() -> Self {
         Self {
             max_heap: String::new(),
             min_heap: String::new(),
-            garbage_collector: "G1".to_string(),
+            // The collector is the one the version of the game asks for:
+            // the version knows the platform it runs on, and the launcher
+            // does not. A name of its own here would either fight the
+            // version — the JVM refuses to start when two collectors are
+            // named at once — or be a flag the JVM does not know.
+            garbage_collector: String::new(),
             extra_args: Vec::new(),
             enable_agent: true,
         }
     }
+}
+
+/// The flag of the JVM that asks for the collector with this name.
+///
+/// The names are the short ones the interface offers, and the flags of
+/// the JVM are longer: `G1` is `UseG1GC` and `Z` is `UseZGC`. The JVM
+/// refuses to start when it is given a flag it does not know — and it
+/// stopped knowing `UseG1` in Java 25 — so the names are translated
+/// here, in the one place that knows them.
+///
+/// A name the JVM does not know means no flag at all: a game that does
+/// not start helps nobody.
+#[must_use]
+pub fn collector_flag(name: &str) -> Option<&'static str> {
+    match name {
+        "G1" | "G1GC" => Some("-XX:+UseG1GC"),
+        "Z" | "ZGC" => Some("-XX:+UseZGC"),
+        "Shenandoah" => Some("-XX:+UseShenandoah"),
+        "Parallel" | "ParallelGC" => Some("-XX:+UseParallelGC"),
+        "Serial" | "SerialGC" => Some("-XX:+UseSerialGC"),
+        _ => None,
+    }
+}
+
+/// Whether the argument asks the JVM for a garbage collector.
+///
+/// The JVM refuses to start when two collectors are named at once, so
+/// the launcher has to know which of its arguments name one.
+#[must_use]
+pub fn is_collector_flag(argument: &str) -> bool {
+    matches!(
+        argument,
+        "-XX:+UseG1GC"
+            | "-XX:+UseZGC"
+            | "-XX:+UseShenandoah"
+            | "-XX:+UseParallelGC"
+            | "-XX:+UseSerialGC"
+            | "-XX:+UseEpsilonGC"
+    )
 }
 
 /// The settings of the mods.
@@ -221,5 +277,39 @@ mod tests {
         let cfg = LauncherConfig::from_json(r#"{"language":"en-US"}"#);
         assert_eq!(cfg.language, "en-US");
         assert_eq!(cfg.downloads.max_concurrent, 16);
+    }
+
+    #[test]
+    fn the_name_of_a_collector_becomes_a_flag_of_the_jvm() {
+        // The JVM does not know the short names, and it refuses to start
+        // when it is given a flag it does not know.
+        assert_eq!(collector_flag("G1"), Some("-XX:+UseG1GC"));
+        assert_eq!(collector_flag("Z"), Some("-XX:+UseZGC"));
+        assert_eq!(collector_flag("Parallel"), Some("-XX:+UseParallelGC"));
+        assert_eq!(collector_flag("Shenandoah"), Some("-XX:+UseShenandoah"));
+    }
+
+    #[test]
+    fn an_unknown_collector_is_no_flag_at_all() {
+        // A game that does not start helps nobody.
+        assert_eq!(collector_flag(""), None);
+        assert_eq!(collector_flag("G1GC"), Some("-XX:+UseG1GC"));
+        assert_eq!(collector_flag("Nonsense"), None);
+    }
+
+    #[test]
+    fn a_fresh_installation_leaves_the_collector_to_the_version() {
+        let cfg = LauncherConfig::default();
+        assert_eq!(cfg.jvm.collector_flag(), None);
+    }
+
+    #[test]
+    fn the_collector_flags_are_known_to_the_launcher() {
+        // The launcher has to recognise a collector of its own and of
+        // the version: the JVM refuses to start when it is given two.
+        assert!(is_collector_flag("-XX:+UseZGC"));
+        assert!(is_collector_flag("-XX:+UseG1GC"));
+        assert!(!is_collector_flag("-XX:+UseStringDeduplication"));
+        assert!(!is_collector_flag("-Xmx4G"));
     }
 }

@@ -1,0 +1,123 @@
+# The release of MinLauncher.
+#
+# The tag is the version: `v0.1.0` publishes the version `0.1.0` that the
+# project carries in `Cargo.toml` and in `tauri.conf.json`. The three
+# numbers must agree — the updater compares the version of the running
+# binary with the version of the manifest, and a mismatch would make every
+# release look like a downgrade.
+#
+# The private key of the signature lives in the secrets of the repository
+# and never in the repository itself. The public key is in
+# `crates/ml-desktop/tauri.conf.json`.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version to publish, with or without the `v`"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: The installers
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      # The build directory stays inside the project, on the path of the
+      # runner, which is plain ASCII.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+      # The MSVC host. The runner has the Windows SDK, and the GNU host
+      # needs MSYS2 for the C compiler — MSVC needs neither.
+      RUSTUP_TOOLCHAIN: stable-x86_64-pc-windows-msvc
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install the dependencies
+        run: npm ci
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Check that the tag and the project agree on the version
+        id: version
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${TAG#v}"
+          CONF=$(node -p "require('./crates/ml-desktop/tauri.conf.json').version")
+          CARGO=$(cargo metadata --no-deps --format-version 1 --quiet | node -e "
+            let s = '';
+            process.stdin.on('data', (d) => (s += d)).on('end', () => {
+              const m = JSON.parse(s);
+              console.log(m.packages.find((p) => p.name === 'ml-desktop').version);
+            });
+          ")
+          if [ "$CONF" != "$VERSION" ] || [ "$CARGO" != "$VERSION" ]; then
+            echo "The tag is $TAG, but the version of tauri.conf.json is $CONF and the version of Cargo.toml is $CARGO."
+            echo "They must be the same: the updater compares them with the version of the manifest."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build the installers
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri:build
+
+      - name: Check that both installers are there
+        run: |
+          set -euo pipefail
+          BUNDLE="$CARGO_TARGET_DIR/release/bundle"
+          ls "$BUNDLE/nsis"/*.exe "$BUNDLE/msi"/*.msi
+          # The signature of every installer: without it the updater
+          # refuses to install the file, and that must break the release.
+          ls "$BUNDLE/nsis"/*.exe.sig "$BUNDLE/msi"/*.msi.sig
+
+      - name: Build the manifest of the update
+        run: |
+          set -euo pipefail
+          node scripts/latest-json.mjs \
+            --bundle-dir "$CARGO_TARGET_DIR/release/bundle" \
+            --version "${{ steps.version.outputs.version }}" \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}" \
+            --notes "MinLauncher ${{ steps.version.outputs.version }}" \
+            --out "$RUNNER_TEMP/latest.json"
+
+      - name: Publish the release
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          BUNDLE="$CARGO_TARGET_DIR/release/bundle"
+          cp "$RUNNER_TEMP/latest.json" "$BUNDLE/latest.json"
+          gh release view "$TAG" > /dev/null 2>&1 ||
+            gh release create "$TAG" --title "MinLauncher $TAG" --generate-notes
+          gh release upload "$TAG" \
+            "$BUNDLE/nsis"/*.exe \
+            "$BUNDLE/nsis"/*.exe.sig \
+            "$BUNDLE/msi"/*.msi \
+            "$BUNDLE/msi"/*.msi.sig \
+            "$BUNDLE/latest.json" \
+            --clobber

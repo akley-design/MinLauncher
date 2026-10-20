@@ -275,6 +275,7 @@ function SettingsForm({
                 patch({ jvm: { ...draft.jvm, garbage_collector: event.target.value } })
               }
             >
+              <option value="">Как в версии игры</option>
               <option value="G1">G1</option>
               <option value="Z">Z</option>
               <option value="Shenandoah">Shenandoah</option>

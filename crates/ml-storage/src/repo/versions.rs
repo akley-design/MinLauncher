@@ -75,6 +75,12 @@ impl VersionRepo {
     }
 
     /// Insert or update many versions in one transaction.
+    ///
+    /// The fields that come from the document of the version — the Java it
+    /// needs, its asset index, the client — are *not* touched when the
+    /// version is already known. The manifest does not carry them, so
+    /// writing them would erase what the installation has learned about
+    /// the versions that are already on the disk.
     pub fn upsert_many(&self, metas: &[VersionMeta]) -> Result<()> {
         let mut conn = self.conn()?;
         let tx = conn
@@ -90,15 +96,6 @@ impl VersionRepo {
                  ON CONFLICT(id) DO UPDATE SET
                      kind = excluded.kind,
                      release_time = excluded.release_time,
-                     java_component = excluded.java_component,
-                     java_major = excluded.java_major,
-                     main_class = excluded.main_class,
-                     asset_index_id = excluded.asset_index_id,
-                     asset_index_sha1 = excluded.asset_index_sha1,
-                     asset_index_size = excluded.asset_index_size,
-                     client_sha1 = excluded.client_sha1,
-                     client_size = excluded.client_size,
-                     json_sha1 = excluded.json_sha1,
                      updated_at = excluded.updated_at",
                 params![
                     meta.id,
@@ -317,6 +314,55 @@ mod tests {
             repo.get("26.3").unwrap().unwrap().kind,
             VersionKind::Snapshot
         );
+    }
+
+    #[test]
+    fn the_bulk_store_keeps_what_the_document_of_the_version_taught() {
+        let (_db, repo) = repo();
+        repo.upsert(&meta("26.3", VersionKind::Release)).unwrap();
+        repo.set_installed("26.3", true).unwrap();
+
+        // What the manifest knows: the identifier, the kind and the date.
+        let from_manifest = VersionMeta {
+            id: "26.3".to_string(),
+            kind: VersionKind::Release,
+            release_time: Some("2026-10-20T00:00:00+00:00".to_string()),
+            java_component: None,
+            java_major: None,
+            main_class: None,
+            asset_index_id: None,
+            asset_index_sha1: None,
+            asset_index_size: None,
+            client_sha1: None,
+            client_size: None,
+            json_sha1: None,
+        };
+        repo.upsert_many(&[from_manifest]).unwrap();
+
+        let read = repo.get("26.3").unwrap().unwrap();
+        assert_eq!(
+            read.java_component,
+            Some("java-runtime-epsilon".to_string())
+        );
+        assert_eq!(read.java_major, Some(25));
+        assert_eq!(
+            read.main_class,
+            Some("net.minecraft.client.main.Main".to_string())
+        );
+        assert!(repo.is_installed("26.3").unwrap());
+    }
+
+    #[test]
+    fn the_bulk_store_puts_the_versions_into_the_list() {
+        let (_db, repo) = repo();
+        let metas = vec![
+            meta("26.3", VersionKind::Release),
+            meta("26.4-snapshot-4", VersionKind::Snapshot),
+        ];
+        repo.upsert_many(&metas).unwrap();
+
+        assert_eq!(repo.count().unwrap(), 2);
+        assert_eq!(repo.list(Some(VersionKind::Snapshot)).unwrap().len(), 1);
     }
 
     #[test]

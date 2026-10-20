@@ -48,9 +48,9 @@ fn detect_os_version() -> Option<&'static str> {
 
 /// Read the Windows version from the registry.
 ///
-/// `CurrentVersion` holds `major.minor` and `CurrentBuildNumber` holds the
-/// build. Both are needed: Mojang's bounds are written as
-/// `10.0.17134`, which is `major.minor.build`.
+/// `CurrentMajorVersionNumber`, `CurrentMinorVersionNumber` and
+/// `CurrentBuildNumber` hold the version, and Mojang's bounds are
+/// written as `10.0.17134`, which is `major.minor.build`.
 ///
 /// The key is readable without administrative rights.
 #[cfg(target_os = "windows")]
@@ -65,16 +65,65 @@ fn windows_version() -> Option<&'static str> {
         )
         .ok()?;
 
-    let major_minor: String = key.get_value("CurrentVersion").ok()?;
-    let build: String = key.get_value("CurrentBuildNumber").ok()?;
+    let major = key.get_value::<u32, _>("CurrentMajorVersionNumber").ok();
+    let minor = key.get_value::<u32, _>("CurrentMinorVersionNumber").ok();
+    let current = key.get_value::<String, _>("CurrentVersion").ok();
+    let build = registry_number(&key, "CurrentBuildNumber");
 
-    // `CurrentVersion` is already `major.minor`; the build is appended so
-    // that the result can be compared segment by segment.
-    let version = format!("{major_minor}.{build}");
+    let version = windows_version_from(major, minor, current.as_deref(), build)?;
 
     // The string has to outlive this function, and the answer is asked for
     // once per process, so leaking it here is the cheapest correct option.
     Some(Box::leak(version.into_boxed_str()))
+}
+
+/// The number in a registry value, whatever the type it is stored under.
+///
+/// Windows is not consistent here: `CurrentBuildNumber` is a number on some
+/// builds and a string on others. A value that cannot be read as a number is
+/// no number at all — and a launcher that has no version answers wrongly
+/// rather than not at all.
+#[cfg(target_os = "windows")]
+fn registry_number(key: &winreg::RegKey, name: &str) -> Option<u32> {
+    if let Ok(value) = key.get_value::<u32, _>(name) {
+        return Some(value);
+    }
+    key.get_value::<String, _>(name)
+        .ok()
+        .and_then(|value| value.trim().parse().ok())
+}
+
+/// The version of Windows, from the parts the registry gives.
+///
+/// `CurrentVersion` lies on Windows 11: it holds `6.3` there, for the sake
+/// of the programs that were written for Windows 8. The real version is in
+/// `CurrentMajorVersionNumber` and `CurrentMinorVersionNumber` — and those
+/// keys are missing on the Windows before 10, where the build number says
+/// the version anyway: every Windows since Windows 10 is `10.0`.
+///
+/// A wrong version is not a cosmetic mistake: the version of the game
+/// chooses its garbage collector by the version of Windows, and the wrong
+/// branch asks the JVM for a flag it no longer knows.
+#[cfg(target_os = "windows")]
+fn windows_version_from(
+    major: Option<u32>,
+    minor: Option<u32>,
+    current: Option<&str>,
+    build: Option<u32>,
+) -> Option<String> {
+    let build = build?;
+    let (major, minor) = match (major, minor) {
+        (Some(major), Some(minor)) => (major, minor),
+        // Windows 10 and later are all `10.0`, whatever the registry says
+        // about the version.
+        _ if build >= 10_240 => (10, 0),
+        // Before Windows 10 the registry is the only source there is.
+        _ => {
+            let (major, minor) = current?.split_once('.')?;
+            (major.parse().ok()?, minor.parse().ok()?)
+        }
+    };
+    Some(format!("{major}.{minor}.{build}"))
 }
 
 /// The name of the operating system the launcher runs on.
@@ -179,5 +228,26 @@ mod tests {
     fn the_processor_has_a_name() {
         let name = cpu_name().expect("windows reports a processor");
         assert_ne!(name, "");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn the_windows_version_is_not_the_lie_of_the_registry() {
+        // Windows 11 writes `6.3` into `CurrentVersion`, and a launcher
+        // that believes it thinks it runs on Windows 8.
+        assert_eq!(
+            windows_version_from(Some(10), Some(0), Some("6.3"), Some(26300)).as_deref(),
+            Some("10.0.26300")
+        );
+        // Without the modern keys the build number says the version.
+        assert_eq!(
+            windows_version_from(None, None, Some("6.3"), Some(26300)).as_deref(),
+            Some("10.0.26300")
+        );
+        // Before Windows 10 the registry is the only source there is.
+        assert_eq!(
+            windows_version_from(None, None, Some("6.3"), Some(9600)).as_deref(),
+            Some("6.3.9600")
+        );
     }
 }

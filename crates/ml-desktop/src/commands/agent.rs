@@ -5,13 +5,17 @@
 //! to start, how the frames are drawn, how much memory it uses.
 //!
 //! The jar of the agent is built by Gradle and is not part of the Rust
-//! build. It has to be found before the game can start, and there are
-//! two places it can be:
+//! build — and not part of the installer either, because the installer
+//! ships the launcher alone. It has to be found before the game can
+//! start, and there are two places it can be:
 //!
-//! * next to the executable of the launcher, where the installer puts
-//!   it;
+//! * next to the executable of the launcher, where a portable build
+//!   can drop it;
 //! * in the data directory of the launcher, where it is copied to the
 //!   first time it is found.
+//!
+//! When it is in neither place the game still starts — it is only not
+//! measured.
 //!
 //! The second one matters for a reason that is not obvious. The JVM
 //! splits `-javaagent:jar=options` at the *first* `=`, so a jar whose
@@ -49,7 +53,7 @@ pub fn prepare(paths: &AppPaths, version_id: &str) -> Option<Agent> {
 
     if !target.is_file() {
         // The jar is not in place yet. It is looked for next to the
-        // executable of the launcher, where the installer puts it.
+        // executable of the launcher, where a portable build can drop it.
         let Some(source) = find_bundled() else {
             tracing::info!("the agent is not installed, the game will not be measured");
             return None;

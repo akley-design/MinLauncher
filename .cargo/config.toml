@@ -6,22 +6,25 @@
 [build]
 # The build directory is deliberately kept on an ASCII-only path.
 #
-# The GNU toolchain's linker (`ld.exe` from MSYS2 / MinGW-w64) resolves file
-# names through the Windows ANSI code page, not through UTF-8. When the
-# project lives under a path that contains non-ASCII characters — the home
-# directory of this machine contains Cyrillic — the linker cannot open the
-# intermediate object files and fails with "cannot find ... .rcgu.o: No such
-# file or directory" even though the files exist.
+# The resource compiler of Windows (`rc.exe` of the SDK, `windres` of MinGW)
+# writes the paths of the files it embeds — the icon, the manifest — into a
+# file of its own, and reads *that* file through the Windows ANSI code page,
+# not through UTF-8. When the project lives under a path that contains
+# non-ASCII characters — the home directory of this machine contains Cyrillic
+# — the path is lost on the way and the compiler fails.
 #
-# The Rust compiler itself is unaffected (it is UTF-8 clean), so relocating
-# the *build* directory is enough. Override this with the `CARGO_TARGET_DIR`
-# environment variable, or drop this section once the toolchain is MSVC-based
-# (MSVC's `link.exe` is Unicode-clean).
+# The Rust compiler itself is unaffected (it is UTF-8 clean), and so is the
+# linker of MSVC, so relocating the *build* directory is enough: the build
+# script of `ml-desktop` stages the icon and the manifest inside it, and
+# everything the resource compiler is told about is then on an ASCII path.
+# Override this with the `CARGO_TARGET_DIR` environment variable.
 #
-# One path cannot be relocated this way: the Windows import library that the
-# `windows` crate pulls in lives inside the Cargo registry, below `$CARGO_HOME`.
-# The build script of `ml-desktop` copies that library into the build
-# directory, so it is reached through an ASCII-only path as well.
+# Under the GNU toolchain one more path had to be relocated — the Windows
+# import library that the `windows` crate pulls in lives inside the Cargo
+# registry, below `$CARGO_HOME`. The build script copies it into the build
+# directory, so it is reached through an ASCII-only path as well. That copy
+# is made only for a `windows-gnu` target; the linker of MSVC finds the
+# library by itself.
 target-dir = "C:/Users/Public/minlaucher-target"
 
 [term]

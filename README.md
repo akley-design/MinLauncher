@@ -205,9 +205,10 @@ cd apps/java
 This project is developed on a machine whose home directory contains Cyrillic
 characters, and two tools do not cope with that:
 
-* `ld.exe` of MSYS2 decodes its command line through the Windows ANSI code
-  page, not through UTF-8. The build directory is therefore moved to an
-  ASCII-only path (`.cargo/config.toml`).
+* The resource compiler of Windows — `rc.exe` of the SDK — reads the file it
+  was given through the Windows ANSI code page, and the paths of the icon and
+  of the manifest are written *into* that file. The build directory is
+  therefore moved to an ASCII-only path (`.cargo/config.toml`).
 * The Gradle wrapper fails the same way, and the build directory of the Java
   part is moved for the same reason (`apps/java/gradle.properties`).
 
@@ -226,6 +227,18 @@ path both lines can go away.
 
 Plus the end-to-end tests against the real game and the real servers of
 Mojang, which are switched on by hand.
+
+## Releasing it
+
+The release build needs the MSVC toolchain, the Windows SDK and the "Desktop
+development with C++" workload of Visual Studio; `rust-toolchain.toml` pins
+the toolchain, and [`docs/RELEASE.md`](docs/RELEASE.md) describes the whole
+procedure — the environment, the installer, the signing of the update and the
+check that the installed application works on a clean machine.
+
+```bash
+npm run tauri:build
+```
 
 ## The plan
 

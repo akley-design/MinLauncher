@@ -169,6 +169,11 @@ pub async fn refresh_manifest(state: State<'_, SharedState>) -> IpcResult<Manife
     storage.meta_set("latest_release", &manifest.latest_release)?;
     storage.meta_set("latest_snapshot", &manifest.latest_snapshot)?;
 
+    // The list of the versions is built from the database, so the manifest
+    // has to be written into it. Without this the screen of the versions
+    // stays empty, and there is nothing to install.
+    store_the_manifest(storage, &manifest)?;
+
     // The manifest is kept on disk so that the frontend can be shown the
     // list of versions while the network is still being asked.
     let path = state.paths().cache_dir.join("version_manifest_v2.json");
@@ -180,6 +185,44 @@ pub async fn refresh_manifest(state: State<'_, SharedState>) -> IpcResult<Manife
     }
 
     Ok(summary)
+}
+
+/// Write the versions of the manifest into the database.
+///
+/// The manifest knows only the identifier, the kind and the date of a
+/// version. The rest — the Java it needs, its assets — is in the document
+/// of the version, which is fetched when the version is installed, and it
+/// is not touched here.
+///
+/// # Errors
+/// Fails when the database refuses the versions.
+fn store_the_manifest(storage: &ml_storage::Storage, manifest: &VersionManifest) -> IpcResult<()> {
+    let metas: Vec<VersionMeta> = manifest
+        .versions
+        .iter()
+        .map(|version| VersionMeta {
+            id: version.id.clone(),
+            kind: version.kind,
+            release_time: Some(version.release_time.clone()),
+            java_component: None,
+            java_major: None,
+            main_class: None,
+            asset_index_id: None,
+            asset_index_sha1: None,
+            asset_index_size: None,
+            client_sha1: None,
+            client_size: None,
+            json_sha1: None,
+        })
+        .collect();
+
+    storage.versions().upsert_many(&metas).map_err(|error| {
+        IpcError::with_detail(
+            ErrorCode::Storage,
+            "cannot store the versions of the manifest",
+            error.to_string(),
+        )
+    })
 }
 
 /// What the launcher learned from the manifest.
@@ -737,6 +780,32 @@ mod tests {
         };
         assert_eq!(list.versions.len(), 0);
         assert_eq!(storage.versions().count().unwrap(), 0);
+    }
+
+    #[test]
+    fn the_versions_of_the_manifest_end_up_in_the_list() {
+        let (_dir, state) = state();
+        let bytes = br#"{
+            "latest": {"release": "26.3", "snapshot": "26.4-snapshot-4"},
+            "versions": [
+                {"id": "26.3", "type": "release", "url": "https://example/26.3",
+                 "releaseTime": "2026-01-01T00:00:00+00:00", "sha1": "abc"},
+                {"id": "26.4-snapshot-4", "type": "snapshot",
+                 "url": "https://example/26.4-snapshot-4",
+                 "releaseTime": "2026-01-02T00:00:00+00:00", "sha1": "def"}
+            ]
+        }"#;
+        let manifest = ml_minecraft::manifest::parse_manifest(bytes).unwrap();
+
+        store_the_manifest(state.storage(), &manifest).unwrap();
+
+        // The list of the versions is what the screen of the versions is
+        // built from, so it has to hold the versions of the manifest.
+        let storage = state.storage();
+        let versions = storage.versions().list(None).unwrap();
+        assert_eq!(versions.len(), 2);
+        assert!(versions.iter().any(|version| version.id == "26.3"));
+        assert_eq!(storage.versions().list_installed().unwrap().len(), 0);
     }
 
     #[test]

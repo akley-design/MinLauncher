@@ -12,6 +12,7 @@
     "preview": "npm run preview --workspace @minlaucher/ui",
     "test": "npm run test --workspace @minlaucher/ui",
     "test:run": "npm run test:run --workspace @minlaucher/ui",
+    "test:scripts": "node --test \"scripts/*.test.mjs\"",
     "lint": "npm run lint --workspace @minlaucher/ui",
     "typecheck": "npm run typecheck --workspace @minlaucher/ui",
     "format": "npm run format --workspace @minlaucher/ui",

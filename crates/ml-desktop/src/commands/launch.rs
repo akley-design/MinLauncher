@@ -746,8 +746,8 @@ fn extra_jvm_args(state: &SharedState) -> Vec<String> {
     if !config.jvm.min_heap.is_empty() {
         args.push(format!("-Xms{}", config.jvm.min_heap));
     }
-    if !config.jvm.garbage_collector.is_empty() {
-        args.push(format!("-XX:+Use{}", config.jvm.garbage_collector));
+    if let Some(flag) = config.jvm.collector_flag() {
+        args.push(flag);
     }
     args.extend(config.jvm.extra_args.iter().cloned());
 
@@ -797,7 +797,7 @@ mod tests {
         let args = extra_jvm_args(&state);
         assert!(args.contains(&"-Xmx4G".to_string()), "{args:?}");
         assert!(args.contains(&"-Xms1G".to_string()), "{args:?}");
-        assert!(args.contains(&"-XX:+UseZ".to_string()), "{args:?}");
+        assert!(args.contains(&"-XX:+UseZGC".to_string()), "{args:?}");
         assert!(
             args.contains(&"-XX:+UseStringDeduplication".to_string()),
             "{args:?}"
@@ -805,18 +805,19 @@ mod tests {
     }
 
     #[test]
-    fn a_fresh_installation_asks_for_the_collector_it_defaults_to() {
-        // The collector is never left to the accident of the runtime: the
-        // settings name one, and the launcher passes it on. The heap, on
-        // the other hand, is left to the runtime as long as the player
-        // has not said otherwise.
+    fn a_fresh_installation_leaves_the_collector_to_the_version() {
+        // The version of the game knows the platform it runs on, and the
+        // launcher does not. A collector of its own here would either
+        // fight the version — the JVM refuses to start when two
+        // collectors are named at once — or be a flag the JVM does not
+        // know: `UseG1` is gone since Java 25.
         let dir = tempfile::tempdir().unwrap();
         let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
         let platform = Platform::new(OsName::Windows, OsArch::X86_64);
         let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
 
         let args = extra_jvm_args(&state);
-        assert_eq!(args, vec!["-XX:+UseG1".to_string()]);
+        assert!(args.is_empty(), "{args:?}");
         assert!(!args.iter().any(|arg| arg.starts_with("-Xmx")), "{args:?}");
         assert!(!args.iter().any(|arg| arg.starts_with("-Xms")), "{args:?}");
     }

@@ -8,11 +8,14 @@
 //! JSON prescribes:
 //!
 //! ```text
-//! <java> <user jvm args> <version jvm args> <main class> <game args>
+//! <java> <version user args> <player args> <version jvm args> <main class> <game args>
 //! ```
 //!
-//! The user arguments come first so that the version's own flags win:
-//! a user who passes `-Xmx8G` gets `8G`, not the `4G` of the version.
+//! The arguments of the player come after the arguments of the version,
+//! so that they win where both of them say something about the same
+//! thing: a player who passes `-Xmx8G` gets `8G`, not the `4G` of the
+//! version. The arguments of the version itself come last, because they
+//! carry the paths of the natives, and a player cannot break those.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -199,17 +202,35 @@ pub fn build_command(
     values.insert("classpath", classpath);
 
     // The JVM arguments, in the order the version prescribes.
-    let mut jvm_arguments: Vec<String> = Vec::new();
-    jvm_arguments.extend(request.extra_jvm_args.iter().cloned());
-
     let version_id = Some(request.version.id.as_str());
-    jvm_arguments.extend(substitute_all(
+    let mut version_arguments = substitute_all(
         &request
             .version
             .arguments
             .resolve_default_user_jvm(platform, version_id, features),
         &values,
-    ));
+    );
+
+    // The player may have named a collector of their own. The version
+    // names one too, and the JVM refuses to start when two collectors
+    // are named at once — so the choice of the player replaces the one
+    // of the version.
+    if request
+        .extra_jvm_args
+        .iter()
+        .any(|argument| ml_core::config::is_collector_flag(argument))
+    {
+        version_arguments.retain(|argument| !ml_core::config::is_collector_flag(argument));
+    }
+
+    let mut jvm_arguments: Vec<String> = Vec::new();
+    jvm_arguments.extend(version_arguments);
+
+    // The arguments of the player come after the arguments of the
+    // version: the version asks for a heap of four gigabytes, and a
+    // player who asked for eight gigabytes means eight gigabytes.
+    jvm_arguments.extend(request.extra_jvm_args.iter().cloned());
+
     jvm_arguments.extend(substitute_all(
         &request
             .version
@@ -445,6 +466,42 @@ mod tests {
     }
 
     #[test]
+    fn the_choice_of_the_player_replaces_the_collector_of_the_version() {
+        let mut request = request();
+        request.extra_jvm_args = vec!["-XX:+UseG1GC".to_string()];
+        let command = build_command(&request, platform(), &FeatureSet::none(), "release").unwrap();
+
+        // The JVM refuses to start when two collectors are named at once.
+        let collectors: Vec<&String> = command
+            .arguments
+            .iter()
+            .filter(|argument| ml_core::config::is_collector_flag(argument))
+            .collect();
+        assert_eq!(collectors, vec!["-XX:+UseG1GC"]);
+    }
+
+    #[test]
+    fn the_heap_of_the_player_wins_over_the_heap_of_the_version() {
+        let mut request = request();
+        request.extra_jvm_args = vec!["-Xmx8G".to_string()];
+        let command = build_command(&request, platform(), &FeatureSet::none(), "release").unwrap();
+
+        let player = command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-Xmx8G")
+            .expect("the heap of the player is in the command");
+        let version = command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-Xmx4G")
+            .expect("the heap of the version is in the command");
+
+        // The last one wins in the JVM.
+        assert!(player > version, "{player} is not after {version}");
+    }
+
+    #[test]
     fn the_placeholders_are_replaced() {
         let command =
             build_command(&request(), platform(), &FeatureSet::none(), "release").unwrap();
@@ -487,22 +544,6 @@ mod tests {
             command.natives_layout.directory_for(NativeFamily::Netty),
             PathBuf::from("C:/games/mc/natives/netty")
         );
-    }
-
-    #[test]
-    fn the_user_arguments_come_first() {
-        let mut request = request();
-        request.extra_jvm_args = vec!["-Xmx8G".into()];
-        let command = build_command(&request, platform(), &FeatureSet::none(), "release").unwrap();
-
-        assert_eq!(command.arguments[0], "-Xmx8G");
-        // The version's own heap setting comes later and wins.
-        let heap = command
-            .arguments
-            .iter()
-            .position(|argument| argument == "-Xmx4G")
-            .unwrap();
-        assert!(heap > 0);
     }
 
     #[test]

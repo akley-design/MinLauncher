@@ -43,13 +43,19 @@ jobs:
   rust:
     name: The launcher (Rust)
     # The toolchain is pinned in `rust-toolchain.toml`, and it is a Windows
-    # one: the GNU host, because a MSVC host needs the Windows SDK, which
-    # the runner does not have. The GNU toolchain needs a GNU C compiler,
-    # and the runner has one in its MSYS2.
+    # one: the MSVC host. The runner of `windows-latest` has Visual Studio
+    # with the C++ workload, so the SDK and the linker are already there and
+    # nothing has to be installed.
     runs-on: windows-latest
     defaults:
       run:
         shell: bash
+    env:
+      # The project moves its build directory to an ASCII-only path, because
+      # the resource compiler of Windows reads the file it is given through
+      # the ANSI code page. The workspace of the runner is ASCII, so there
+      # the usual directory is used — and it is the one the cache keeps.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
     steps:
       - uses: actions/checkout@v4
 
@@ -57,9 +63,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-
-      - name: Put the GNU compiler on the path
-        run: echo "C:\msys64\mingw64\bin" >> "$GITHUB_PATH"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -90,6 +93,9 @@ jobs:
       # The commit the head is compared with: the base of a pull request
       # and the commit before the push.
       BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      # The build directory of the project is an ASCII path; the workspace
+      # of the runner is one, and it is the one the cache keeps.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,9 +104,6 @@ jobs:
 
       - name: Install the Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Put the GNU compiler on the path
-        run: echo "C:\msys64\mingw64\bin" >> "$GITHUB_PATH"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -140,7 +143,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 22 and not 20: the test runner of Node takes a glob
+          # pattern only since 22, and the scripts are tested with one.
+          node-version: 22
           cache: npm
 
       - name: Install the dependencies
@@ -157,6 +162,9 @@ jobs:
 
       - name: Test
         run: npm run test:run
+
+      - name: Test the scripts of the release
+        run: npm run test:scripts
 
   java:
     name: The game (Java)
