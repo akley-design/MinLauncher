@@ -20,7 +20,10 @@ import org.objectweb.asm.commons.AdviceAdapter;
  *   <li>{@code org.lwjgl.glfw.GLFW.gfwSwapBuffers(long)} — LWJGL 3,
  *       the game of 1.17 and later;</li>
  *   <li>{@code org.lwjgl.opengl.Display.update()} — LWJGL 2, the game up
- *       to 1.12.2.</li>
+ *       to 1.12.2;</li>
+ *   <li>{@code org.lwjgl.sdl.SDLVideo.SDL_GL_SwapWindow(long)} — LWJGL 3
+ *       with SDL, the game of 26.1 and later. Unlike the two others it
+ *       says whether the window was swapped.</li>
  * </ul>
  *
  * <p>Mojang does not obfuscate the libraries of the game, so these
@@ -53,6 +56,12 @@ final class FrameHook implements ClassFileTransformer {
     /** The method of {@link #DISPLAY} that puts the frame on the screen. */
     private static final String UPDATE = "update";
 
+    /** The class that puts the frame on the screen, LWJGL 3 with SDL. */
+    private static final String SDL_VIDEO = "org/lwjgl/sdl/SDLVideo";
+
+    /** The method of {@link #SDL_VIDEO} that puts the frame on the screen. */
+    private static final String SDL_SWAP_WINDOW = "SDL_GL_SwapWindow";
+
     /** The counter of the frames. */
     private final FrameCounter counter;
 
@@ -78,7 +87,8 @@ final class FrameHook implements ClassFileTransformer {
 
         boolean isGlfw = GLFW.equals(className);
         boolean isDisplay = DISPLAY.equals(className);
-        if (!isGlfw && !isDisplay) {
+        boolean isSdl = SDL_VIDEO.equals(className);
+        if (!isGlfw && !isDisplay && !isSdl) {
             return null;
         }
 
@@ -97,7 +107,7 @@ final class FrameHook implements ClassFileTransformer {
                     MethodVisitor delegate =
                             super.visitMethod(access, name, descriptor, signature, exceptions);
 
-                    if (!isTarget(access, name, descriptor, isGlfw)) {
+                    if (!isTarget(access, name, descriptor, isGlfw, isSdl)) {
                         return delegate;
                     }
 
@@ -128,9 +138,11 @@ final class FrameHook implements ClassFileTransformer {
      * @param name the name of the method
      * @param descriptor the descriptor of the method
      * @param isGlfw whether the class is the one of LWJGL 3
+     * @param isSdl whether the class is the one of LWJGL 3 with SDL
      * @return true when the method has to be woven
      */
-    private static boolean isTarget(int access, String name, String descriptor, boolean isGlfw) {
+    private static boolean isTarget(
+            int access, String name, String descriptor, boolean isGlfw, boolean isSdl) {
         // The method must be static, and it must not be native: a
         // native method has no body, and there would be nothing to
         // measure.
@@ -143,6 +155,19 @@ final class FrameHook implements ClassFileTransformer {
         if ((access & Opcodes.ACC_ABSTRACT) != 0) {
             return false;
         }
+
+        if (isSdl) {
+            // SDL_GL_SwapWindow(long window): boolean
+            //
+            // Unlike the two others, this one says whether the window
+            // was swapped. The answer is left alone: the frame is
+            // counted when the method is left, and the weaving does
+            // not change what the method gives back.
+            return SDL_SWAP_WINDOW.equals(name)
+                    && Type.getReturnType(descriptor).getSort() == Type.BOOLEAN
+                    && Type.getArgumentTypes(descriptor).length == 1;
+        }
+
         if (Type.getReturnType(descriptor).getSort() != Type.VOID) {
             return false;
         }

@@ -17,6 +17,9 @@ class FrameHookTest {
     /** The name of the class that is woven, in the internal form. */
     private static final String GLFW = "org/lwjgl/glfw/GLFW";
 
+    /** The name of the class that is woven, SDL, in the internal form. */
+    private static final String SDL_VIDEO = "org/lwjgl/sdl/SDLVideo";
+
     /**
      * The bytes of the class that is woven.
      *
@@ -24,8 +27,19 @@ class FrameHookTest {
      * @throws IOException when the class cannot be read
      */
     private static byte[] classBytes() throws IOException {
+        return classBytes(GLFW);
+    }
+
+    /**
+     * The bytes of the class that is woven.
+     *
+     * @param internalName the name of the class, in the internal form
+     * @return the bytes of the class file
+     * @throws IOException when the class cannot be read
+     */
+    private static byte[] classBytes(String internalName) throws IOException {
         try (InputStream stream = FrameHookTest.class.getClassLoader()
-                .getResourceAsStream(GLFW + ".class")) {
+                .getResourceAsStream(internalName + ".class")) {
             assertNotNull(stream, "the class was not found");
             byte[] bytes = new byte[stream.available()];
             int read = 0;
@@ -164,6 +178,32 @@ class FrameHookTest {
         // resolve.
         double frameTime = counter.statistics().averageFrametime();
         assertTrue(frameTime > 0.0, "the frame took no time: " + frameTime);
+    }
+
+    @Test
+    void a_frame_that_was_drawn_through_sdl_is_counted() throws Exception {
+        FrameCounter counter = FrameCounter.get();
+        FrameHook hook = new FrameHook(counter);
+        counter.reset();
+
+        byte[] result = hook.transform(null, SDL_VIDEO, null, null, classBytes(SDL_VIDEO));
+        assertNotNull(result, "the class was not woven");
+
+        Class<?> woven = new WovenLoader(result, SDL_VIDEO).loadClass("org.lwjgl.sdl.SDLVideo");
+        java.lang.reflect.Method swap = woven.getMethod("SDL_GL_SwapWindow", long.class);
+
+        // The method of SDL gives an answer back, unlike the method of
+        // GLFW: the answer has to survive the weaving, because the game
+        // reads it.
+        assertEquals(boolean.class, swap.getReturnType());
+        assertEquals(Boolean.TRUE, swap.invoke(null, 0L));
+
+        // The first frame has no predecessor, so it is not measured.
+        assertEquals(0, counter.statistics().count());
+
+        // The second one is the first frame that has an interval.
+        swap.invoke(null, 0L);
+        assertEquals(1, counter.statistics().count());
     }
 
     @Test
