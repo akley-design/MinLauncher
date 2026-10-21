@@ -27,13 +27,43 @@
 //! the manifest, the index and the module descriptor. The native files
 //! themselves sit at the root of the jar, for example
 //! `windows/x64/org/lwjgl/lwjgl.dll`.
+//!
+//! # Only once
+//!
+//! The natives of a version are unpacked once. A file that is already
+//! there with the right size is kept — but the jar still has to be
+//! opened and read to know that, and twenty-one jars of a modern
+//! version hold thousands of files between them. That is work that
+//! happens on every launch and that nobody waits for.
+//!
+//! So the launcher remembers what it unpacked, in a marker file next to
+//! the natives: which jars the files came from, and which files were
+//! written. When the jars are the same and the files are still there,
+//! the jars are not opened at all. The marker is written after the
+//! unpacking, so a failed unpacking is done again next time.
 
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use ml_core::{Error, Result};
 pub use ml_minecraft::library::NativeFamily;
+
+/// The file that remembers what was unpacked.
+///
+/// It sits in the base directory of the natives, next to the files that
+/// were unpacked.
+const MARKER_NAME: &str = ".extracted";
+
+/// The file the marker is written through.
+///
+/// The marker is moved over the target, so a launcher that is stopped
+/// halfway does not leave a half-written marker behind.
+const MARKER_TEMP_NAME: &str = ".extracted.tmp";
+
+/// The first line of the marker file: the format and the version of it.
+const MARKER_FORMAT: &str = "minlaucher-natives 1";
 
 /// A file that was unpacked from a native jar.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +85,9 @@ pub struct ExtractionReport {
     pub jars: Vec<PathBuf>,
     /// The number of bytes written.
     pub bytes: u64,
+    /// Whether the natives were already on the disk and nothing was
+    /// unpacked.
+    pub skipped: bool,
 }
 
 impl ExtractionReport {
@@ -116,13 +149,30 @@ pub fn property_for(family: NativeFamily) -> &'static str {
 
 /// Unpack a batch of native jars.
 ///
-/// A file that already exists with the expected size is left alone, so
-/// the work can be repeated cheaply on every launch.
+/// The natives of a version are unpacked **once**: the marker file next
+/// to them says which jars the files came from, and when both the jars
+/// and the files are the same, the jars are not opened at all.
+///
+/// A file that already exists with the expected size is left alone, so a
+/// half-finished unpacking is not done twice either.
 ///
 /// # Errors
 /// Fails if a jar cannot be read or a file cannot be written.
 pub fn extract_all(jars: &[NativeJar], layout: &NativeLayout) -> Result<ExtractionReport> {
     let mut report = ExtractionReport::default();
+    let marker = layout.natives_directory.join(MARKER_NAME);
+    let source = source_of(jars);
+
+    // The natives are already on the disk: nothing to unpack, and no
+    // jar to open.
+    if let Some(source) = &source
+        && let Some(mark) = read_mark(&marker)
+        && &mark.source == source
+        && mark.files.iter().all(|(path, size)| file_is(path, *size))
+    {
+        report.skipped = true;
+        return Ok(report);
+    }
 
     for jar in jars {
         let directory = layout.directory_for(jar.family);
@@ -132,7 +182,119 @@ pub fn extract_all(jars: &[NativeJar], layout: &NativeLayout) -> Result<Extracti
         report.jars.push(jar.path.clone());
     }
 
+    // The marker is written after the unpacking: an unpacking that
+    // failed has to be done again, and a marker that was written before
+    // it would keep the natives directory empty.
+    if let Some(source) = source {
+        let files = report
+            .files
+            .iter()
+            .map(|file| (file.path.clone(), file.size))
+            .collect();
+        let mark = Mark { source, files };
+        if let Err(error) = write_mark(&marker, &mark) {
+            tracing::warn!("cannot write the marker of the natives: {error}");
+        }
+    }
+
     Ok(report)
+}
+
+/// What the marker file remembers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Mark {
+    /// The jars the natives came from.
+    source: String,
+    /// The files that were unpacked, and how big they are.
+    files: Vec<(PathBuf, u64)>,
+}
+
+/// The fingerprint of the jars the natives come from.
+///
+/// The path, the size and the time of the last change of every jar.
+/// The time matters: a jar that was replaced by another one of the same
+/// size has to be unpacked again, and the size alone would not say so.
+///
+/// `None` when a jar cannot be read — the natives have to be unpacked
+/// again then, and the unpacking fails with a proper error.
+fn source_of(jars: &[NativeJar]) -> Option<String> {
+    let mut sorted: Vec<&NativeJar> = jars.iter().collect();
+    sorted.sort_by(|left, right| left.path.cmp(&right.path));
+
+    let mut lines = Vec::with_capacity(sorted.len());
+    for jar in sorted {
+        let metadata = std::fs::metadata(&jar.path).ok()?;
+        let modified = metadata.modified().ok()?;
+        let stamp = modified.duration_since(SystemTime::UNIX_EPOCH).ok()?;
+        lines.push(format!(
+            "{}|{}|{}",
+            jar.path.to_string_lossy(),
+            metadata.len(),
+            stamp.as_nanos()
+        ));
+    }
+    Some(lines.join("\n"))
+}
+
+/// Whether a file is on the disk with the size it was written with.
+fn file_is(path: &Path, size: u64) -> bool {
+    std::fs::metadata(path).is_ok_and(|metadata| metadata.len() == size)
+}
+
+/// Read the marker file.
+fn read_mark(path: &Path) -> Option<Mark> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let mut lines = text.lines();
+    if lines.next()? != MARKER_FORMAT {
+        return None;
+    }
+
+    let mut source = Vec::new();
+    let mut files = Vec::new();
+    for line in lines {
+        if let Some(rest) = line.strip_prefix("source ") {
+            source.push(rest.to_string());
+        } else if let Some(rest) = line.strip_prefix("file ") {
+            let (path, size) = rest.rsplit_once('|')?;
+            files.push((PathBuf::from(path), size.parse().ok()?));
+        }
+    }
+
+    Some(Mark {
+        source: source.join("\n"),
+        files,
+    })
+}
+
+/// Write the marker file.
+///
+/// The file is written through a temporary one that is moved over the
+/// target, so that a launcher that is stopped halfway does not leave a
+/// half-written marker behind: a marker that was cut short would send
+/// the next launch to a natives directory that was never filled.
+fn write_mark(path: &Path, mark: &Mark) -> Result<()> {
+    let mut text = String::from(MARKER_FORMAT);
+    text.push('\n');
+    for line in mark.source.lines() {
+        text.push_str("source ");
+        text.push_str(line);
+        text.push('\n');
+    }
+    for (file, size) in &mark.files {
+        text.push_str("file ");
+        text.push_str(&file.to_string_lossy());
+        text.push('|');
+        text.push_str(&size.to_string());
+        text.push('\n');
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;
+    }
+    let temporary = path.with_file_name(MARKER_TEMP_NAME);
+    std::fs::write(&temporary, text).map_err(|e| Error::io(&temporary, e))?;
+    std::fs::rename(&temporary, path).map_err(|e| Error::io(path, e))?;
+    Ok(())
 }
 
 /// Unpack one native jar into a directory.
@@ -186,6 +348,11 @@ pub fn extract_jar(jar: &Path, directory: &Path) -> Result<Vec<ExtractedFile>> {
             .map_err(|e| Error::io(jar, e))?;
 
         // A file that is already there with the right size is kept.
+        //
+        // shortcut: a native that is replaced by another one of the same
+        // length keeps the old content. The jars of Mojang do not change
+        // under one path, so it does not happen; when it does, the file
+        // has to be compared by its content, not by its length.
         if let Ok(metadata) = std::fs::metadata(&target)
             && metadata.len() == buffer.len() as u64
         {
@@ -238,6 +405,7 @@ pub fn clean_directory(directory: &Path) -> Result<u64> {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::time::Duration;
 
     fn make_jar(path: &Path, entries: &[(&str, &[u8])]) {
         let file = std::fs::File::create(path).unwrap();
@@ -249,6 +417,26 @@ mod tests {
             writer.write_all(content).unwrap();
         }
         writer.finish().unwrap();
+    }
+
+    /// The time of the last change of a file.
+    fn modified_at(path: &Path) -> SystemTime {
+        std::fs::metadata(path).unwrap().modified().unwrap()
+    }
+
+    /// Set the time of the last change of a file.
+    fn set_modified(path: &Path, stamp: SystemTime) {
+        let file = std::fs::File::options().write(true).open(path).unwrap();
+        file.set_times(std::fs::FileTimes::new().set_modified(stamp))
+            .unwrap();
+    }
+
+    /// A layout that puts everything into one directory.
+    fn layout_in(directory: &Path) -> NativeLayout {
+        NativeLayout {
+            natives_directory: directory.join("natives"),
+            directories: BTreeMap::new(),
+        }
     }
 
     #[test]
@@ -430,5 +618,118 @@ mod tests {
         let removed = clean_directory(&target).unwrap();
         assert_eq!(removed, 8);
         assert!(!target.join("a.dll").exists());
+    }
+
+    #[test]
+    fn the_natives_are_not_unpacked_twice() {
+        let dir = tempfile::tempdir().unwrap();
+        let jar = dir.path().join("native.jar");
+        make_jar(&jar, &[("lwjgl.dll", b"first")]);
+
+        let layout = layout_in(dir.path());
+        let jars = [NativeJar {
+            path: jar.clone(),
+            family: NativeFamily::Lwjgl,
+        }];
+
+        let first = extract_all(&jars, &layout).unwrap();
+        assert_eq!(first.files.len(), 1);
+        assert!(!first.skipped);
+        assert!(layout.natives_directory.join(MARKER_NAME).is_file());
+
+        // The jar holds something else now: the same size, and the same
+        // time of the last change, so that nothing but a second unpacking
+        // could tell the difference. The file that was unpacked keeps
+        // its content — the jar was not read a second time.
+        let stamp = modified_at(&jar);
+        make_jar(&jar, &[("lwjgl.dll", b"other")]);
+        set_modified(&jar, stamp);
+
+        let second = extract_all(&jars, &layout).unwrap();
+        assert!(second.skipped, "the natives were unpacked a second time");
+        assert!(second.is_empty());
+
+        let extracted = layout.directory_for(NativeFamily::Lwjgl).join("lwjgl.dll");
+        assert_eq!(
+            std::fs::read(&extracted).unwrap(),
+            b"first",
+            "the jar was read a second time"
+        );
+    }
+
+    #[test]
+    fn a_changed_jar_is_unpacked_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let jar = dir.path().join("native.jar");
+        make_jar(&jar, &[("lwjgl.dll", b"first")]);
+
+        let layout = layout_in(dir.path());
+        let jars = [NativeJar {
+            path: jar.clone(),
+            family: NativeFamily::Lwjgl,
+        }];
+        extract_all(&jars, &layout).unwrap();
+
+        // The jar was replaced by another one: the time of the last
+        // change moved, and the natives have to be unpacked again.
+        //
+        // The new content is longer than the old one, because a file that
+        // is already there with the right size is kept — that is the rule
+        // of the unpacking itself, and it is not what this test is about.
+        let stamp = modified_at(&jar);
+        make_jar(&jar, &[("lwjgl.dll", b"other content")]);
+        set_modified(&jar, stamp + Duration::from_secs(1));
+
+        let second = extract_all(&jars, &layout).unwrap();
+        assert!(!second.skipped);
+        assert_eq!(second.files.len(), 1);
+
+        let extracted = layout.directory_for(NativeFamily::Lwjgl).join("lwjgl.dll");
+        assert_eq!(std::fs::read(&extracted).unwrap(), b"other content");
+    }
+
+    #[test]
+    fn a_native_that_is_gone_is_unpacked_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let jar = dir.path().join("native.jar");
+        make_jar(&jar, &[("lwjgl.dll", b"first")]);
+
+        let layout = layout_in(dir.path());
+        let jars = [NativeJar {
+            path: jar.clone(),
+            family: NativeFamily::Lwjgl,
+        }];
+        extract_all(&jars, &layout).unwrap();
+
+        // Somebody removed one of the natives: the game would start
+        // without it, so it has to be put back.
+        let extracted = layout.directory_for(NativeFamily::Lwjgl).join("lwjgl.dll");
+        std::fs::remove_file(&extracted).unwrap();
+
+        let second = extract_all(&jars, &layout).unwrap();
+        assert!(!second.skipped);
+        assert!(extracted.is_file());
+    }
+
+    #[test]
+    fn a_broken_marker_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let jar = dir.path().join("native.jar");
+        make_jar(&jar, &[("lwjgl.dll", b"first")]);
+
+        let layout = layout_in(dir.path());
+        let jars = [NativeJar {
+            path: jar.clone(),
+            family: NativeFamily::Lwjgl,
+        }];
+
+        // A marker that says something else is not a marker: the natives
+        // are unpacked, and the marker is written anew.
+        std::fs::create_dir_all(&layout.natives_directory).unwrap();
+        std::fs::write(layout.natives_directory.join(MARKER_NAME), b"nonsense\n").unwrap();
+
+        let report = extract_all(&jars, &layout).unwrap();
+        assert!(!report.skipped);
+        assert_eq!(report.files.len(), 1);
     }
 }

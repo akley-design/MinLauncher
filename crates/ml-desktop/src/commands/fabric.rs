@@ -199,6 +199,10 @@ pub trait Fetcher: Send + Sync {
     /// # Errors
     /// Fails when the address cannot be reached, or when the server
     /// answers with an error.
+    // The signature is not `async fn` on purpose: in a public trait that
+    // form does not say that the future is `Send`, and the whole point of
+    // the signature above is that it says it.
+    #[allow(clippy::manual_async_fn)]
     fn fetch(&self, url: &str) -> impl Future<Output = Result<Vec<u8>>> + Send;
 }
 
@@ -207,29 +211,27 @@ pub trait Fetcher: Send + Sync {
 pub struct NetworkFetcher;
 
 impl Fetcher for NetworkFetcher {
-    fn fetch(&self, url: &str) -> impl Future<Output = Result<Vec<u8>>> + Send {
-        async move {
-            let client = reqwest::Client::builder()
-                .user_agent(concat!("MinLauncher/", env!("CARGO_PKG_VERSION")))
-                .build()
-                .map_err(|e| Error::network("http client", e))?;
+    async fn fetch(&self, url: &str) -> Result<Vec<u8>> {
+        let client = reqwest::Client::builder()
+            .user_agent(concat!("MinLauncher/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .map_err(|e| Error::network("http client", e))?;
 
-            let response = client
-                .get(url)
-                .send()
-                .await
-                .map_err(|e| Error::network(url, e))?;
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| Error::network(url, e))?;
 
-            if !response.status().is_success() {
-                return Err(Error::HttpStatus {
-                    url: url.to_string(),
-                    status: response.status().as_u16(),
-                });
-            }
-
-            let bytes = response.bytes().await.map_err(|e| Error::network(url, e))?;
-            Ok(bytes.to_vec())
+        if !response.status().is_success() {
+            return Err(Error::HttpStatus {
+                url: url.to_string(),
+                status: response.status().as_u16(),
+            });
         }
+
+        let bytes = response.bytes().await.map_err(|e| Error::network(url, e))?;
+        Ok(bytes.to_vec())
     }
 }
 
@@ -359,13 +361,17 @@ pub async fn profile<F: Fetcher + ?Sized>(
 /// The libraries go into the same store the libraries of Mojang go into,
 /// so that the two never fight over the same path and nothing is
 /// downloaded twice.
+///
+/// The libraries of the loader are fetched once. When they are all on the
+/// disk there is nothing to fetch, and the engine — with its HTTP client
+/// — is not even built: a launch that waits for a server cannot promise
+/// five seconds.
 pub async fn download_libraries(
     paths: &AppPaths,
     platform: ml_core::Platform,
     profile: &FabricProfile,
 ) -> Result<()> {
     let layout = InstallLayout::new(paths.clone(), platform);
-    let downloader = ml_minecraft::Downloader::new()?;
 
     let tasks: Vec<ml_minecraft::DownloadTask> = profile
         .downloads()
@@ -378,6 +384,16 @@ pub async fn download_libraries(
     if tasks.is_empty() {
         return Ok(());
     }
+
+    // The engine reuses a file that is already there, so this is the
+    // same answer it would give — only without building a client and
+    // without a request that is never sent.
+    if tasks.iter().all(|task| task.target.is_file()) {
+        tracing::info!("the libraries of the loader are already on the disk");
+        return Ok(());
+    }
+
+    let downloader = ml_minecraft::Downloader::new()?;
 
     let result = downloader.download_all(tasks).await?;
     if !result.is_success() {
@@ -496,16 +512,16 @@ mod tests {
 
     impl Fetcher for Stub {
         fn fetch(&self, url: &str) -> impl Future<Output = Result<Vec<u8>>> + Send {
-            async move {
-                self.asked.lock().unwrap().push(url.to_string());
+            self.asked.lock().unwrap().push(url.to_string());
+            std::future::ready(
                 self.bodies
                     .get(url)
                     .cloned()
                     .ok_or_else(|| Error::HttpStatus {
                         url: url.to_string(),
                         status: 404,
-                    })
-            }
+                    }),
+            )
         }
     }
 
@@ -514,12 +530,10 @@ mod tests {
 
     impl Fetcher for Offline {
         fn fetch(&self, url: &str) -> impl Future<Output = Result<Vec<u8>>> + Send {
-            async move {
-                Err(Error::network(
-                    url,
-                    std::io::Error::other("the network is down"),
-                ))
-            }
+            std::future::ready(Err(Error::network(
+                url,
+                std::io::Error::other("the network is down"),
+            )))
         }
     }
 
@@ -634,6 +648,75 @@ mod tests {
                 .is_some()
         );
         assert_eq!(second.asked().len(), 1);
+    }
+
+    /// The address that answers nothing.
+    ///
+    /// The port 1 of the loopback refuses the connection at once, so a
+    /// test that must not fetch anything fails fast and does not touch the
+    /// network of the machine.
+    const NOWHERE: &str = "http://127.0.0.1:1/never";
+
+    /// A profile of a loader that needs one library.
+    ///
+    /// The library is served by an address that answers nothing: a test
+    /// that must not fetch anything fails at once, and a test that must
+    /// fetch something fails too — with an error that says what happened.
+    fn a_profile_with_one_library() -> FabricProfile {
+        let document = format!(
+            r#"{{
+              "id": "fabric-loader-0.19.5-1.21.4",
+              "inheritsFrom": "1.21.4",
+              "mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
+              "libraries": [
+                {{
+                  "name": "net.fabricmc:fabric-loader:0.19.5",
+                  "url": "{NOWHERE}"
+                }}
+              ]
+            }}"#
+        );
+        FabricProfile::parse(document.as_bytes()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn the_libraries_that_are_on_the_disk_are_not_fetched_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
+        let layout = InstallLayout::new(paths.clone(), ml_core::Platform::current());
+        let profile = a_profile_with_one_library();
+
+        // The library is on the disk: nothing is to be fetched.
+        let (relative, _, _) = profile.downloads()[0].clone();
+        let target = layout.library_path(&relative);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, b"the library is already here").unwrap();
+
+        // The address of the library answers nothing, so a fetch would
+        // fail: the answer of the call says that no fetch was made.
+        download_libraries(&paths, ml_core::Platform::current(), &profile)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"the library is already here".to_vec()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_library_that_is_missing_is_fetched() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
+        let profile = a_profile_with_one_library();
+
+        // The library is not on the disk, so it is fetched — and the
+        // address that answers nothing makes the fetch fail.
+        assert!(
+            download_libraries(&paths, ml_core::Platform::current(), &profile)
+                .await
+                .is_err()
+        );
     }
 
     #[test]

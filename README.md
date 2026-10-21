@@ -228,12 +228,12 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 538 |
+| Rust | 544 |
 | Java agent | 24 |
 | Java mod | 18 |
 | Interface | 84 |
 | Release scripts | 2 |
-| **Total** | **666** |
+| **Total** | **672** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners
@@ -307,6 +307,16 @@ version of the game that the project does not know at all is remembered too
 — so an old version of the game, which the loader does not support, does not
 cost a request on every launch. A network that is down is not an answer and
 is not remembered as one: the next launch tries again.
+
+The natives of a version are unpacked once as well. They used to be opened
+and read on *every* launch — twenty-one jars of a modern version, thousands
+of files between them — only to find out that the files were already there.
+The launcher now leaves a marker next to them that says which jars the files
+came from, and when the jars are the same and the files are still there, the
+jars are not opened at all. On this machine the preparation of a version went
+from **212 ms to 3 ms** because of that. The libraries of the loader are
+treated the same way: when they are all on the disk, the engine of the
+downloads is not even built.
 
 ## Releasing it
 
