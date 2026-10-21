@@ -16,7 +16,7 @@
 
 .PARAMETER Launcher
     The executable to measure. The default is the release build of the
-    launcher.
+    launcher, in the build directory of the project.
 
 .PARAMETER Runs
     How many times the launcher is started in the warm phase. The
@@ -73,7 +73,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $Launcher = (Join-Path $PSScriptRoot "..\target\release\minlaucher.exe"),
+    [string] $Launcher = "",
     [int]    $Runs = 30,
     [int]    $ColdRuns = 1,
     [int]    $GameWaitSeconds = 60,
@@ -87,12 +87,48 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# --------------------------------------------------------------------------
+# The launcher that is measured
+#
+# The build directory of this project is not always the one next to the
+# sources: `.cargo/config.toml` moves it to an ASCII path, because the
+# resource compiler of Windows reads the paths of the files it embeds
+# through the ANSI code page, and the home directory of this machine
+# has Cyrillic in it. The path of the release build is therefore read
+# from that file and not assumed.
+# --------------------------------------------------------------------------
+
+function Get-LauncherPath {
+    $root = Split-Path -Parent $PSScriptRoot
+    $config = Join-Path $root ".cargo\config.toml"
+    $directory = $null
+
+    if (Test-Path -LiteralPath $config) {
+        $line = Select-String -Path $config -Pattern '^\s*target-dir\s*=\s*"(?<path>[^"]+)"' |
+            Select-Object -First 1
+        if ($line) { $directory = $line.Matches[0].Groups["path"].Value }
+    }
+
+    if (-not $directory) { $directory = Join-Path $root "target" }
+
+    $path = Join-Path $directory "release\minlaucher.exe"
+    if (Test-Path -LiteralPath $path) { return $path }
+
+    return (Join-Path $root "target\release\minlaucher.exe")
+}
+
+
 # The numbers of the report are read by another program, so they are
 # written the same way everywhere.
 [System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::InvariantCulture
 
 $Launcher = [System.IO.Path]::GetFullPath($Launcher)
 $Out = [System.IO.Path]::GetFullPath($Out)
+
+if (-not $Launcher) {
+    $Launcher = Get-LauncherPath
+    Write-Host "the launcher was not named, the release build is used: $Launcher"
+}
 
 if (-not (Test-Path -LiteralPath $Launcher)) {
     Write-Error "there is no launcher at $Launcher"
@@ -475,6 +511,31 @@ function Get-TimestampMs {
     #>
     return [double]([System.Diagnostics.Stopwatch]::GetTimestamp() * 1000.0 /
         [System.Diagnostics.Stopwatch]::Frequency)
+}
+
+# The two clocks of the machine, tied together once.
+#
+# The counter of the performance is the clock of the measurement, and the
+# clock of the wall is the clock of the operating system: it is the one
+# that says when the process of the game was created. A moment of the
+# second is turned into a moment of the first with this anchor, and the
+# distance between them is a real distance.
+$script:ClockAnchorWall = [DateTime]::UtcNow
+$script:ClockAnchorMs = Get-TimestampMs
+
+function ConvertTo-WallTime {
+    <#
+        A moment of the counter of the performance as a moment of the
+        clock of the wall.
+
+        The counter of the performance is measured in milliseconds, and
+        the anchor is kept in the same unit: a moment of the clock of
+        the wall is the anchor plus the number of milliseconds that
+        passed since the anchor was taken.
+    #>
+    param([double] $Ms)
+
+    return $script:ClockAnchorWall.AddMilliseconds($Ms - $script:ClockAnchorMs)
 }
 
 function Get-JavaProcesses {
@@ -1375,6 +1436,21 @@ try {
             $appeared = $game.AppearedAt
             Add-Sample -Samples $samples -Metric "click_to_window" -Value ($appeared - $click)
             Write-Host ("  the game was ready in {0:N1} ms" -f ($appeared - $click))
+
+            # How much of that time was the launcher's and how much was
+            # the game's. The process of the game was created at a known
+            # moment of the clock of the wall, and the click was at a
+            # known moment of the counter of the performance: the anchor
+            # ties the two together.
+            try {
+                $started = $game.Process.StartTime.ToUniversalTime()
+                $clicked = ConvertTo-WallTime $click
+                $toProcess = ($started - $clicked).TotalMilliseconds
+                Add-Sample -Samples $samples -Metric "click_to_process" -Value $toProcess
+                Write-Host ("  the process of the game was started {0:N1} ms after the click" -f $toProcess)
+            } catch {
+                Write-Warning "  the moment the game was started is not known"
+            }
 
             Write-Host "  waiting $GameWaitSeconds seconds for the game to settle"
             Start-Sleep -Seconds $GameWaitSeconds
