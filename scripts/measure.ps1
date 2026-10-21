@@ -122,13 +122,13 @@ function Get-LauncherPath {
 # written the same way everywhere.
 [System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::InvariantCulture
 
-$Launcher = [System.IO.Path]::GetFullPath($Launcher)
-$Out = [System.IO.Path]::GetFullPath($Out)
-
 if (-not $Launcher) {
     $Launcher = Get-LauncherPath
     Write-Host "the launcher was not named, the release build is used: $Launcher"
 }
+
+$Launcher = [System.IO.Path]::GetFullPath($Launcher)
+$Out = [System.IO.Path]::GetFullPath($Out)
 
 if (-not (Test-Path -LiteralPath $Launcher)) {
     Write-Error "there is no launcher at $Launcher"

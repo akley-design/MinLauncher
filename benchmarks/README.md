@@ -23,8 +23,13 @@ the two. See below.
 ## How to take our measurement
 
 ```powershell
-# the launcher has to be built first
-cargo build --release
+# the launcher has to be built first.
+#
+# It is `npm run tauri:build` and not `cargo build --release`: the
+# command of Tauri turns on the feature `custom-protocol`, and without
+# it the binary opens the address `localhost:1420` in its window
+# instead of the interface that is built into it.
+npm run tauri:build
 
 # a quick check on three runs
 .\scripts\measure.ps1 -Runs 3 -Out benchmarks\ours.json

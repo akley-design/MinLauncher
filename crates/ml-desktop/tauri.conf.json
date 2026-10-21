@@ -4,9 +4,15 @@
   "version": "0.1.0",
   "identifier": "com.minlaucher.app",
   "build": {
-    "beforeDevCommand": "npm --prefix ../.. run dev",
+    "beforeDevCommand": {
+      "script": "npm run dev",
+      "cwd": "../.."
+    },
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm --prefix ../.. run build",
+    "beforeBuildCommand": {
+      "script": "npm run build",
+      "cwd": "../.."
+    },
     "frontendDist": "../../apps/ui/dist"
   },
   "plugins": {
