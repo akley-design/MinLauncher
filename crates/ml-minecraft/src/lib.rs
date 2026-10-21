@@ -66,13 +66,16 @@ pub mod manifest;
 pub mod mod_meta;
 pub mod version;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ml_core::{AppPaths, Error, Platform, Result};
 use ml_storage::{DownloadEntry, DownloadState, DownloadUpdate, Storage};
 
-pub use assets::{AssetIndex, AssetObject, AssetRoots, AssetStore};
+pub use assets::{
+    AssetIndex, AssetLayout, AssetObject, AssetRoots, AssetStore, LEGACY_ASSET_INDEX,
+    PRE_1_6_ASSET_INDEX, layout_of, plain_tree_root,
+};
 pub use download::{
     BatchResult, DownloadOutcome, DownloadProgress, DownloadTask, Downloader, ProgressCallback,
 };
@@ -351,6 +354,39 @@ impl MinecraftService {
     pub fn plan(&self, version: &VersionJson, asset_index: &AssetIndex) -> Result<InstallPlan> {
         let layout = InstallLayout::new(self.paths.clone(), self.platform);
         install::plan_install(version, &layout, asset_index)
+    }
+
+    /// The directory the plain tree of a version lives in.
+    ///
+    /// The versions before 1.7 read their assets from an ordinary tree
+    /// of files and not from the content-addressed store. The tree of
+    /// the versions from 1.6.4 to 1.7.2 is the directory the game is
+    /// given as `--assetsDir`, and the tree of the older ones is
+    /// `~/.minecraft/resources` — the only place the game of 1.5.2 reads
+    /// them from.
+    ///
+    /// There is no tree for a version that reads the store.
+    #[must_use]
+    pub fn plain_tree_root(&self, version: &VersionJson) -> Option<PathBuf> {
+        let id = version.asset_index_id()?;
+        assets::plain_tree_root(&self.paths, id)
+    }
+
+    /// Materialise the plain tree of a version.
+    ///
+    /// The tree is a view of the store: every file of the index is
+    /// linked into it, so that the game finds its sounds, its music and
+    /// its icons. A version that reads the store needs no tree, and the
+    /// number returned is then zero.
+    ///
+    /// # Errors
+    /// Fails if the tree cannot be written.
+    pub fn expand_plain_tree(&self, version: &VersionJson, index: &AssetIndex) -> Result<usize> {
+        let Some(root) = self.plain_tree_root(version) else {
+            return Ok(0);
+        };
+        let store = AssetStore::new(self.paths.clone());
+        store.expand_plain_tree(index, &root)
     }
 
     /// Download every file of a plan.

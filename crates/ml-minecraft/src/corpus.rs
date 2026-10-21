@@ -90,14 +90,10 @@ pub enum ArgumentFormat {
 /// The rule is taken from the document itself: a version that names an
 /// asset index is read from the content-addressed store, and a version
 /// that names none — the ones before 1.7 — is read from a plain tree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AssetLayout {
-    /// The content-addressed store, from 1.7 on.
-    ContentAddressed,
-    /// The plain tree, before 1.7.
-    Plain,
-}
+///
+/// The enum lives with the assets, because it is not only the corpus
+/// that has to know it: the launcher decides the same way.
+pub use crate::assets::AssetLayout;
 
 /// What the corpus knows about one version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

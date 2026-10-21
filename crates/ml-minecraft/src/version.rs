@@ -372,6 +372,20 @@ impl VersionJson {
         serde_json::from_slice(bytes).map_err(|e| Error::json("version_json", &e))
     }
 
+    /// The id of the asset index of the version.
+    ///
+    /// The modern documents carry it in `assetIndex`, and the old ones in
+    /// `assets`; both name the same thing, and the id is what decides
+    /// where the game reads its assets from.
+    #[must_use]
+    pub fn asset_index_id(&self) -> Option<&str> {
+        self.asset_index
+            .as_ref()
+            .map(|index| index.id.as_str())
+            .or(self.assets.as_deref())
+            .filter(|id| !id.is_empty())
+    }
+
     /// The game arguments the document names, with the values unresolved.
     ///
     /// The values still carry their placeholders. The versions before

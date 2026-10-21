@@ -52,6 +52,13 @@ pub struct Session {
     pub game_directory: PathBuf,
     /// The root of the content-addressed asset store.
     pub assets_root: PathBuf,
+    /// The directory the plain tree of the assets lives in.
+    ///
+    /// The versions before 1.7 do not read the content-addressed store:
+    /// they read an ordinary tree of files, and the launcher points them
+    /// at it with `--assetsDir`. It is empty for a version that reads
+    /// the store, and then `${game_assets}` is the store itself.
+    pub assets_tree: Option<PathBuf>,
     /// The id of the asset index.
     pub assets_index_name: String,
     /// The directory the client jar lives in.
@@ -105,7 +112,13 @@ impl Session {
         // that has none gets an empty object — `{}` is what the launcher
         // of Mojang writes, and an empty argument is not a JSON at all.
         map.insert("user_properties", "{}".to_string());
-        map.insert("game_assets", path_to_string(&self.assets_root));
+
+        // The versions before 1.7 read a plain tree of assets, and the
+        // ones from 1.7 on read the content-addressed store. Both are
+        // named `${game_assets}` in the documents of that time, so the
+        // tree — when there is one — is what the placeholder means.
+        let game_assets = self.assets_tree.as_ref().unwrap_or(&self.assets_root);
+        map.insert("game_assets", path_to_string(game_assets));
 
         // The session string of the versions before 1.7: the token of the
         // account, the kind of the session and the UUID of the player.

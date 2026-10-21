@@ -40,6 +40,14 @@ pub struct AppPaths {
     pub settings_path: PathBuf,
     /// Encrypted secrets file (access/refresh tokens).
     pub secrets_path: PathBuf,
+    /// The home directory of the user.
+    ///
+    /// The games before 1.6 read their resources from
+    /// `<home>/.minecraft/resources` and from nowhere else, so the
+    /// launcher has to know where that is. It is a field and not a call
+    /// to `dirs::home_dir()` where it is used, so that a test can point
+    /// it somewhere else.
+    pub home_dir: PathBuf,
 }
 
 impl AppPaths {
@@ -61,6 +69,7 @@ impl AppPaths {
             database_path: data_dir.join("minlaucher.db"),
             settings_path: data_dir.join("settings.json"),
             secrets_path: data_dir.join("secrets.json"),
+            home_dir: dirs::home_dir().unwrap_or_default(),
             data_dir,
             cache_dir,
         }
@@ -167,6 +176,32 @@ impl AppPaths {
         let hash = hash.to_ascii_lowercase();
         let (prefix, _) = hash.split_at(hash.len().min(2));
         self.assets_dir.join("objects").join(prefix).join(hash)
+    }
+
+    /// The directory of the plain tree of an asset index.
+    ///
+    /// The games before 1.7 read their assets from an ordinary tree of
+    /// files and not from the content-addressed store. The tree of every
+    /// index lives under `virtual/`, next to the store, so that the two
+    /// never mix and so that the store can be cleared without touching
+    /// the tree.
+    #[must_use]
+    pub fn asset_virtual_dir(&self, index_id: &str) -> PathBuf {
+        self.assets_dir
+            .join("virtual")
+            .join(sanitize_component(index_id))
+    }
+
+    /// The directory the resources of the games before 1.6 live in.
+    ///
+    /// The game of 1.5.2 does not read its resources from the directory
+    /// the launcher hands it: it reads them from `~/.minecraft`, which
+    /// it derives from the `user.home` of the JVM. This is the directory
+    /// it used to download its own resources to, and the only one it
+    /// reads them from.
+    #[must_use]
+    pub fn vanilla_resources_dir(&self) -> PathBuf {
+        self.home_dir.join(".minecraft").join("resources")
     }
 
     /// Path of one file inside a Java runtime.
@@ -292,6 +327,19 @@ pub fn safe_relative_path(input: &str) -> crate::Result<PathBuf> {
     }
 
     Ok(out)
+}
+
+/// The path of one file inside a plain tree of assets.
+///
+/// The key comes from the index of the assets, which is remote data, so
+/// it is validated the same way a path of a runtime is: it may not
+/// leave the tree it belongs to.
+///
+/// # Errors
+/// Fails with [`crate::Error::InvalidInput`] when the key is not a safe
+/// relative path.
+pub fn plain_object(root: &Path, key: &str) -> crate::Result<PathBuf> {
+    Ok(root.join(safe_relative_path(key)?))
 }
 
 /// Reduce an arbitrary string to something safe to use as a path segment.
@@ -479,6 +527,43 @@ mod tests {
         assert_eq!(
             p.agent_report("1.20.5"),
             PathBuf::from("/data/logs/agent/1.20.5.json")
+        );
+    }
+
+    #[test]
+    fn the_plain_tree_lives_next_to_the_store() {
+        // The tree of the games before 1.7 is a view of the store, and
+        // it lives under `virtual/` so that the two never mix.
+        let p = AppPaths::new("/data", "/cache");
+        assert_eq!(
+            p.asset_virtual_dir("legacy"),
+            PathBuf::from("/cache/assets/virtual/legacy")
+        );
+        assert_eq!(
+            plain_object(&p.asset_virtual_dir("legacy"), "lang/en_US.lang").unwrap(),
+            PathBuf::from("/cache/assets/virtual/legacy/lang/en_US.lang")
+        );
+    }
+
+    #[test]
+    fn a_key_may_not_leave_the_plain_tree() {
+        // The key comes from the index of the assets, which is remote
+        // data.
+        let p = AppPaths::new("/data", "/cache");
+        let root = p.asset_virtual_dir("legacy");
+        assert!(plain_object(&root, "../../evil").is_err());
+        assert!(plain_object(&root, "/etc/passwd").is_err());
+    }
+
+    #[test]
+    fn the_resources_of_the_old_games_live_in_the_home_directory() {
+        // The game of 1.5.2 reads its resources from `~/.minecraft` and
+        // from nowhere else.
+        let mut p = AppPaths::new("/data", "/cache");
+        p.home_dir = PathBuf::from("/home/player");
+        assert_eq!(
+            p.vanilla_resources_dir(),
+            PathBuf::from("/home/player/.minecraft/resources")
         );
     }
 

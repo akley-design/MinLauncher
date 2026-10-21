@@ -740,6 +740,14 @@ fn build_session(
         version_type: meta.kind.as_manifest_str().to_string(),
         game_directory,
         assets_root: paths.assets_dir.clone(),
+        // The versions before 1.7 read a plain tree of assets instead of
+        // the store. The tree of the versions from 1.6.4 to 1.7.2 is the
+        // directory the game is given as `--assetsDir`, and the tree of
+        // the older ones is `~/.minecraft/resources`.
+        assets_tree: meta
+            .asset_index_id
+            .as_deref()
+            .and_then(|id| ml_minecraft::plain_tree_root(paths, id)),
         assets_index_name: meta.asset_index_id.clone().unwrap_or_default(),
         library_directory: library_directory(paths),
         natives_directory: paths.version_dir(&meta.id).join("natives"),

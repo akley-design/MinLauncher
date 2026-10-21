@@ -482,6 +482,21 @@ async fn install(
         ));
     }
 
+    // --- the plain tree --------------------------------------------------
+    //
+    // The versions before 1.7 read their assets from an ordinary tree
+    // of files, and the store of the launcher is content-addressed: the
+    // tree is materialised from the store, so that the game finds its
+    // sounds, its music and its icons.
+    //
+    // A failure here is not a failure of the installation: the files are
+    // on the disk, and the game starts either way — it is only silent.
+    match service.expand_plain_tree(&version, &asset_index) {
+        Ok(0) => {}
+        Ok(files) => tracing::info!("the assets of {version_id} are a tree of {files} files"),
+        Err(error) => tracing::warn!("cannot lay out the assets of {version_id}: {error}"),
+    }
+
     // --- what is stored -------------------------------------------------
     store_the_install(state, &version, &version_id, &plan, &asset_index)?;
 
@@ -686,12 +701,13 @@ fn store_the_install(
 
     // The asset index, so that the launcher knows which objects the
     // version needs without reading the document again.
+    //
+    // The old documents name their index in `assets` and not in
+    // `assetIndex`, and the id is what says where the game reads its
+    // assets from — so it is taken from wherever the document has it.
     let index_record = ml_storage::AssetIndex {
         version_id: version_id.to_string(),
-        index_id: version
-            .asset_index
-            .as_ref()
-            .map_or_else(String::new, |index| index.id.clone()),
+        index_id: version.asset_index_id().unwrap_or_default().to_string(),
         sha1: version
             .asset_index
             .as_ref()
@@ -722,7 +738,7 @@ fn store_the_install(
             .map(|java| java.component.clone()),
         java_major: version.java_version.as_ref().map(|java| java.major_version),
         main_class: version.main_class.clone(),
-        asset_index_id: version.asset_index.as_ref().map(|index| index.id.clone()),
+        asset_index_id: version.asset_index_id().map(ToString::to_string),
         asset_index_sha1: version.asset_index.as_ref().map(|index| index.sha1.clone()),
         asset_index_size: version.asset_index.as_ref().map(|index| index.size),
         client_sha1: version
@@ -936,6 +952,33 @@ mod tests {
         assert_eq!(stored.index_id, "34");
         assert_eq!(stored.object_count, 1);
         assert_eq!(stored.sha1, "e787e8afd149a4cefa89d341b91f5aed8f5d93a0");
+    }
+
+    #[test]
+    fn the_old_versions_remember_the_index_of_their_assets() {
+        // The documents before 1.7 name their index in `assets` and not
+        // in `assetIndex`. The id is what says where the game reads its
+        // assets from, so it has to be remembered all the same.
+        const OLD: &str = r#"{
+            "id": "1.5.2",
+            "type": "release",
+            "mainClass": "net.minecraft.launchwrapper.Launch",
+            "releaseTime": "2013-04-25T15:45:00+00:00",
+            "assets": "pre-1.6"
+        }"#;
+
+        let (_dir, state) = state();
+        let version = ml_minecraft::VersionJson::parse(OLD.as_bytes()).unwrap();
+        let index = ml_minecraft::AssetIndex::parse(ASSETS.as_bytes()).unwrap();
+        let plan = ml_minecraft::InstallPlan::default();
+
+        store_the_install(&state, &version, "1.5.2", &plan, &index).unwrap();
+
+        let meta = state.storage().versions().get("1.5.2").unwrap().unwrap();
+        assert_eq!(meta.asset_index_id.as_deref(), Some("pre-1.6"));
+
+        let stored = state.storage().assets().index("1.5.2").unwrap().unwrap();
+        assert_eq!(stored.index_id, "pre-1.6");
     }
 
     #[test]

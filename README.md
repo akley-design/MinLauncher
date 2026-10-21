@@ -228,12 +228,12 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 516 |
+| Rust | 531 |
 | Java agent | 24 |
 | Java mod | 18 |
 | Interface | 68 |
 | Release scripts | 2 |
-| **Total** | **628** |
+| **Total** | **643** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners
@@ -273,6 +273,13 @@ nothing about where it came from. It also asserts that every version gets
 the game arguments its own document prescribes, and that the game jar is on
 the classpath — the 349 documents from before 1.13 name neither, so the
 launcher supplies them.
+
+The assets are a contract of their own. The 791 versions from 1.7 on read
+the content-addressed store, and the **129** versions before them read an
+ordinary tree of files. The launcher decides which by the id of the index
+the document names, lays the tree out where the game of that age reads it
+from, and points `--assetsDir` at it — the test walks all 920 versions and
+asserts that every one of them is pointed at the assets it actually reads.
 
 ## Releasing it
 

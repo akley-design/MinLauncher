@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use ml_core::{FeatureSet, Platform};
+use ml_core::{AppPaths, FeatureSet, Platform};
 use ml_launch::args::Session;
 use ml_launch::command::{LaunchRequest, build_command};
 use ml_launch::jvm::{JavaInstallation, JavaOrigin};
@@ -49,8 +49,16 @@ fn document_of(id: &str) -> VersionJson {
         .unwrap_or_else(|error| panic!("{} does not parse: {error}", path.display()))
 }
 
+/// The paths of the contract.
+fn paths() -> AppPaths {
+    let mut paths = AppPaths::new("C:/data", "C:/cache");
+    paths.home_dir = PathBuf::from("C:/home/player");
+    paths
+}
+
 /// The session of the contract: every value the launcher can give.
-fn session(version: &str) -> Session {
+fn session(document: &VersionJson) -> Session {
+    let paths = paths();
     Session {
         player_name: "Steve".into(),
         uuid: "1234-5678-9abc-def0-1234-56789abc0000".into(),
@@ -59,11 +67,14 @@ fn session(version: &str) -> Session {
         access_token: "token".into(),
         xuid: "1234567890".into(),
         client_id: "client".into(),
-        version_name: version.into(),
+        version_name: document.id.clone(),
         version_type: "release".into(),
         game_directory: PathBuf::from("C:/games/mc"),
-        assets_root: PathBuf::from("C:/cache/assets"),
-        assets_index_name: "34".into(),
+        assets_root: paths.assets_dir.clone(),
+        assets_tree: document
+            .asset_index_id()
+            .and_then(|id| ml_minecraft::plain_tree_root(&paths, id)),
+        assets_index_name: document.asset_index_id().unwrap_or_default().to_string(),
         library_directory: PathBuf::from("C:/cache/libraries"),
         natives_directory: PathBuf::from("C:/games/mc/natives"),
         launcher_name: "MinLauncher".into(),
@@ -86,7 +97,7 @@ fn request(document: &VersionJson, platform: Platform) -> LaunchRequest {
             version: "25.0.1".into(),
             origin: JavaOrigin::Mojang,
         },
-        session: session(&document.id),
+        session: session(document),
         client_jar: PathBuf::from("C:/versions/client.jar"),
         library_directory: PathBuf::from("C:/cache/libraries"),
         extra_jvm_args: Vec::new(),
@@ -275,6 +286,54 @@ fn every_version_puts_the_game_on_the_classpath() {
         assert!(
             command.arguments[index + 1].contains("client.jar"),
             "{} has no game jar on the classpath",
+            entry.census.id
+        );
+    }
+}
+
+#[test]
+fn every_version_is_pointed_at_the_assets_it_reads() {
+    // The versions from 1.7 on read the content-addressed store, and
+    // the versions before them read an ordinary tree of files. The
+    // `--assetsDir` of the command has to say which one it is.
+    let platform = corpus::reference_platform();
+    let paths = paths();
+
+    for entry in corpus().versions {
+        let document = document_of(&entry.census.id);
+        let command = build_command(
+            &request(&document, platform),
+            platform,
+            &features(),
+            &document.kind,
+        )
+        .unwrap_or_else(|error| panic!("{} does not build: {error}", entry.census.id));
+
+        // The 17 versions that name no assets at all — the oldest
+        // snapshots and the ones of Classic — are given nothing.
+        let Some(index) = command
+            .arguments
+            .iter()
+            .position(|argument| argument == "--assetsDir")
+        else {
+            continue;
+        };
+
+        let expected = match entry.census.assets {
+            ml_minecraft::corpus::AssetLayout::ContentAddressed => paths.assets_dir.clone(),
+            ml_minecraft::corpus::AssetLayout::Plain => {
+                let id = document
+                    .asset_index_id()
+                    .unwrap_or_else(|| panic!("{} names no assets", entry.census.id));
+                ml_minecraft::plain_tree_root(&paths, id)
+                    .unwrap_or_else(|| panic!("{} has no tree", entry.census.id))
+            }
+        };
+
+        assert_eq!(
+            command.arguments[index + 1],
+            ml_launch::args::path_to_string(&expected),
+            "{} is pointed at the wrong assets",
             entry.census.id
         );
     }

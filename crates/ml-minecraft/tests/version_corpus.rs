@@ -24,9 +24,11 @@ use std::path::{Path, PathBuf};
 
 use futures::TryStreamExt;
 use futures::stream::StreamExt;
+use ml_core::AppPaths;
 use ml_minecraft::corpus::{self, ArgumentFormat, AssetLayout, Corpus};
 use ml_minecraft::manifest::{MANIFEST_URL, parse_manifest};
 use ml_minecraft::version::VersionJson;
+use ml_minecraft::{PRE_1_6_ASSET_INDEX, layout_of, plain_tree_root};
 use serde_json::Value;
 
 /// How many versions the corpus holds.
@@ -349,6 +351,82 @@ fn the_census_of_every_version_matches_the_manifest() {
         assert_eq!(
             census, entry.census,
             "the census of {} does not match the manifest",
+            entry.census.id
+        );
+    }
+}
+
+#[test]
+fn the_layout_of_every_version_is_decided_by_its_index() {
+    // The launcher decides the layout of the assets by the id of the
+    // index, and the census says what the layout of a version is. They
+    // have to agree on every one of the 920 versions: a version that is
+    // read from the store but gets a tree — or the other way round —
+    // starts without its sounds.
+    let paths = AppPaths::new("/data", "/cache");
+    let mut plain = 0;
+    let mut addressed = 0;
+
+    for entry in corpus().versions {
+        let document = document_of(&entry.census.id);
+        let id = document
+            .asset_index_id()
+            .unwrap_or_else(|| panic!("{} names no assets", entry.census.id));
+
+        assert_eq!(
+            layout_of(id),
+            entry.census.assets,
+            "{} reads its assets differently",
+            entry.census.id
+        );
+
+        // The tree of a version that reads the store is not built, and
+        // the tree of a version that reads a plain tree is.
+        assert_eq!(
+            plain_tree_root(&paths, id).is_some(),
+            entry.census.assets == AssetLayout::Plain,
+            "{} gets the wrong tree",
+            entry.census.id
+        );
+
+        match entry.census.assets {
+            AssetLayout::Plain => plain += 1,
+            AssetLayout::ContentAddressed => addressed += 1,
+        }
+    }
+
+    assert_eq!(plain, 129, "the versions that read a plain tree");
+    assert_eq!(addressed, 791, "the versions that read the store");
+}
+
+#[test]
+fn the_two_plain_trees_live_where_the_games_read_them() {
+    // The tree of the games from 1.6.4 to 1.7.2 is the directory the
+    // game is given as `--assetsDir`, and the tree of the older ones is
+    // `~/.minecraft/resources`: the game of 1.5.2 reads them from there
+    // and from nowhere else.
+    let mut paths = AppPaths::new("/data", "/cache");
+    paths.home_dir = PathBuf::from("/home/player");
+
+    for entry in corpus().versions {
+        if entry.census.assets != AssetLayout::Plain {
+            continue;
+        }
+
+        let document = document_of(&entry.census.id);
+        let id = document
+            .asset_index_id()
+            .unwrap_or_else(|| panic!("{} names no assets", entry.census.id));
+        let root = plain_tree_root(&paths, id).unwrap();
+
+        let expected = if id == PRE_1_6_ASSET_INDEX {
+            PathBuf::from("/home/player/.minecraft/resources")
+        } else {
+            PathBuf::from("/cache/assets/virtual/legacy")
+        };
+        assert_eq!(
+            root, expected,
+            "{} gets its tree elsewhere",
             entry.census.id
         );
     }
