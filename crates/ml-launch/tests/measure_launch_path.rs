@@ -127,21 +127,25 @@ fn the_launch_path_is_measured() {
     let home = paths.jre_dir_for(RUNTIME);
     let executable = home.join("bin").join("java.exe");
     if executable.is_file() {
+        // The way the launcher finds the version now: the file first, the
+        // process only when the file says nothing.
+        for round in 1..=5 {
+            let started = Instant::now();
+            let _ = ml_launch::jvm::version_of(&home, &executable).unwrap();
+            println!(
+                "finding the version of the java took {} µs (round {round})",
+                started.elapsed().as_micros()
+            );
+        }
+
+        // What it costs when the file is not there and the Java has to be
+        // started: this is the price the launcher no longer pays.
         for round in 1..=5 {
             let started = Instant::now();
             let _ = ml_launch::jvm::probe_version(&executable).unwrap();
             println!(
                 "asking java for its version took {} ms (round {round})",
                 started.elapsed().as_millis()
-            );
-        }
-
-        for round in 1..=5 {
-            let started = Instant::now();
-            let _ = ml_launch::jvm::read_release_file(&home).unwrap();
-            println!(
-                "reading the release file took {} µs (round {round})",
-                started.elapsed().as_micros()
             );
         }
     }

@@ -228,12 +228,12 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 544 |
+| Rust | 547 |
 | Java agent | 24 |
 | Java mod | 18 |
 | Interface | 84 |
 | Release scripts | 2 |
-| **Total** | **672** |
+| **Total** | **675** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners
@@ -317,6 +317,14 @@ jars are not opened at all. On this machine the preparation of a version went
 from **212 ms to 3 ms** because of that. The libraries of the loader are
 treated the same way: when they are all on the disk, the engine of the
 downloads is not even built.
+
+The launcher does not start Java to ask it for its version either. That
+answer is written down next to the Java itself, in the file `release`, and
+reading it costs **75–323 µs** against the **137–159 ms** of starting the
+process. It used to start Java *for every candidate* it looked at, on every
+launch, because the version is what decides whether a candidate is new
+enough for the game. Now the Java is started only where there is no such
+file to read — a Java built by hand, an old distribution.
 
 ## Releasing it
 

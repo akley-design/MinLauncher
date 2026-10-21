@@ -354,7 +354,7 @@ fn installation_at(
     if !executable.is_file() {
         return None;
     }
-    let (major, version) = probe_version(&executable).ok()?;
+    let (major, version) = version_of(home, &executable)?;
     if major < required_major {
         return None;
     }
@@ -367,6 +367,26 @@ fn installation_at(
         version,
         origin,
     })
+}
+
+/// The version of a Java installation, without starting it when it can be
+/// avoided.
+///
+/// Every modern Java installation ships a `release` file that says its
+/// version in one line, and reading that line costs about a hundredth of
+/// a millisecond. Starting the Java to ask it costs a hundred and fifty
+/// milliseconds — and this is asked of **every** candidate, on **every**
+/// launch, because a version needs a Java that is new enough and the
+/// candidates are compared by their version.
+///
+/// The Java is started only when the file is missing or says nothing
+/// that looks like a version.
+#[must_use]
+pub fn version_of(home: &Path, executable: &Path) -> Option<(u32, String)> {
+    if let Some(version) = read_release_file(home) {
+        return Some(version);
+    }
+    probe_version(executable).ok()
 }
 
 /// Describe a Java installation without running it.
@@ -462,6 +482,50 @@ mod tests {
     fn a_missing_release_file_is_reported() {
         let dir = tempfile::tempdir().unwrap();
         assert!(read_release_file(dir.path()).is_none());
+    }
+
+    /// A Java installation in a temporary directory.
+    ///
+    /// The `java` executable is a file that cannot be run: a test that
+    /// needed a working Java would need a Java.
+    fn a_java_that_cannot_run(release: Option<&str>) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join(java_executable_name()), b"this is not a java").unwrap();
+        if let Some(release) = release {
+            std::fs::write(dir.path().join("release"), release).unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn the_version_is_read_without_starting_the_java() {
+        let dir = a_java_that_cannot_run(Some("JAVA_VERSION=\"21.0.5\"\nOS_NAME=\"Windows\"\n"));
+
+        // The Java cannot be run, so the version could only have come
+        // from the file next to it — which means it was not started.
+        let (major, version) = version_of(dir.path(), &java_in_home(dir.path())).unwrap();
+        assert_eq!(major, 21);
+        assert_eq!(version, "21.0.5");
+    }
+
+    #[test]
+    fn a_java_without_the_file_has_to_be_started() {
+        let dir = a_java_that_cannot_run(None);
+
+        // There is no file to read, so the Java itself has to answer — and
+        // it cannot, so there is no version.
+        assert!(version_of(dir.path(), &java_in_home(dir.path())).is_none());
+    }
+
+    #[test]
+    fn a_broken_release_file_falls_back_to_the_java() {
+        let dir = a_java_that_cannot_run(Some("OS_NAME=\"Windows\"\n"));
+
+        // The file says nothing about the version, so the Java has to be
+        // asked — and it cannot answer.
+        assert!(version_of(dir.path(), &java_in_home(dir.path())).is_none());
     }
 
     #[test]
