@@ -228,12 +228,12 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 531 |
+| Rust | 534 |
 | Java agent | 24 |
 | Java mod | 18 |
-| Interface | 72 |
+| Interface | 74 |
 | Release scripts | 2 |
-| **Total** | **647** |
+| **Total** | **652** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners
@@ -286,6 +286,11 @@ screen «Играть» offers the installed versions in a list, and a version t
 is installed has a button «Играть» in its row on the screen «Версии» —
 the launcher starts the version that was picked, and the tests assert which
 one reaches the backend.
+
+An installation is thousands of files, so the screen «Загрузки» shows one
+row per **task** — the version that is being installed, or the runtime —
+and the files of the task are behind a click. Installing 26.3 gives one
+row, not four thousand.
 
 ## Releasing it
 

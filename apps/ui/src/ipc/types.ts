@@ -210,6 +210,14 @@ export interface DownloadEntry {
   error: string | null;
   /** When the entry was last touched, ISO-8601. */
   updated_at: string;
+  /**
+   * The task the entry belongs to — the version that was being
+   * installed, or the runtime.
+   *
+   * It is `null` for the entries that were written before the queue knew
+   * about tasks.
+   */
+  task: string | null;
 }
 
 /** One stored measurement. */

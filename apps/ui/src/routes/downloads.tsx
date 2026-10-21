@@ -8,10 +8,15 @@
  * The screen never guesses: everything it shows is what the backend
  * wrote into the database, and every button it offers is a command that
  * exists on the other side of the IPC.
+ *
+ * An installation is thousands of files, so the screen shows one row per
+ * **task** — the version that is being installed, or the runtime — and
+ * the files of the task are behind a click. A player who installed
+ * 26.3 sees one row, not four thousand.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { Button } from "../components/Button";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
@@ -25,6 +30,18 @@ import {
 import { queryKeys } from "../ipc/queries";
 import type { DownloadEntry, DownloadState } from "../ipc/types";
 import { formatBytes } from "../lib/format";
+
+/** One task of the queue, with the files that belong to it. */
+interface TaskGroup {
+  /** The name of the task, or an empty string for the entries without one. */
+  name: string;
+  /** The files of the task. */
+  files: DownloadEntry[];
+  /** The state of the task: the worst state of its files. */
+  state: DownloadState;
+  /** How many bytes the task moved. */
+  bytes: number;
+}
 
 /** The screen of the download queue. */
 export function DownloadsRoute() {
@@ -56,9 +73,24 @@ export function DownloadsRoute() {
     onSuccess: refresh,
   });
 
+  // The tasks that are opened. A task is opened when the player asks for
+  // its files, and closed when the player asks again.
+  const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  const toggle = (name: string) =>
+    setOpened((before) => {
+      const after = new Set(before);
+      if (after.has(name)) {
+        after.delete(name);
+      } else {
+        after.add(name);
+      }
+      return after;
+    });
+
   const entries = useMemo(() => downloads.data ?? [], [downloads.data]);
   const failed = entries.filter((entry) => entry.state === "failed");
   const completed = entries.filter((entry) => entry.state === "completed");
+  const groups = useMemo(() => groupByTask(entries), [entries]);
 
   if (downloads.isPending) {
     return <LoadingState label="Читаем очередь загрузок…" />;
@@ -74,7 +106,7 @@ export function DownloadsRoute() {
         <div>
           <h1 className="screen__title">Загрузки</h1>
           <p className="screen__subtitle">
-            {entries.length} записей, из них неудачных — {failed.length}
+            {groups.length} задач, {entries.length} записей, из них неудачных — {failed.length}
           </p>
         </div>
         <div className="screen__actions">
@@ -115,36 +147,82 @@ export function DownloadsRoute() {
           <table className="table">
             <thead>
               <tr>
-                <th>Файл</th>
+                <th>Задача</th>
                 <th>Состояние</th>
+                <th>Файлов</th>
                 <th>Размер</th>
-                <th>Попытки</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => (
-                <tr key={entry.url}>
-                  <td className="mono selectable">{nameOf(entry)}</td>
-                  <td>
-                    <span className={badgeOf(entry.state)}>{STATE_LABELS[entry.state]}</span>
-                  </td>
-                  <td className="mono">{formatBytes(entry.bytes_done)}</td>
-                  <td className="mono">{entry.attempts}</td>
-                  <td>
-                    <div className="table__actions">
-                      {entry.state === "failed" ? (
-                        <Button
-                          variant="primary"
-                          busy={retry.isPending && retry.variables === entry.url}
-                          onClick={() => retry.mutate(entry.url)}
-                        >
-                          Повторить
-                        </Button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
+              {groups.map((group) => (
+                <Fragment key={group.name}>
+                  <tr>
+                    <td>
+                      <Button variant="ghost" onClick={() => toggle(group.name)}>
+                        {opened.has(group.name) ? "▾" : "▸"} {taskName(group.name)}
+                      </Button>
+                    </td>
+                    <td>
+                      <span className={badgeOf(group.state)}>{STATE_LABELS[group.state]}</span>
+                    </td>
+                    <td className="mono">{group.files.length}</td>
+                    <td className="mono">{formatBytes(group.bytes)}</td>
+                    <td>
+                      <div className="table__actions">
+                        {group.state === "failed" ? (
+                          <span className="badge badge--warning">
+                            {group.files.filter((file) => file.state === "failed").length} неудачных
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                  {opened.has(group.name) ? (
+                    <tr>
+                      <td colSpan={5}>
+                        <table className="table">
+                          <thead>
+                            <tr>
+                              <th>Файл</th>
+                              <th>Состояние</th>
+                              <th>Размер</th>
+                              <th>Попытки</th>
+                              <th />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.files.map((file) => (
+                              <tr key={file.url}>
+                                <td className="mono selectable">{nameOf(file)}</td>
+                                <td>
+                                  <span className={badgeOf(file.state)}>
+                                    {STATE_LABELS[file.state]}
+                                  </span>
+                                </td>
+                                <td className="mono">{formatBytes(file.bytes_done)}</td>
+                                <td className="mono">{file.attempts}</td>
+                                <td>
+                                  <div className="table__actions">
+                                    {file.state === "failed" ? (
+                                      <Button
+                                        variant="primary"
+                                        busy={retry.isPending && retry.variables === file.url}
+                                        onClick={() => retry.mutate(file.url)}
+                                      >
+                                        Повторить
+                                      </Button>
+                                    ) : null}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -154,13 +232,50 @@ export function DownloadsRoute() {
       <section className="card">
         <div className="card__title">Что такое очередь</div>
         <p className="field__hint">
-          Каждая запись — один файл, который лаунчер когда-то качал. Неудачную можно перекачать ещё
-          раз: файл пишется рядом с нужным местом и переносится на место только тогда, когда его
-          целиком скачали и сверили с контрольной суммой.
+          Каждая задача — одна установка: версия или среда Java. Под ней лежат файлы, которые
+          лаунчер для неё качал. Неудачный файл можно перекачать ещё раз: файл пишется рядом с
+          нужным местом и переносится на место только тогда, когда его целиком скачали и сверили с
+          контрольной суммой.
         </p>
       </section>
     </div>
   );
+}
+
+/**
+ * Group the entries of the queue by the task they belong to.
+ *
+ * The order of the tasks is the order of their first entry, so that the
+ * queue keeps the order in which the work was started.
+ */
+function groupByTask(entries: DownloadEntry[]): TaskGroup[] {
+  const groups = new Map<string, TaskGroup>();
+
+  for (const entry of entries) {
+    const name = entry.task ?? "";
+    const group = groups.get(name);
+    if (group) {
+      group.files.push(entry);
+      group.bytes += entry.bytes_done;
+      if (RANK[entry.state] > RANK[group.state]) {
+        group.state = entry.state;
+      }
+    } else {
+      groups.set(name, {
+        name,
+        files: [entry],
+        state: entry.state,
+        bytes: entry.bytes_done,
+      });
+    }
+  }
+
+  return [...groups.values()];
+}
+
+/** The name of a task, for a player to read. */
+function taskName(name: string): string {
+  return name || "Без задачи";
 }
 
 /** The name of a file, without the whole path to it. */
@@ -190,4 +305,17 @@ const STATE_LABELS: Record<DownloadState, string> = {
   downloading: "Качается",
   completed: "Готово",
   failed: "Ошибка",
+};
+
+/**
+ * How much a state says about the task, from the least to the most.
+ *
+ * A task with a failed file is a failed task, even when the rest of its
+ * files are done.
+ */
+const RANK: Record<DownloadState, number> = {
+  completed: 0,
+  queued: 1,
+  downloading: 2,
+  failed: 3,
 };

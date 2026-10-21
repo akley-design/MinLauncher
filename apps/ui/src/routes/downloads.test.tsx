@@ -3,9 +3,10 @@
  *
  * The screen is a view of the queue and nothing else: it shows what the
  * backend wrote and it sends the commands the player asked for. These
- * tests hold that line — the table shows the entries, the button of a
- * failed entry asks the backend to fetch it again, and the clearing
- * buttons ask to clear the right half of the queue.
+ * tests hold that line — the table shows one row per task, the files of
+ * a task are behind a click, the button of a failed file asks the
+ * backend to fetch it again, and the clearing buttons ask to clear the
+ * right half of the queue.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -46,6 +47,7 @@ function entry(overrides: Partial<DownloadEntry> = {}): DownloadEntry {
     attempts: 1,
     error: null,
     updated_at: "2026-10-20T10:00:00Z",
+    task: "26.3",
     ...overrides,
   };
 }
@@ -63,6 +65,11 @@ function renderScreen() {
   );
 }
 
+/** Open the files of a task. */
+async function openTask(name: string) {
+  await userEvent.click(await screen.findByRole("button", { name: new RegExp(name) }));
+}
+
 describe("the screen of the download queue", () => {
   beforeEach(() => {
     listDownloads.mockReset();
@@ -73,34 +80,65 @@ describe("the screen of the download queue", () => {
     clearFailedDownloads.mockResolvedValue(1);
   });
 
-  it("shows the entries of the queue", async () => {
+  it("shows one row per task, and not one row per file", async () => {
     listDownloads.mockResolvedValue([
-      entry(),
+      entry({ url: "https://example.invalid/a.jar", target_path: "C:/mc/a.jar" }),
+      entry({ url: "https://example.invalid/b.jar", target_path: "C:/mc/b.jar" }),
       entry({
-        url: "https://example.invalid/broken.jar",
-        target_path: "C:/Users/player/.minecraft/broken.jar",
-        state: "failed",
-        bytes_done: 0,
-        attempts: 4,
-        error: "the network is down",
+        url: "https://example.invalid/runtime.jar",
+        target_path: "C:/mc/runtime.jar",
+        task: "runtime:java-runtime-epsilon",
       }),
     ]);
     renderScreen();
 
-    expect(await screen.findByText("library.jar")).toBeInTheDocument();
-    expect(screen.getByText("broken.jar")).toBeInTheDocument();
-    expect(screen.getByText("Готово")).toBeInTheDocument();
-    expect(screen.getByText("Ошибка")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /26\.3/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /runtime:java-runtime-epsilon/ }),
+    ).toBeInTheDocument();
+
+    // The files of the task are behind the row, not in the table.
+    expect(screen.queryByText("a.jar")).not.toBeInTheDocument();
+  });
+
+  it("opens the files of a task on a click", async () => {
+    listDownloads.mockResolvedValue([
+      entry({ url: "https://example.invalid/a.jar", target_path: "C:/mc/a.jar" }),
+      entry({ url: "https://example.invalid/b.jar", target_path: "C:/mc/b.jar" }),
+    ]);
+    renderScreen();
+
+    await openTask("26\\.3");
+
+    expect(await screen.findByText("a.jar")).toBeInTheDocument();
+    expect(screen.getByText("b.jar")).toBeInTheDocument();
+  });
+
+  it("collapses four thousand files of one task into one row", async () => {
+    listDownloads.mockResolvedValue(
+      Array.from({ length: 4000 }, (_unused, index) =>
+        entry({
+          url: `https://example.invalid/file-${index}.jar`,
+          target_path: `C:/mc/file-${index}.jar`,
+        }),
+      ),
+    );
+    renderScreen();
+
+    const rows = await screen.findAllByRole("row");
+    // A header row and one row for the task.
+    expect(rows).toHaveLength(2);
+    expect(screen.getByText("4000")).toBeInTheDocument();
   });
 
   it("shows the reason of a failure", async () => {
     listDownloads.mockResolvedValue([entry({ state: "failed", error: "the network is down" })]);
     renderScreen();
 
-    expect(await screen.findByText("1 записей, из них неудачных — 1")).toBeInTheDocument();
+    expect(await screen.findByText("1 задач, 1 записей, из них неудачных — 1")).toBeInTheDocument();
   });
 
-  it("asks the backend to fetch a failed entry again", async () => {
+  it("asks the backend to fetch a failed file again", async () => {
     const failed = entry({
       url: "https://example.invalid/broken.jar",
       target_path: "C:/Users/player/.minecraft/broken.jar",
@@ -111,15 +149,18 @@ describe("the screen of the download queue", () => {
 
     renderScreen();
 
+    await openTask("26\\.3");
     await userEvent.click(await screen.findByRole("button", { name: "Повторить" }));
 
     await waitFor(() => expect(retryDownload).toHaveBeenCalledTimes(1));
     expect(retryDownload.mock.calls[0]?.[0]).toBe("https://example.invalid/broken.jar");
   });
 
-  it("offers a retry only to the entries that failed", async () => {
+  it("offers a retry only to the files that failed", async () => {
     listDownloads.mockResolvedValue([entry()]);
     renderScreen();
+
+    await openTask("26\\.3");
 
     expect(await screen.findByText("library.jar")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Повторить" })).not.toBeInTheDocument();

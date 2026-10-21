@@ -257,4 +257,56 @@ mod tests {
             .unwrap();
         assert_eq!(mode.to_lowercase(), "wal");
     }
+
+    #[test]
+    fn the_new_column_lands_on_an_old_database_without_losing_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old.db");
+
+        // A database of the previous schema: the first migration, one row
+        // in the queue, and nothing else.
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(&format!(
+                "CREATE TABLE IF NOT EXISTS {MIGRATION_TABLE} (
+                    version    INTEGER PRIMARY KEY,
+                    name       TEXT NOT NULL,
+                    applied_at TEXT NOT NULL
+                );"
+            ))
+            .unwrap();
+            conn.execute_batch(MIGRATIONS[0].sql).unwrap();
+            conn.execute(
+                "INSERT INTO schema_migrations (version, name, applied_at)
+                 VALUES (1, 'core_schema', '2026-10-20T10:00:00Z')",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO downloads
+                     (url, sha1, size, target_path, state, bytes_done, attempts, error, updated_at)
+                 VALUES ('a.jar', NULL, NULL, '/tmp/a.jar', 'completed', 10, 1, NULL, '2026-10-20T10:00:00Z')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let db = Database::open(&path).unwrap();
+        assert_eq!(db.schema_version().unwrap(), latest_version());
+
+        let conn = db.connection().unwrap();
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM downloads", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rows, 1, "the row of the old database survived");
+
+        let task: Option<String> = conn
+            .query_row(
+                "SELECT task FROM downloads WHERE url = 'a.jar'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(task, None, "the old row belongs to no task");
+    }
 }

@@ -240,6 +240,7 @@ mod tests {
             attempts: 0,
             error: None,
             updated_at: String::new(),
+            task: Some("26.3".to_string()),
         }
     }
 

@@ -195,6 +195,10 @@ impl RuntimeFileList {
 /// What has to be fetched to unpack a runtime.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimePlan {
+    /// The component the runtime is — `java-runtime-epsilon` and the
+    /// like. The plan knows it, so that the queue can say which runtime
+    /// the files belong to.
+    pub component: String,
     /// Where the runtime is unpacked.
     pub runtime_dir: PathBuf,
     /// The files to download, in the order the manifest lists them.
@@ -227,7 +231,11 @@ pub struct PlannedRuntimeFile {
 /// # Errors
 /// Fails when a path of the manifest is not a safe relative path, or
 /// when a file of the manifest offers no download at all.
-pub fn plan_runtime(list: &RuntimeFileList, runtime_dir: &Path) -> Result<RuntimePlan> {
+pub fn plan_runtime(
+    list: &RuntimeFileList,
+    runtime_dir: &Path,
+    component: &str,
+) -> Result<RuntimePlan> {
     let mut files = Vec::new();
     let mut directories = Vec::new();
     let mut total_size = 0;
@@ -283,6 +291,7 @@ pub fn plan_runtime(list: &RuntimeFileList, runtime_dir: &Path) -> Result<Runtim
     all.dedup();
 
     Ok(RuntimePlan {
+        component: component.to_string(),
         runtime_dir: runtime_dir.to_path_buf(),
         files,
         directories: all,
@@ -493,7 +502,12 @@ mod tests {
     #[test]
     fn the_plan_of_a_runtime_holds_its_files() {
         let list = RuntimeFileList::parse(INNER.as_bytes()).unwrap();
-        let plan = plan_runtime(&list, Path::new("/runtimes/epsilon")).unwrap();
+        let plan = plan_runtime(
+            &list,
+            Path::new("/runtimes/epsilon"),
+            "java-runtime-epsilon",
+        )
+        .unwrap();
 
         assert_eq!(plan.files.len(), 1);
         assert_eq!(plan.total_size, 22056);
@@ -513,7 +527,12 @@ mod tests {
     #[test]
     fn the_plan_creates_the_directories_of_the_files() {
         let list = RuntimeFileList::parse(INNER.as_bytes()).unwrap();
-        let plan = plan_runtime(&list, Path::new("/runtimes/epsilon")).unwrap();
+        let plan = plan_runtime(
+            &list,
+            Path::new("/runtimes/epsilon"),
+            "java-runtime-epsilon",
+        )
+        .unwrap();
 
         // The manifest names `bin` itself, and the file needs it too.
         assert!(plan.directories.iter().any(|d| d.ends_with("bin")));
@@ -524,7 +543,12 @@ mod tests {
         // The manifest is remote data: a path that walks out of the
         // runtime directory must not become a file on the disk.
         let list = RuntimeFileList::parse(HOSTILE.as_bytes()).unwrap();
-        let error = plan_runtime(&list, Path::new("/runtimes/epsilon")).unwrap_err();
+        let error = plan_runtime(
+            &list,
+            Path::new("/runtimes/epsilon"),
+            "java-runtime-epsilon",
+        )
+        .unwrap_err();
         assert!(matches!(error, Error::InvalidInput(_)), "{error}");
     }
 
@@ -534,14 +558,24 @@ mod tests {
             r#"{"files": {"bin/java.exe": {"type": "file", "downloads": {"lzma": {"sha1": "a", "size": 1, "url": "https://example/x"}}}}}"#.as_bytes(),
         )
         .unwrap();
-        let error = plan_runtime(&list, Path::new("/runtimes/epsilon")).unwrap_err();
+        let error = plan_runtime(
+            &list,
+            Path::new("/runtimes/epsilon"),
+            "java-runtime-epsilon",
+        )
+        .unwrap_err();
         assert!(matches!(error, Error::InvalidInput(_)), "{error}");
     }
 
     #[test]
     fn the_tasks_carry_the_hash_and_the_size() {
         let list = RuntimeFileList::parse(INNER.as_bytes()).unwrap();
-        let plan = plan_runtime(&list, Path::new("/runtimes/epsilon")).unwrap();
+        let plan = plan_runtime(
+            &list,
+            Path::new("/runtimes/epsilon"),
+            "java-runtime-epsilon",
+        )
+        .unwrap();
         let tasks = runtime_tasks(&plan);
 
         assert_eq!(tasks.len(), 1);
@@ -563,7 +597,7 @@ mod tests {
         let runtime = dir.path().join("epsilon");
 
         let list = RuntimeFileList::parse(INNER.as_bytes()).unwrap();
-        let plan = plan_runtime(&list, &runtime).unwrap();
+        let plan = plan_runtime(&list, &runtime, "java-runtime-epsilon").unwrap();
 
         // The download engine puts the file in place and creates the
         // directory it needs; the unpack only has to fill in the rest.

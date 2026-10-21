@@ -19,10 +19,11 @@ pub struct Migration {
 }
 
 /// Every migration, in the order they must be applied.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "core_schema",
-    sql: r"
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "core_schema",
+        sql: r"
     -- Generic key/value store for launcher state that does not deserve a
     -- table of its own (last selected version, cached manifest ETag, ...).
     CREATE TABLE app_meta (
@@ -172,7 +173,20 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
     CREATE INDEX idx_benchmarks_metric ON benchmarks(metric, scenario);
     CREATE INDEX idx_benchmarks_created ON benchmarks(created_at);
     ",
-}];
+    },
+    Migration {
+        version: 2,
+        name: "download_tasks",
+        sql: r"
+    -- The task an entry belongs to: the version that is being installed,
+    -- or the runtime. The screen of the queue shows one row per task
+    -- instead of one row per file, and a file without a task belongs to
+    -- no task at all — the rows that were written before this column
+    -- existed.
+    ALTER TABLE downloads ADD COLUMN task TEXT;
+    ",
+    },
+];
 
 /// The schema version a freshly created database ends up at.
 #[must_use]

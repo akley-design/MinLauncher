@@ -72,6 +72,12 @@ pub struct DownloadEntry {
     pub error: Option<String>,
     /// When the entry was last touched, ISO-8601.
     pub updated_at: String,
+    /// The task the entry belongs to — the version that is being
+    /// installed, or the runtime.
+    ///
+    /// It is `None` for the rows that were written before the queue knew
+    /// about tasks; they belong to no task and are shown as such.
+    pub task: Option<String>,
 }
 
 /// The new state of one entry of the queue.
@@ -128,6 +134,14 @@ impl DownloadRepo {
     ///
     /// A re-queue of a *completed* entry is ignored: the file is already on
     /// disk and re-downloading it would waste bandwidth.
+    ///
+    /// The task of a re-queued entry is the task of the last one that
+    /// wanted the file.
+    ///
+    //// shortcut: a file that two tasks share belongs to the one that
+    //// touched it last, and not to both of them; the queue has one row
+    //// per address, and a row cannot be in two groups at once. Give the
+    //// shared libraries a task of their own when it starts to matter.
     pub fn enqueue_all(&self, entries: &[DownloadEntry]) -> Result<()> {
         if entries.is_empty() {
             return Ok(());
@@ -144,8 +158,8 @@ impl DownloadRepo {
 
         for entry in entries {
             tx.execute(
-                "INSERT INTO downloads (url, sha1, size, target_path, state, bytes_done, attempts, error, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                "INSERT INTO downloads (url, sha1, size, target_path, state, bytes_done, attempts, error, updated_at, task)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                  ON CONFLICT(url) DO UPDATE SET
                      sha1 = excluded.sha1,
                      size = excluded.size,
@@ -154,7 +168,8 @@ impl DownloadRepo {
                      bytes_done = excluded.bytes_done,
                      attempts = excluded.attempts,
                      error = excluded.error,
-                     updated_at = excluded.updated_at
+                     updated_at = excluded.updated_at,
+                     task = excluded.task
                  WHERE downloads.state != 'completed'",
                 params![
                     entry.url,
@@ -166,6 +181,7 @@ impl DownloadRepo {
                     entry.attempts,
                     entry.error,
                     now,
+                    entry.task,
                 ],
             )
             .map_err(|e| storage_error("cannot enqueue download", &e))?;
@@ -262,7 +278,7 @@ impl DownloadRepo {
         let conn = self.conn()?;
         let row = conn
             .query_row(
-                "SELECT url, sha1, size, target_path, state, bytes_done, attempts, error, updated_at
+                "SELECT url, sha1, size, target_path, state, bytes_done, attempts, error, updated_at, task
                  FROM downloads WHERE url = ?1",
                 params![url],
                 row_to_entry,
@@ -277,7 +293,7 @@ impl DownloadRepo {
         let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
-                "SELECT url, sha1, size, target_path, state, bytes_done, attempts, error, updated_at
+                "SELECT url, sha1, size, target_path, state, bytes_done, attempts, error, updated_at, task
                  FROM downloads
                  WHERE (?1 IS NULL OR state = ?1)
                  ORDER BY updated_at ASC, url ASC",
@@ -326,6 +342,7 @@ fn row_to_entry(row: &Row<'_>) -> rusqlite::Result<DownloadEntry> {
         attempts: row.get(6)?,
         error: row.get(7)?,
         updated_at: row.get(8)?,
+        task: row.get(9)?,
     })
 }
 
@@ -351,6 +368,7 @@ mod tests {
             attempts: 0,
             error: None,
             updated_at: String::new(),
+            task: None,
         }
     }
 
@@ -407,6 +425,39 @@ mod tests {
         assert_eq!(repo.list(Some(DownloadState::Failed)).unwrap().len(), 1);
         assert_eq!(repo.clear_failed().unwrap(), 1);
         assert_eq!(repo.list(None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn an_entry_remembers_the_task_it_belongs_to() {
+        let (_db, repo) = repo();
+        let mut owned = entry("a.jar");
+        owned.task = Some("26.3".to_string());
+        repo.enqueue(&owned).unwrap();
+        repo.enqueue(&entry("b.jar")).unwrap();
+
+        let listed = repo.list(None).unwrap();
+        let first = listed.iter().find(|e| e.url == "a.jar").unwrap();
+        let second = listed.iter().find(|e| e.url == "b.jar").unwrap();
+
+        assert_eq!(first.task.as_deref(), Some("26.3"));
+        assert_eq!(second.task, None, "an entry without a task has none");
+    }
+
+    #[test]
+    fn a_requeued_entry_belongs_to_the_task_that_wanted_it_last() {
+        let (_db, repo) = repo();
+        let mut first = entry("a.jar");
+        first.task = Some("26.3".to_string());
+        repo.enqueue(&first).unwrap();
+
+        let mut second = entry("a.jar");
+        second.task = Some("1.12.2".to_string());
+        repo.enqueue(&second).unwrap();
+
+        assert_eq!(
+            repo.get("a.jar").unwrap().unwrap().task.as_deref(),
+            Some("1.12.2")
+        );
     }
 
     #[test]

@@ -258,7 +258,7 @@ impl MinecraftService {
     pub async fn runtime_plan(&self, component: &str) -> Result<RuntimePlan> {
         let list = self.runtime_files(component).await?;
         let runtime_dir = self.paths.jre_dir_for(component);
-        jre::plan_runtime(&list, &runtime_dir)
+        jre::plan_runtime(&list, &runtime_dir, component)
     }
 
     /// Download a Java runtime and unpack it.
@@ -298,8 +298,11 @@ impl MinecraftService {
         plan: &RuntimePlan,
         on_progress: ProgressCallback,
     ) -> Result<BatchResult> {
+        // The runtime is a task of its own: its files are not the files
+        // of a version, and the screen of the queue tells them apart.
+        let task = format!("runtime:{}", plan.component);
         let result = self
-            .download_and_record(jre::runtime_tasks(plan), on_progress)
+            .download_and_record(&task, jre::runtime_tasks(plan), on_progress)
             .await?;
 
         if !result.is_success() {
@@ -395,7 +398,7 @@ impl MinecraftService {
     /// Fails only when the batch cannot be started; individual failures are
     /// reported in the result.
     pub async fn install(&self, plan: &InstallPlan) -> Result<BatchResult> {
-        self.download_and_record(plan.to_tasks(), Arc::new(|_| {}))
+        self.download_and_record(&plan.version_id, plan.to_tasks(), Arc::new(|_| {}))
             .await
     }
 
@@ -409,7 +412,8 @@ impl MinecraftService {
         plan: &InstallPlan,
         on_progress: ProgressCallback,
     ) -> Result<BatchResult> {
-        self.download_and_record(plan.to_tasks(), on_progress).await
+        self.download_and_record(&plan.version_id, plan.to_tasks(), on_progress)
+            .await
     }
 
     /// Download a batch of files and record what happened in the queue.
@@ -417,12 +421,17 @@ impl MinecraftService {
     /// The queue is a note about the download, not the download itself: a
     /// database that cannot be written is logged and ignored, because the
     /// user is waiting for the files, not for the record.
+    ///
+    /// The name of the task is what the queue groups the files by: the
+    /// screen of the queue shows one row per task instead of one row per
+    /// file.
     async fn download_and_record(
         &self,
+        task: &str,
         tasks: Vec<DownloadTask>,
         on_progress: ProgressCallback,
     ) -> Result<BatchResult> {
-        self.start_queue(&tasks);
+        self.start_queue(task, &tasks);
 
         let result = self
             .downloader
@@ -434,8 +443,9 @@ impl MinecraftService {
     }
 
     /// Put a batch of tasks into the queue and move them to work.
-    fn start_queue(&self, tasks: &[DownloadTask]) {
-        let entries: Vec<DownloadEntry> = tasks.iter().map(queue_entry).collect();
+    fn start_queue(&self, task: &str, tasks: &[DownloadTask]) {
+        let entries: Vec<DownloadEntry> =
+            tasks.iter().map(|file| queue_entry(file, task)).collect();
         if let Err(error) = self.storage.downloads().enqueue_all(&entries) {
             tracing::warn!("cannot write the download queue: {error}");
         }
@@ -526,17 +536,18 @@ impl MinecraftService {
 /// The queue entry of a task that is about to be fetched.
 ///
 /// The repository writes the timestamp itself, so the field is left empty.
-fn queue_entry(task: &DownloadTask) -> DownloadEntry {
+fn queue_entry(file: &DownloadTask, task: &str) -> DownloadEntry {
     DownloadEntry {
-        url: task.url.clone(),
-        sha1: task.sha1.clone(),
-        size: task.size,
-        target_path: task.target.to_string_lossy().into_owned(),
+        url: file.url.clone(),
+        sha1: file.sha1.clone(),
+        size: file.size,
+        target_path: file.target.to_string_lossy().into_owned(),
         state: DownloadState::Queued,
         bytes_done: 0,
         attempts: 0,
         error: None,
         updated_at: String::new(),
+        task: Some(task.to_string()),
     }
 }
 
@@ -592,7 +603,7 @@ mod tests {
         std::fs::write(&target, b"0123456789").unwrap();
 
         let task = DownloadTask::new("https://example.invalid/payload.jar", &target, None);
-        service.start_queue(std::slice::from_ref(&task));
+        service.start_queue("26.3", std::slice::from_ref(&task));
 
         let entry = service
             .storage()
@@ -602,6 +613,11 @@ mod tests {
             .unwrap();
         assert_eq!(entry.state, DownloadState::Downloading);
         assert_eq!(entry.target_path, target.to_string_lossy());
+        assert_eq!(
+            entry.task.as_deref(),
+            Some("26.3"),
+            "the entry belongs to the task it was queued for"
+        );
 
         service.settle_queue(&BatchResult {
             completed: vec![DownloadOutcome {
@@ -633,7 +649,7 @@ mod tests {
         let target = dir.path().join("payload.jar");
 
         let task = DownloadTask::new("https://example.invalid/payload.jar", &target, None);
-        service.start_queue(std::slice::from_ref(&task));
+        service.start_queue("26.3", std::slice::from_ref(&task));
         service.settle_queue(&BatchResult {
             completed: Vec::new(),
             failed: vec![(task.url.clone(), "the network is down".to_string())],
