@@ -32,6 +32,12 @@ pub struct Session {
     pub uuid: String,
     /// The player's UUID without hyphens.
     pub uuid_prefix: String,
+    /// The kind of the account, as the game expects it in `--userType`.
+    ///
+    /// It is empty when the session was not built from an account, and
+    /// then the placeholder is left alone rather than replaced with
+    /// nothing: an empty argument is another argument.
+    pub user_type: String,
     /// The access token handed to the game.
     pub access_token: String,
     /// The XUID of the signed-in Microsoft account.
@@ -95,8 +101,17 @@ impl Session {
 
         // The legacy servers expect the UUID without hyphens.
         map.insert("uuid", self.uuid_prefix.clone());
-        map.insert("user_properties", String::new());
+        // The properties of the account are a JSON object. An account
+        // that has none gets an empty object — `{}` is what the launcher
+        // of Mojang writes, and an empty argument is not a JSON at all.
+        map.insert("user_properties", "{}".to_string());
         map.insert("game_assets", path_to_string(&self.assets_root));
+
+        // The kind of the account is only known when the session was
+        // built from an account.
+        if !self.user_type.is_empty() {
+            map.insert("user_type", self.user_type.clone());
+        }
 
         if let Some(width) = self.resolution_width {
             map.insert("resolution_width", width.to_string());
@@ -369,6 +384,39 @@ mod tests {
             substitute("--version ${version_name}", &values),
             "--version 26.3"
         );
+    }
+
+    #[test]
+    fn the_kind_of_the_account_is_substituted() {
+        let mut session = session();
+        session.user_type = "msa".into();
+
+        let values = session.placeholders();
+        assert_eq!(
+            substitute("--userType ${user_type}", &values),
+            "--userType msa"
+        );
+    }
+
+    #[test]
+    fn a_session_without_an_account_keeps_the_placeholder() {
+        // The session was not built from an account, so the launcher
+        // does not know the kind of the account. Leaving the placeholder
+        // alone is better than passing an empty argument.
+        let mut session = session();
+        session.user_type = String::new();
+
+        let values = session.placeholders();
+        assert_eq!(
+            substitute("--userType ${user_type}", &values),
+            "--userType ${user_type}"
+        );
+    }
+
+    #[test]
+    fn the_properties_of_the_account_are_a_json_object() {
+        let values = session().placeholders();
+        assert_eq!(substitute("${user_properties}", &values), "{}");
     }
 
     #[test]

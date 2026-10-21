@@ -734,6 +734,7 @@ fn build_session(
         player_name: account.username.clone(),
         uuid: account.uuid.clone(),
         uuid_prefix: account.uuid_prefix.clone(),
+        user_type: account.kind.user_type().to_string(),
         access_token: String::new(),
         version_name: meta.id.clone(),
         version_type: meta.kind.as_manifest_str().to_string(),

@@ -228,12 +228,12 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 502 |
+| Rust | 509 |
 | Java agent | 24 |
 | Java mod | 18 |
 | Interface | 68 |
 | Release scripts | 2 |
-| **Total** | **614** |
+| **Total** | **621** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners
@@ -264,6 +264,12 @@ cargo run -p ml-minecraft --bin fetch_corpus
 The test `the_corpus_is_the_one_of_mojang` compares the corpus with the
 live documents of Mojang byte for byte; it needs the network and is run by
 hand.
+
+The contract does not stop at the shape of the document: `cargo test -p
+ml-launch --test corpus_contract` builds the command of **every** one of the
+920 versions and asserts that no `${…}` survives it — an unresolved
+placeholder reaches the game and breaks the launch in a way that says
+nothing about where it came from.
 
 ## Releasing it
 

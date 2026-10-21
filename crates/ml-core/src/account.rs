@@ -23,6 +23,25 @@ impl AccountType {
     pub fn is_offline_capable(self) -> bool {
         matches!(self, Self::Offline)
     }
+
+    /// The value the game expects in `--userType`.
+    ///
+    /// The game reads this value and does nothing much with it, but it
+    /// does read it: an unknown value is refused by the server of the
+    /// session. Mojang's own launcher writes `msa` for the accounts of
+    /// Microsoft and `legacy` for the accounts of Mojang.
+    ///
+    /// An account that is neither — an offline account or a third-party
+    /// one — is `msa`, because that is the value the game of today
+    /// accepts. A third-party server is told the kind of the account
+    /// through its own injector, not through this argument.
+    #[must_use]
+    pub fn user_type(self) -> &'static str {
+        match self {
+            Self::Mojang => "legacy",
+            Self::Microsoft | Self::Offline | Self::ThirdParty => "msa",
+        }
+    }
 }
 
 /// A player account as stored by the launcher.
@@ -183,5 +202,16 @@ mod tests {
         let account = Account::new("a", "u", "Steve", AccountType::Microsoft);
         let json = serde_json::to_string(&account).unwrap();
         assert!(!json.contains("token"));
+    }
+
+    #[test]
+    fn the_user_type_follows_the_kind_of_the_account() {
+        // The game refuses a user type it does not know, so the value
+        // has to be the one the launcher of Mojang writes.
+        assert_eq!(AccountType::Microsoft.user_type(), "msa");
+        assert_eq!(AccountType::Mojang.user_type(), "legacy");
+        // The accounts that are not Mojang's are the ones of today.
+        assert_eq!(AccountType::Offline.user_type(), "msa");
+        assert_eq!(AccountType::ThirdParty.user_type(), "msa");
     }
 }
