@@ -250,14 +250,21 @@ M4 меряет **сам лаунчер**: команда `install_version` пи
 
 ```powershell
 # 30 прогонов по протоколу
-.\scripts\measure.ps1 -Runs 30 -Out benchmarks\ours.json
+.\scripts\measure.ps1 -Runs 30 -Scenario 26.3 -GameVersion 26.3 -Out benchmarks\ours.json
 
 # быстрая проверка на трёх прогонах
-.\scripts\measure.ps1 -Runs 3 -Out benchmarks\ours.json
+.\scripts\measure.ps1 -Runs 3 -Scenario 26.3 -GameVersion 26.3 -Out benchmarks\ours.json
 
 # измерение без участия оператора: щелчок делает сам скрипт
-.\scripts\measure.ps1 -Runs 30 -AutoPlay -Out benchmarks\ours.json
+.\scripts\measure.ps1 -Runs 30 -AutoPlay -Scenario 26.3 -GameVersion 26.3 -Out benchmarks\ours.json
 ```
+
+**Сценарий надо называть.** M4 `fresh_install` подмешивается из файла той
+версии, что измеряется, а файл называется по сценарию. Без `-Scenario`
+измеритель ищет файл с именем `default`, не находит его и пишет
+предупреждение «the metric fresh_install was measured in another scenario;
+it was not merged» — в таблице вместо M4 остаётся прочерк. `-GameVersion`
+идёт в метаданные файла: по нему видно, какую версию игры мерили.
 
 Скрипт делает следующее.
 
@@ -365,7 +372,12 @@ foreground-процессом (а он — консоль измерения). �
 ## 8. Как собрать отчёт
 
 ```powershell
+# с эталонной стороной
 cargo run -p ml-bench --bin report -- --ours benchmarks\ours.json --reference benchmarks\reference.json
+
+# без эталонной стороны: файл с ней приходит извне, и пока его нет —
+# отчёт всё равно собирается, а в колонке эталона стоит прочерк
+cargo run -p ml-bench --bin report -- --ours benchmarks\ours.json
 ```
 
 Отчёт печатает таблицу M1–M8: наша медиана, медиана эталона,

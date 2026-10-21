@@ -57,12 +57,17 @@ launcher does not time itself, because a launcher that announces its own
 speed does not measure its speed.
 
 ```bash
-cargo build --release
+npm run tauri:build
 ```
+
+It is `npm run tauri:build` and not `cargo build --release`: the command of
+Tauri turns on the feature `custom-protocol`, and without it the binary opens
+the address `localhost:1420` in its window instead of the interface that is
+built into it — the window is alive, and there is no button in it.
 
 ```powershell
 # thirty runs, the number the protocol asks for
-.\scripts\measure.ps1 -Runs 30 -Out benchmarks\ours.json
+.\scripts\measure.ps1 -Runs 30 -Scenario 26.3 -GameVersion 26.3 -Out benchmarks\ours.json
 
 # the table M1–M8, with a verdict for every metric
 cargo run -p ml-bench --bin report -- --ours benchmarks\ours.json --reference benchmarks\reference.json
@@ -223,11 +228,15 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 477 |
-| Java agent | 23 |
+| Rust | 494 |
+| Java agent | 24 |
 | Java mod | 18 |
 | Interface | 68 |
-| **Total** | **586** |
+| **Total** | **604** |
+
+The Rust number is what `cargo test --workspace --all-targets` runs — the
+same command the CI runs. The three others are the reports of the test
+runners of their own parts.
 
 Plus the end-to-end tests against the real game and the real servers of
 Mojang, which are switched on by hand.

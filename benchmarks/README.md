@@ -32,11 +32,15 @@ the two. See below.
 npm run tauri:build
 
 # a quick check on three runs
-.\scripts\measure.ps1 -Runs 3 -Out benchmarks\ours.json
+.\scripts\measure.ps1 -Runs 3 -Scenario 26.3 -GameVersion 26.3 -Out benchmarks\ours.json
 
 # the measurement of the protocol: thirty runs
-.\scripts\measure.ps1 -Runs 30 -Out benchmarks\ours.json
+.\scripts\measure.ps1 -Runs 30 -Scenario 26.3 -GameVersion 26.3 -Out benchmarks\ours.json
 ```
+
+The scenario is named on purpose: the length of an installation is merged
+into the file from the file of the launcher that belongs to that version,
+and the file is named after the scenario.
 
 The script asks the player to click "Play" once per run. It watches the
 mouse, the processes and the clock — and nothing else.
