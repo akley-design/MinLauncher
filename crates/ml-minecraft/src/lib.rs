@@ -25,6 +25,7 @@
 //! * [`jre`] — the Java runtime manifest.
 //! * [`download`] — the download engine.
 //! * [`install`] — the planner that turns a version into a list of files.
+//! * [`mod_meta`] — the manifest of a mod and the versions it asks for.
 //!
 //! # Example
 //!
@@ -61,6 +62,7 @@ pub mod install;
 pub mod jre;
 pub mod library;
 pub mod manifest;
+pub mod mod_meta;
 pub mod version;
 
 use std::path::Path;

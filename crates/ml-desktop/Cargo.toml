@@ -55,6 +55,9 @@ dirs.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# The jar of a mod is a zip file, and the test that says "a mod the loader
+# would refuse is not installed" has to build one.
+zip.workspace = true
 # The `test` feature brings the mock runtime of Tauri: it lets the tests
 # build an application without a window and without a display, so that a
 # command that needs the handle of the application can be called for real.

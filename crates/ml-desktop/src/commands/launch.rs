@@ -14,7 +14,7 @@
 //! not wait for the game: a launcher that waits is a launcher that
 //! cannot be closed.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -23,6 +23,7 @@ use ml_launch::args::Session;
 use ml_launch::command::LaunchRequest;
 use ml_launch::jvm::JavaInstallation;
 use ml_launch::supervisor::{GameProcess, Supervisor};
+use ml_minecraft::mod_meta::{ModFit, fit_of_mod};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
@@ -360,7 +361,8 @@ fn store_agent_report(state: &SharedState, path: &std::path::Path, scenario: &st
 ///
 /// The preset is `off` when the mod of the launcher was not in the
 /// game: either the player switched it off, or the loader was not
-/// there, or its jar could not be put in place. The scenario has to
+/// there, or its jar could not be put in place, or the loader would
+/// have refused it in this version of the game. The scenario has to
 /// say what really happened — a run without the mod that calls itself a
 /// run with it would poison the comparison.
 fn scenario_of_run(state: &SharedState, mod_is_in_the_game: bool) -> String {
@@ -605,13 +607,20 @@ async fn prepare_loader(state: &SharedState, request: &mut LaunchRequest, versio
         PathBuf::from(&config.mods.mod_jar)
     };
 
-    let mods_directory = game_directory.join("mods");
-    match crate::commands::fabric::install_mod_jar(&source, &mods_directory) {
-        Ok(jar) => request.mod_jars.push(jar),
-        Err(error) => {
-            tracing::warn!("cannot install the jar of the mod: {error}");
-            // The loader without the mod of the launcher is still worth
-            // having: the mods of the player are still loaded.
+    // The loader refuses a mod whose requirement the version of the game
+    // does not meet, and the launcher has to know that before the game
+    // starts: a mod that is put in place and then refused would still be
+    // counted as a run of the game with the mod, and the measurement would
+    // say that the optimisation was in the game when it was not.
+    if let Some(mod_to_install) = mod_jar_to_install(&source, version_id) {
+        let mods_directory = game_directory.join("mods");
+        match crate::commands::fabric::install_mod_jar(mod_to_install, &mods_directory) {
+            Ok(jar) => request.mod_jars.push(jar),
+            Err(error) => {
+                tracing::warn!("cannot install the jar of the mod: {error}");
+                // The loader without the mod of the launcher is still worth
+                // having: the mods of the player are still loaded.
+            }
         }
     }
 
@@ -625,6 +634,35 @@ async fn prepare_loader(state: &SharedState, request: &mut LaunchRequest, versio
         "the game is started with the loader {loader_version} and {} mods",
         request.mod_jars.len()
     );
+}
+
+/// The jar of the mod that goes into the game, when the loader will take it.
+///
+/// The loader refuses a mod whose requirement the version of the game does
+/// not meet, and the launcher has to know that before the game starts: a
+/// mod that is put in place and then refused would still be counted as a
+/// run of "the game with the mod", and the measurement would say that the
+/// optimisation was in the game when it was not.
+///
+/// `None` when there is nothing to install: the jar is not on the disk,
+/// or the loader would not take it in this version of the game.
+fn mod_jar_to_install<'a>(source: &'a Path, version_id: &str) -> Option<&'a Path> {
+    match fit_of_mod(source, version_id) {
+        ModFit::Fits => Some(source),
+        ModFit::Refused => {
+            tracing::warn!(
+                "the loader will not take the mod of the launcher in the version {version_id}: it is left out of the game"
+            );
+            None
+        }
+        ModFit::Missing => {
+            tracing::warn!(
+                "cannot install the jar of the mod: it is not at `{}`",
+                source.display()
+            );
+            None
+        }
+    }
 }
 
 /// The agent to attach to the game, when the settings ask for it.
@@ -760,6 +798,8 @@ pub type RunningProcess = GameProcess;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
     use ml_core::{OsArch, OsName, Platform};
     use ml_minecraft::library::ResolvedLibrary;
 
@@ -973,5 +1013,39 @@ mod tests {
         state.storage().save_settings(&config).unwrap();
 
         assert_eq!(scenario_of_run(&state, true), "in_game/fast");
+    }
+
+    #[test]
+    fn a_mod_the_loader_would_refuse_is_not_installed() {
+        let dir = tempfile::tempdir().unwrap();
+        let jar = dir.path().join("mod.jar");
+        jar_with_manifest(&jar, r#"{"depends":{"minecraft":"~1.21.4"}}"#);
+
+        // The mod is built for another version of the game: the loader
+        // would refuse it, so it must not go into the game — otherwise the
+        // run would be counted as a run of the game with the mod.
+        assert!(mod_jar_to_install(&jar, "26.3").is_none());
+
+        // The version the mod is built for takes it.
+        assert!(mod_jar_to_install(&jar, "1.21.4").is_some());
+
+        // A jar that is not a mod at all is not a mod either.
+        let not_a_mod = dir.path().join("not-a-mod.jar");
+        std::fs::write(&not_a_mod, b"not a zip file").unwrap();
+        assert!(mod_jar_to_install(&not_a_mod, "1.21.4").is_none());
+
+        // A mod that is not on the disk is not installed either.
+        assert!(mod_jar_to_install(&dir.path().join("missing.jar"), "1.21.4").is_none());
+    }
+
+    /// A jar with the manifest of a mod in it.
+    fn jar_with_manifest(path: &Path, manifest: &str) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        let options: zip::write::FileOptions<'_, '_, ()> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        writer.start_file("fabric.mod.json", options).unwrap();
+        writer.write_all(manifest.as_bytes()).unwrap();
+        writer.finish().unwrap();
     }
 }
