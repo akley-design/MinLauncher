@@ -13,7 +13,14 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AccountList, InstanceList, LaunchResult, VersionList } from "../ipc/types";
+import type {
+  AccountList,
+  InstanceList,
+  InstallResult,
+  LaunchResult,
+  VersionList,
+} from "../ipc/types";
+import { useGameStore } from "../stores/game";
 import { HomeRoute } from "./home";
 
 // The backend is replaced by a mock, so that the test does not need a
@@ -22,6 +29,7 @@ const listVersions = vi.fn<() => Promise<VersionList>>();
 const listAccounts = vi.fn<() => Promise<AccountList>>();
 const listInstances = vi.fn<() => Promise<InstanceList>>();
 const launchGame = vi.fn<(options: { version_id: string }) => Promise<LaunchResult>>();
+const installVersion = vi.fn<(options: { version_id: string }) => Promise<InstallResult>>();
 
 vi.mock("../ipc/client", async () => {
   const actual = await vi.importActual<typeof import("../ipc/client")>("../ipc/client");
@@ -31,6 +39,7 @@ vi.mock("../ipc/client", async () => {
     listAccounts: () => listAccounts(),
     listInstances: () => listInstances(),
     launchGame: (options: { version_id: string }) => launchGame(options),
+    installVersion: (options: { version_id: string }) => installVersion(options),
   };
 });
 
@@ -85,13 +94,25 @@ describe("the screen of the launch", () => {
     listAccounts.mockReset();
     listInstances.mockReset();
     launchGame.mockReset();
+    installVersion.mockReset();
     listVersions.mockResolvedValue(versions());
     listAccounts.mockResolvedValue(accounts());
     listInstances.mockResolvedValue({ instances: [] } as InstanceList);
-    launchGame.mockResolvedValue({
-      game: { pid: 1, version_id: "1.12.2", command: "java", started_at: 0 },
-      prepare_ms: 700,
+    installVersion.mockResolvedValue({
+      version_id: "26.3",
+      files: 10,
+      bytes: 10,
+      elapsed_ms: 10,
     });
+    // The backend answers with the version it was asked for, the way
+    // the real one does.
+    launchGame.mockImplementation(async (options) => ({
+      game: { pid: 1, version_id: options.version_id, command: "java", started_at: 0 },
+      prepare_ms: 700,
+    }));
+    // The store is shared by the whole tab, so it has to be emptied
+    // between the tests.
+    useGameStore.setState({ launches: [] });
   });
 
   it("offers every installed version and starts the one that is picked", async () => {
@@ -116,5 +137,39 @@ describe("the screen of the launch", () => {
     const options = Array.from(picker.querySelectorAll("option")).map((option) => option.value);
 
     expect(options).toEqual(["26.3", "1.12.2"]);
+  });
+
+  it("offers to install a version when none is installed", async () => {
+    listVersions.mockResolvedValue({
+      versions: [{ id: "26.3", kind: "release", installed: false, java_major: 25 }],
+      latest_release: "26.3",
+      latest_snapshot: "26.3",
+      installed_count: 0,
+    });
+    renderScreen();
+
+    // Nothing is installed, and the player must not have to hunt for
+    // the screen that installs one.
+    const button = await screen.findByRole("button", { name: "Установить 26.3" });
+    await userEvent.click(button);
+
+    await waitFor(() => expect(installVersion).toHaveBeenCalledTimes(1));
+    expect(installVersion.mock.calls[0]?.[0]).toEqual({ version_id: "26.3" });
+  });
+
+  it("keeps the preparation of the launch when the screen comes back", async () => {
+    const { unmount } = renderScreen();
+    await screen.findByLabelText("Версия");
+
+    await userEvent.click(screen.getByRole("button", { name: "Играть" }));
+    await waitFor(() => expect(launchGame).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Подготовка 26.3 заняла 700 мс")).toBeInTheDocument();
+
+    // The player goes to another screen and comes back: the number of
+    // the preparation is still there.
+    unmount();
+    renderScreen();
+
+    expect(await screen.findByText("Подготовка 26.3 заняла 700 мс")).toBeInTheDocument();
   });
 });

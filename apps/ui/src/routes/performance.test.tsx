@@ -12,6 +12,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BenchmarkList, InGameComparisons } from "../ipc/types";
+import { useGameStore } from "../stores/game";
 import { PerformanceRoute } from "./performance";
 
 // The backend is replaced by a mock, so that the test does not need a
@@ -47,6 +48,33 @@ describe("the screen of the performance", () => {
     compareInGame.mockReset();
     latestBenchmarks.mockResolvedValue({ records: [] });
     compareInGame.mockResolvedValue({ comparisons: [] });
+    // The launches live in the store of the tab, so they have to be
+    // emptied between the tests.
+    useGameStore.setState({ launches: [] });
+  });
+
+  it("shows the share of the launcher in the launches of every version", async () => {
+    useGameStore.setState({
+      launches: [
+        { versionId: "26.3", prepareMs: 700, at: 2 },
+        { versionId: "26.3", prepareMs: 900, at: 1 },
+        { versionId: "1.12.2", prepareMs: 1200, at: 0 },
+      ],
+    });
+    renderScreen();
+
+    expect(await screen.findByText("Доля лаунчера в запуске")).toBeInTheDocument();
+    expect(screen.getByText("1.12.2")).toBeInTheDocument();
+    // The middle of the two preparations of 26.3, and the slowest of
+    // them.
+    expect(screen.getByText("800 мс")).toBeInTheDocument();
+    expect(screen.getByText("900 мс")).toBeInTheDocument();
+  });
+
+  it("says that there is nothing to show before the first launch", async () => {
+    renderScreen();
+
+    expect(await screen.findByText(/Появится после первого запуска/)).toBeInTheDocument();
   });
 
   it("shows the pair of the game when both of its runs were measured", async () => {

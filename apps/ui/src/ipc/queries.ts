@@ -51,6 +51,7 @@ export function useLaunchGame() {
   const beginStart = useGameStore((state) => state.beginStart);
   const endStart = useGameStore((state) => state.endStart);
   const failed = useGameStore((state) => state.failed);
+  const prepared = useGameStore((state) => state.prepared);
 
   return useMutation({
     mutationFn: (versionId: string) => launchGame({ version_id: versionId }),
@@ -59,9 +60,10 @@ export function useLaunchGame() {
       endStart();
       // The result carries the time the launcher spent preparing the
       // launch. It is the number M3 is built on, so it is worth
-      // showing rather than throwing away.
+      // showing rather than throwing away — and worth remembering, so
+      // that it does not disappear when the player changes the screen.
+      prepared(result.game.version_id, result.prepare_ms);
       void queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks() });
-      void result;
     },
     onError: (error) => failed(toCommandError(error).message),
   });

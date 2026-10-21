@@ -231,9 +231,9 @@ path both lines can go away.
 | Rust | 534 |
 | Java agent | 24 |
 | Java mod | 18 |
-| Interface | 74 |
+| Interface | 84 |
 | Release scripts | 2 |
-| **Total** | **652** |
+| **Total** | **662** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners
@@ -291,6 +291,14 @@ An installation is thousands of files, so the screen «Загрузки» shows 
 row per **task** — the version that is being installed, or the runtime —
 and the files of the task are behind a click. Installing 26.3 gives one
 row, not four thousand.
+
+A launcher that has nothing installed is not a dead end: the screen «Играть»
+offers to install the latest release, and the empty state of the account
+points at the field where the name is typed. The time the launcher spent
+preparing the launch is shown under the button «Играть» and gathered by
+version on the screen «Производительность» — it is the number the promise
+of five seconds is about, and it does not disappear when the player changes
+the screen.
 
 ## Releasing it
 

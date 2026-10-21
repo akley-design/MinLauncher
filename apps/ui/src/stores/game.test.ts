@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { applyGameEvent, useGameStore } from "./game";
+import { applyGameEvent, MAX_LAUNCHES, useGameStore } from "./game";
 
 /**
  * The state of the game.
@@ -17,6 +17,7 @@ describe("the state of the game", () => {
       restarting: null,
       error: null,
       lastVersion: null,
+      launches: [],
     });
   });
 
@@ -114,5 +115,39 @@ describe("the state of the game", () => {
     useGameStore.getState().failed("there is no java runtime");
     expect(useGameStore.getState().starting).toBe(false);
     expect(useGameStore.getState().error).toBe("there is no java runtime");
+  });
+
+  it("remembers the preparation of every launch", () => {
+    useGameStore.getState().prepared("26.3", 700);
+    useGameStore.getState().prepared("1.12.2", 900);
+
+    const launches = useGameStore.getState().launches;
+    expect(launches).toHaveLength(2);
+    expect(launches[0]?.versionId).toBe("1.12.2");
+    expect(launches[0]?.prepareMs).toBe(900);
+    expect(launches[1]?.prepareMs).toBe(700);
+  });
+
+  it("keeps the preparation of the launch when the game ends", () => {
+    // The screen is gone long before the game is; the number of the
+    // preparation has to outlive it.
+    useGameStore.getState().prepared("26.3", 700);
+
+    applyGameEvent(
+      { kind: "exited", version_id: "26.3", success: true, code: 0, stopped: false },
+      useGameStore,
+    );
+
+    expect(useGameStore.getState().launches[0]?.prepareMs).toBe(700);
+  });
+
+  it("forgets the oldest launches when there are too many", () => {
+    for (let index = 0; index < MAX_LAUNCHES + 5; index += 1) {
+      useGameStore.getState().prepared("26.3", index);
+    }
+
+    const launches = useGameStore.getState().launches;
+    expect(launches).toHaveLength(MAX_LAUNCHES);
+    expect(launches[0]?.prepareMs).toBe(MAX_LAUNCHES + 4);
   });
 });

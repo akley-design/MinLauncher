@@ -8,12 +8,13 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "../components/Button";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import {
   addOfflineAccount,
+  installVersion,
   listAccounts,
   listInstances,
   listVersions,
@@ -22,6 +23,7 @@ import {
   toCommandError,
 } from "../ipc/client";
 import { queryKeys, useLaunchGame } from "../ipc/queries";
+import { LAUNCH_BUDGET_MS } from "../lib/launches";
 import { plural } from "../lib/plural";
 import { useGameStore } from "../stores/game";
 
@@ -30,12 +32,16 @@ export function HomeRoute() {
   const queryClient = useQueryClient();
   const starting = useGameStore((state) => state.starting);
   const running = useGameStore((state) => state.running);
+  const launches = useGameStore((state) => state.launches);
 
   const [newAccount, setNewAccount] = useState("");
   // The version the player picked on this screen. It is empty until the
   // player picks one, and then the choice is theirs — the version the
   // launcher would have picked on its own is only the default.
   const [picked, setPicked] = useState<string | null>(null);
+  // The field of the name of the player. The empty state of the
+  // account points at it, so that the player knows where to type.
+  const nameInput = useRef<HTMLInputElement>(null);
 
   const versions = useQuery({
     queryKey: queryKeys.versions(),
@@ -56,13 +62,18 @@ export function HomeRoute() {
   // or the newest release that is installed, or the newest version that
   // is installed, or the latest release of Mojang.
   const installed = versions.data?.versions.filter((version) => version.installed) ?? [];
+  const latestRelease = versions.data?.latest_release ?? "";
   const fallback =
     installed.find((version) => version.kind === "release")?.id ??
     installed[0]?.id ??
-    versions.data?.latest_release ??
-    "";
+    latestRelease;
   const chosenVersion =
     picked && installed.some((version) => version.id === picked) ? picked : fallback;
+
+  // The last launch of the version that is picked. The number is read
+  // from the store and not from the answer of the button, so that it is
+  // still there when the player comes back to this screen.
+  const lastLaunch = launches.find((record) => record.versionId === chosenVersion);
 
   const selected = accounts.data?.accounts.find(
     (account) => account.id === accounts.data?.selected_id,
@@ -88,6 +99,15 @@ export function HomeRoute() {
     onSuccess: () => {
       setNewAccount("");
       void queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
+    },
+  });
+
+  // A launcher with nothing installed has nothing to play, and the
+  // player must not have to hunt for the screen that installs one.
+  const install = useMutation({
+    mutationFn: installVersion,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.versions() });
     },
   });
 
@@ -172,12 +192,38 @@ export function HomeRoute() {
           </p>
         ) : null}
 
-        {launch.isSuccess ? (
+        {lastLaunch ? (
           <p className="play__hint" style={{ marginTop: "var(--space-3)" }}>
-            Подготовка заняла {launch.data.prepare_ms} мс
+            Подготовка {lastLaunch.versionId} заняла {lastLaunch.prepareMs} мс
+            {lastLaunch.prepareMs > LAUNCH_BUDGET_MS ? (
+              <span className="badge badge--warning">больше 5 с</span>
+            ) : null}
           </p>
         ) : null}
       </section>
+
+      {installed.length === 0 ? (
+        <section className="card">
+          <EmptyState
+            title="Установите версию"
+            description="Лаунчер скачает игру, библиотеки и ассеты. После этого версию можно будет запустить."
+            action={
+              <Button
+                variant="primary"
+                busy={install.isPending}
+                disabled={!latestRelease}
+                onClick={() => install.mutate({ version_id: latestRelease })}
+              >
+                {latestRelease ? `Установить ${latestRelease}` : "Установить"}
+              </Button>
+            }
+          />
+        </section>
+      ) : null}
+
+      {install.isError ? (
+        <p className="field__error">{toCommandError(install.error).message}</p>
+      ) : null}
 
       <section className="card">
         <div className="card__title">Аккаунт</div>
@@ -188,6 +234,7 @@ export function HomeRoute() {
           <EmptyState
             title="Аккаунта нет"
             description="Добавьте оффлайн-аккаунт, чтобы начать игру без входа в Microsoft."
+            action={<Button onClick={() => nameInput.current?.focus()}>Добавить аккаунт</Button>}
           />
         ) : (
           <ul className="accounts">
@@ -223,6 +270,7 @@ export function HomeRoute() {
           }}
         >
           <input
+            ref={nameInput}
             className="input"
             placeholder="Имя игрока"
             value={newAccount}

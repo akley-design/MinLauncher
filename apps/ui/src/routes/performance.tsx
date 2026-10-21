@@ -17,6 +17,8 @@ import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { compareInGame, latestBenchmarks } from "../ipc/client";
 import { queryKeys } from "../ipc/queries";
 import { formatImprovement, formatValue } from "../lib/format";
+import { LAUNCH_BUDGET_MS, summarizeLaunches } from "../lib/launches";
+import { useGameStore } from "../stores/game";
 
 /** The screen of the performance. */
 export function PerformanceRoute() {
@@ -30,8 +32,14 @@ export function PerformanceRoute() {
     queryFn: compareInGame,
   });
 
+  // The launches of this session. They are not in the database: the
+  // number of the preparation is written on the path of the launch, and
+  // a write there would cost the milliseconds it measures.
+  const launches = useGameStore((state) => state.launches);
+
   const records = useMemo(() => benchmarks.data?.records ?? [], [benchmarks.data]);
   const comparisons = useMemo(() => inGame.data?.comparisons ?? [], [inGame.data]);
+  const summary = useMemo(() => summarizeLaunches(launches), [launches]);
 
   if (benchmarks.isPending) {
     return <LoadingState label="Читаем результаты замеров…" />;
@@ -49,6 +57,46 @@ export function PerformanceRoute() {
           <p className="screen__subtitle">Результаты измерителя, а не оценка на глаз</p>
         </div>
       </div>
+
+      <section className="card">
+        <div className="card__title">Доля лаунчера в запуске</div>
+        {summary.length === 0 ? (
+          <p className="field__hint">
+            Появится после первого запуска: здесь видно, сколько времени лаунчер потратил на
+            подготовку каждой версии.
+          </p>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Версия</th>
+                <th>Запусков</th>
+                <th>Медиана</th>
+                <th>Минимум</th>
+                <th>Максимум</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.map((row) => (
+                <tr key={row.versionId}>
+                  <td className="mono">{row.versionId}</td>
+                  <td>{row.count}</td>
+                  <td className="mono">
+                    {row.median} мс{" "}
+                    {row.median > LAUNCH_BUDGET_MS ? (
+                      <span className="badge badge--warning">больше 5 с</span>
+                    ) : (
+                      <span className="badge badge--success">в пределах 5 с</span>
+                    )}
+                  </td>
+                  <td className="mono">{row.fastest} мс</td>
+                  <td className="mono">{row.slowest} мс</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
 
       <section className="card">
         <div className="card__title">Игра с модом и без него</div>
