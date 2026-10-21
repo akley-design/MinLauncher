@@ -228,12 +228,12 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 509 |
+| Rust | 516 |
 | Java agent | 24 |
 | Java mod | 18 |
 | Interface | 68 |
 | Release scripts | 2 |
-| **Total** | **621** |
+| **Total** | **628** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners
@@ -269,7 +269,10 @@ The contract does not stop at the shape of the document: `cargo test -p
 ml-launch --test corpus_contract` builds the command of **every** one of the
 920 versions and asserts that no `${…}` survives it — an unresolved
 placeholder reaches the game and breaks the launch in a way that says
-nothing about where it came from.
+nothing about where it came from. It also asserts that every version gets
+the game arguments its own document prescribes, and that the game jar is on
+the classpath — the 349 documents from before 1.13 name neither, so the
+launcher supplies them.
 
 ## Releasing it
 

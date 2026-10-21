@@ -11,8 +11,8 @@
 > `ml-core`, `ml-storage`, `ml-minecraft`, `ml-launch`, `ml-bench`,
 > `ml-desktop`, `apps/ui` и `apps/java`. Один агент, последовательная работа.
 >
-> Тестов: **509** на Rust (`cargo test --workspace --all-targets`), **24** у
-> агента, **18** у мода, **68** во фронтенде, **2** у скриптов релиза — 621
+> Тестов: **516** на Rust (`cargo test --workspace --all-targets`), **24** у
+> агента, **18** у мода, **68** во фронтенде, **2** у скриптов релиза — 628
 > всего. Плюс сквозные тесты против настоящей игры и настоящих серверов
 > Mojang.
 
@@ -120,21 +120,21 @@
 | `ml-core` | **готово, 60 тестов** | `error`, `rules`, `paths`, `version`, `account`, `config`, `sys` (процессор, память) |
 | `ml-storage` | **готово, 58 тестов** | `db` (пул + миграции), `migrations` (схема v1), `json_store`, `secrets`, `repo/*` (8 репозиториев) |
 | `ml-minecraft` | **готово, 119 тестов** | `manifest`, `version` (правила Mojang, аргументы, `minecraftArguments`), `corpus` (оголённый корпус из 920 версий и его перепись), `library` (Maven, классификаторы, нативы), `assets`, `jre` (манифест, план, распаковка), `install` (план загрузок), `download` (движок загрузок, докачка) |
-| `ml-launch` | **готово, 84 теста** | `args` (подстановка плейсхолдеров, classpath), `jvm` (поиск Java), `natives` (распаковка), `command` (командная строка), `supervisor` (процесс, авто-рестарт), `agent` (тайминги), `tests/agent.rs`, `tests/real_version.rs` (10 тестов на живом документе 26.3) и `tests/corpus_contract.rs` (контракт по всем 920 версиям) |
+| `ml-launch` | **готово, 91 тест** | `args` (подстановка плейсхолдеров, classpath), `jvm` (поиск Java), `natives` (распаковка), `command` (командная строка), `supervisor` (процесс, авто-рестарт), `agent` (тайминги), `tests/agent.rs`, `tests/real_version.rs` (10 тестов на живом документе 26.3) и `tests/corpus_contract.rs` (контракт по всем 920 версиям) |
 | `ml-bench` | **готово, 108 тестов** | `metric` (8 метрик и их цели), `stats` (серии, перцентили), `scenario` (методика замера), `compare` (протокол сравнения), `record` (запись результатов), `ingame` (замеры игры: с модом и без), `samples` (файл замеров), `criterion` (сравнение критериев), `report` (таблица), `bin/bench` (ворота регрессий), `bin/report` |
 | `ml-desktop` | **готово, 80 тестов** | `state` (общее состояние), `error` (ошибка IPC), `commands/*` (23 команды: версии, аккаунты, инстансы, настройки, бенчмарки, запуск, установка, Java, очередь загрузок), три сквозных теста против настоящих серверов |
 | `apps/ui` | **готово, 68 тестов** | `ipc` (клиент, типы, события, ключи запросов), `stores/game`, `stores/install` и `stores/runtime` (zustand), `components` (кнопка, состояния, оболочка, Java), `routes` (игра, версии, инстансы, производительность, загрузки, настройки), `lib` (склонение, формат) |
 | `apps/java` | **готово, 42 теста** | Gradle multi-project: `agent` (24), `mod` (18) |
 | `scripts` | **готово, 2 теста** | `latest-json.test.mjs` (манифест релиза требует подписи у каждого установщика) |
 
-Всего по воркспейсу — **621 тест** (509 на Rust, 68 на TypeScript,
+Всего по воркспейсу — **628 тестов** (516 на Rust, 68 на TypeScript,
 42 на Java, 2 у скриптов), `cargo clippy --workspace --all-targets` и
 `cargo fmt --all --check` чистые, `tsc --noEmit`, `eslint .` и
 `prettier --check .` — тоже.
 
 > Числа в таблице — это юнит- и интеграционные тесты крейта, посчитанные
 > командой `cargo test -p <крейт> --all-targets`. Плюс 4 doc-теста
-> (`cargo test --workspace --doc`) — всего 513 тестов на Rust.
+> (`cargo test --workspace --doc`) — всего 520 тестов на Rust.
 
 ### Проверено по фактам (октябрь 2026)
 

@@ -173,12 +173,6 @@ fn the_kind_of_the_account_reaches_the_command() {
         {
             continue;
         }
-        // The versions before 1.13 spell their arguments as one string,
-        // and that string is not part of the command yet: the launcher
-        // reads the `arguments` block only. They are counted apart.
-        if entry.census.format != ml_minecraft::corpus::ArgumentFormat::Arguments {
-            continue;
-        }
 
         let command = build_command(
             &request(&document, platform),
@@ -197,6 +191,90 @@ fn the_kind_of_the_account_reaches_the_command() {
             command.arguments[index + 1],
             "msa",
             "{} has the wrong kind of account",
+            entry.census.id
+        );
+    }
+}
+
+#[test]
+fn every_version_gets_the_game_arguments_its_document_prescribes() {
+    let platform = corpus::reference_platform();
+
+    for entry in corpus().versions {
+        let document = document_of(&entry.census.id);
+        let command = build_command(
+            &request(&document, platform),
+            platform,
+            &features(),
+            &document.kind,
+        )
+        .unwrap_or_else(|error| panic!("{} does not build: {error}", entry.census.id));
+
+        // The arguments of the game are the ones after the class the
+        // game is started with.
+        let main = command
+            .arguments
+            .iter()
+            .position(|argument| argument == document.main_class.as_deref().unwrap())
+            .unwrap_or_else(|| panic!("{} starts no class", entry.census.id));
+        let game = &command.arguments[main + 1..];
+
+        // The number the document prescribes is the number the command
+        // carries. For the 349 versions before 1.13 this used to be
+        // zero against eighteen.
+        let prescribed =
+            document.prescribed_game_arguments(platform, Some(&document.id), &features());
+        assert_eq!(
+            game.len(),
+            prescribed.len(),
+            "{} has the wrong number of game arguments",
+            entry.census.id
+        );
+
+        // The versions before 1.13 have no rules at all, so the number
+        // the census recorded is the number the document prescribes.
+        if entry.census.format == ml_minecraft::corpus::ArgumentFormat::MinecraftArguments {
+            assert_eq!(
+                prescribed.len(),
+                entry.census.game_arguments,
+                "{} contradicts the census",
+                entry.census.id
+            );
+        }
+    }
+}
+
+#[test]
+fn every_version_puts_the_game_on_the_classpath() {
+    let platform = corpus::reference_platform();
+
+    for entry in corpus().versions {
+        let document = document_of(&entry.census.id);
+        let command = build_command(
+            &request(&document, platform),
+            platform,
+            &features(),
+            &document.kind,
+        )
+        .unwrap_or_else(|error| panic!("{} does not build: {error}", entry.census.id));
+
+        // The classpath is named exactly once, and the game jar is on it.
+        let classpaths: Vec<&String> = command
+            .arguments
+            .iter()
+            .filter(|argument| argument.as_str() == "-cp")
+            .collect();
+        assert_eq!(
+            classpaths.len(),
+            1,
+            "{} has {classpaths:?}",
+            entry.census.id
+        );
+
+        let index = command.arguments.iter().position(|a| a == "-cp").unwrap();
+        assert!(
+            command.arguments[index + 1].contains("client.jar"),
+            "{} has no game jar on the classpath",
             entry.census.id
         );
     }

@@ -107,6 +107,24 @@ impl Session {
         map.insert("user_properties", "{}".to_string());
         map.insert("game_assets", path_to_string(&self.assets_root));
 
+        // The session string of the versions before 1.7: the token of the
+        // account, the kind of the session and the UUID of the player.
+        // An account that never went to the server has no token, and the
+        // session of such an account carries `0` in its place.
+        //
+        // The UUID is the one without hyphens: the servers of that time
+        // knew the player by that form, and the launcher already keeps
+        // it for exactly this reason.
+        let token: &str = if self.access_token.is_empty() {
+            "0"
+        } else {
+            &self.access_token
+        };
+        map.insert(
+            "auth_session",
+            format!("token:{token}:{}", self.uuid_prefix),
+        );
+
         // The kind of the account is only known when the session was
         // built from an account.
         if !self.user_type.is_empty() {
@@ -417,6 +435,32 @@ mod tests {
     fn the_properties_of_the_account_are_a_json_object() {
         let values = session().placeholders();
         assert_eq!(substitute("${user_properties}", &values), "{}");
+    }
+
+    #[test]
+    fn the_session_string_is_the_one_the_old_versions_expect() {
+        // The versions before 1.7 carry the session as one string: the
+        // token of the account, the kind of the session and the UUID.
+        let values = session().placeholders();
+        assert_eq!(
+            substitute("${auth_session}", &values),
+            "token:token:123456789abcdef0123456789abc0000"
+        );
+    }
+
+    #[test]
+    fn an_account_without_a_token_gets_a_session_of_zero() {
+        // An account that never went to the server has no token. The
+        // session of such an account carries `0` in its place — an empty
+        // argument would be a different argument.
+        let mut session = session();
+        session.access_token = String::new();
+
+        let values = session.placeholders();
+        assert_eq!(
+            substitute("${auth_session}", &values),
+            "token:0:123456789abcdef0123456789abc0000"
+        );
     }
 
     #[test]

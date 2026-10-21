@@ -197,9 +197,12 @@ pub fn build_command(
 
     // The classpath has to be known before the arguments are resolved,
     // because `${classpath}` is one of them.
-    let classpath = build_classpath(&request.client_jar, &request.classpath_entries());
     let mut values: BTreeMap<&str, String> = session.placeholders();
-    values.insert("classpath", classpath);
+    values.insert(
+        "classpath",
+        build_classpath(&request.client_jar, &request.classpath_entries()),
+    );
+    let classpath = values.get("classpath").map_or("", String::as_str);
 
     // The JVM arguments, in the order the version prescribes.
     let version_id = Some(request.version.id.as_str());
@@ -231,12 +234,18 @@ pub fn build_command(
     // player who asked for eight gigabytes means eight gigabytes.
     jvm_arguments.extend(request.extra_jvm_args.iter().cloned());
 
-    jvm_arguments.extend(substitute_all(
-        &request
-            .version
-            .arguments
-            .resolve_jvm(platform, version_id, features),
-        &values,
+    // The JVM arguments the document prescribes.
+    let version_jvm_arguments = request
+        .version
+        .arguments
+        .resolve_jvm(platform, version_id, features);
+    jvm_arguments.extend(substitute_all(&version_jvm_arguments, &values));
+
+    // What the document leaves out, the launcher supplies.
+    jvm_arguments.extend(launcher_jvm_arguments(
+        &version_jvm_arguments,
+        &session,
+        classpath,
     ));
 
     // The arguments of the loader come after the arguments of the game,
@@ -287,11 +296,15 @@ pub fn build_command(
     }
 
     // The game arguments.
+    //
+    // The versions before 1.13 spell their arguments as one string, and
+    // the versions from 1.13 on use the `arguments` block; no document
+    // carries both. The document knows which form it uses, so the
+    // launcher reads the one that is there.
     let mut game_arguments = substitute_all(
         &request
             .version
-            .arguments
-            .resolve_game(platform, version_id, features),
+            .prescribed_game_arguments(platform, version_id, features),
         &values,
     );
     game_arguments.insert(0, main_class.clone());
@@ -318,6 +331,62 @@ pub fn build_command(
         environment: Vec::new(),
         natives_layout,
     })
+}
+
+/// The JVM arguments the launcher supplies for the versions that
+/// prescribe none.
+///
+/// The versions before 1.13 have no `arguments` block at all: the
+/// document names the arguments of the game and nothing else. Two of
+/// them the JVM cannot do without — the classpath, without which the
+/// game is not found on it, and the directories the natives were
+/// unpacked into — and the launcher of Mojang supplied both.
+///
+/// The arguments a version prescribes are never touched: a modern
+/// version names the classpath and all four directories itself, and this
+/// function then adds nothing.
+fn launcher_jvm_arguments(
+    version_jvm_arguments: &[String],
+    session: &Session,
+    classpath: &str,
+) -> Vec<String> {
+    let mut arguments = Vec::new();
+
+    // The classpath, unless the version names its own.
+    if !version_jvm_arguments
+        .iter()
+        .any(|argument| argument == "-cp" || argument.starts_with("-cp="))
+    {
+        arguments.push("-cp".to_string());
+        arguments.push(classpath.to_string());
+    }
+
+    // The directories of the natives, unless the version names them.
+    // They are the very directories the launcher unpacks the natives
+    // into, so that the game looks for them where they are.
+    for (family, property) in [
+        (NativeFamily::System, "java.library.path"),
+        (NativeFamily::Jna, "jna.tmpdir"),
+        (
+            NativeFamily::Lwjgl,
+            "org.lwjgl.system.SharedLibraryExtractPath",
+        ),
+        (NativeFamily::Netty, "io.netty.native.workdir"),
+    ] {
+        let prefix = format!("-D{property}=");
+        if version_jvm_arguments
+            .iter()
+            .any(|argument| argument.starts_with(&prefix))
+        {
+            continue;
+        }
+        arguments.push(format!(
+            "{prefix}{}",
+            crate::args::path_to_string(&session.natives_directory.join(family.directory()))
+        ));
+    }
+
+    arguments
 }
 
 /// The classpath the command uses, for diagnostics.
@@ -856,6 +925,129 @@ mod tests {
                 .any(|argument| argument.starts_with("-DFabricMcEmu=")),
             "{:?}",
             command.arguments
+        );
+    }
+
+    /// A version of the times before 1.13.
+    ///
+    /// Such a document has no `arguments` block at all: it spells its
+    /// arguments as one string, and it names neither the classpath nor
+    /// the directories of the natives.
+    const LEGACY_1_12_2: &str = r#"{
+        "id": "1.12.2",
+        "type": "release",
+        "mainClass": "net.minecraft.client.main.Main",
+        "assets": "5",
+        "minecraftArguments": "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userType ${user_type} --versionType ${version_type}"
+    }"#;
+
+    /// A request for a version of the times before 1.13.
+    fn legacy_request() -> LaunchRequest {
+        let mut request = request();
+        request.version = VersionJson::parse(LEGACY_1_12_2.as_bytes()).unwrap();
+        request.session.version_name = "1.12.2".into();
+        request.session.user_type = "msa".into();
+        request.client_jar = PathBuf::from("C:/versions/1.12.2/client.jar");
+        request
+    }
+
+    #[test]
+    fn a_legacy_version_gets_the_arguments_its_document_prescribes() {
+        let command = build_command(
+            &legacy_request(),
+            platform(),
+            &FeatureSet::none(),
+            "release",
+        )
+        .unwrap();
+
+        let main = command
+            .arguments
+            .iter()
+            .position(|argument| argument == "net.minecraft.client.main.Main")
+            .expect("the class of the game is not there");
+
+        // The arguments of the game are the ones after the class.
+        let game = &command.arguments[main + 1..];
+        assert_eq!(game[0], "--username");
+        assert_eq!(game[1], "Steve");
+        assert!(game.contains(&"--versionType".to_string()), "{game:?}");
+        assert!(game.contains(&"release".to_string()), "{game:?}");
+        assert!(
+            !game.iter().any(|argument| argument.contains("${")),
+            "{game:?}"
+        );
+    }
+
+    #[test]
+    fn a_legacy_version_gets_the_classpath_and_the_natives() {
+        // The document of such a version names neither the classpath
+        // nor the directories of the natives: without them the JVM does
+        // not find the game at all.
+        let command = build_command(
+            &legacy_request(),
+            platform(),
+            &FeatureSet::none(),
+            "release",
+        )
+        .unwrap();
+
+        let index = command
+            .arguments
+            .iter()
+            .position(|argument| argument == "-cp")
+            .expect("the classpath is not there");
+        assert!(
+            command.arguments[index + 1].starts_with("C:/versions/1.12.2/client.jar"),
+            "{}",
+            command.arguments[index + 1]
+        );
+
+        // The directories are the ones the natives are unpacked into.
+        for property in [
+            "java.library.path",
+            "jna.tmpdir",
+            "org.lwjgl.system.SharedLibraryExtractPath",
+            "io.netty.native.workdir",
+        ] {
+            assert!(
+                command
+                    .arguments
+                    .iter()
+                    .any(|argument| argument.starts_with(&format!("-D{property}="))),
+                "{property} is not there"
+            );
+        }
+
+        // And the layout of the natives follows them.
+        assert_eq!(
+            command.natives_layout.directory_for(NativeFamily::System),
+            PathBuf::from("C:/games/mc/natives/java")
+        );
+        assert_eq!(
+            command.natives_layout.directory_for(NativeFamily::Lwjgl),
+            PathBuf::from("C:/games/mc/natives/lwjgl")
+        );
+    }
+
+    #[test]
+    fn a_modern_version_is_left_alone() {
+        // The document of a modern version names the classpath and all
+        // four directories itself: the launcher adds nothing.
+        let command =
+            build_command(&request(), platform(), &FeatureSet::none(), "release").unwrap();
+
+        let classpaths = command
+            .arguments
+            .iter()
+            .filter(|argument| *argument == "-cp")
+            .count();
+        assert_eq!(classpaths, 1);
+
+        assert!(
+            command
+                .arguments
+                .contains(&"-Djava.library.path=C:/games/mc/natives/java".to_string())
         );
     }
 
