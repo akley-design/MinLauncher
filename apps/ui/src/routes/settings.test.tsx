@@ -58,6 +58,7 @@ function settings(
       garbage_collector: "G1",
       extra_args: ["-XX:+UseStringDeduplication"],
       enable_agent: false,
+      flags_profile: "default",
     },
     mods: {
       enabled: true,
@@ -83,6 +84,46 @@ function settings(
       database: "C:/Users/player/AppData/Roaming/MinLauncher/minlaucher.db",
     },
     autostart_supported: autostartSupported,
+    jvm_flags: [
+      {
+        profile: "default",
+        decisions: [
+          {
+            flag: "-XX:+AlwaysPreTouch",
+            applied: true,
+            effect_ms: 727,
+            reason: "Так предписывает версия игры",
+          },
+        ],
+      },
+      {
+        profile: "measured",
+        decisions: [
+          {
+            flag: "-XX:+AlwaysPreTouch",
+            applied: false,
+            effect_ms: -727,
+            reason: "Замер на этой машине: без этого флага виртуальная машина стартует быстрее",
+          },
+        ],
+      },
+    ],
+    jvm_collectors: [
+      {
+        name: "G1",
+        flag: "-XX:+UseG1GC",
+        start_ms: 311,
+        game_rss_mib: 1499,
+        reason: "Виртуальная машина стартует дольше, а игра занимает меньше памяти",
+      },
+      {
+        name: "Z",
+        flag: "-XX:+UseZGC",
+        start_ms: 246,
+        game_rss_mib: 1758,
+        reason: "Сборщик, который предписывает версия игры: старт и память измерены",
+      },
+    ],
   };
 }
 
@@ -218,6 +259,58 @@ describe("the screen of the settings", () => {
       "-XX:+UseG1GC",
       "-XX:+UseStringDeduplication",
     ]);
+  });
+
+  it("shows what the measurement said about the flags of the virtual machine", async () => {
+    // The choice of the profile has to say which flags it touches and
+    // what the measurement said about them: a flag that is on because
+    // of a measurement has to say which measurement.
+    readSettings.mockResolvedValue(settings());
+    renderScreen();
+
+    const profile = await screen.findByLabelText("Флаги виртуальной машины");
+    expect(profile).toHaveValue("default");
+    expect(screen.getByText("-XX:+AlwaysPreTouch")).toBeInTheDocument();
+    expect(
+      screen.getByText(/включён — виртуальная машина стартует на 727 мс дольше/),
+    ).toBeInTheDocument();
+
+    await userEvent.selectOptions(profile, "measured");
+
+    expect(
+      screen.getByText(/выключен — виртуальная машина стартует на 727 мс быстрее/),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+    await waitFor(() => expect(writeSettings).toHaveBeenCalledTimes(1));
+    expect(writeSettings.mock.calls[0]?.[0]?.jvm.flags_profile).toBe("measured");
+  });
+
+  it("offers only the collectors the java of mojang has", async () => {
+    // The java of mojang does not know Shenandoah: it answers
+    // "Unrecognized VM option 'UseShenandoah'" and the game does not
+    // start. A choice that cannot start the game must not be offered.
+    readSettings.mockResolvedValue(settings());
+    renderScreen();
+
+    const collector = (await screen.findByLabelText("Сборщик мусора")) as HTMLSelectElement;
+    const values = Array.from(collector.options).map((option) => option.value);
+
+    expect(values).toEqual(["", "G1", "Z", "Parallel"]);
+  });
+
+  it("shows what the measurement said about the collectors", async () => {
+    // A collector is a flag of the virtual machine, and the rule of the
+    // project is the same for it as for every other flag: the choice is
+    // offered with the measurement next to it.
+    readSettings.mockResolvedValue(settings());
+    renderScreen();
+
+    await screen.findByLabelText("Сборщик мусора");
+
+    expect(screen.getByText(/311 ms старта, 1499 МиБ в игре/)).toBeInTheDocument();
+    expect(screen.getByText(/246 ms старта, 1758 МиБ в игре/)).toBeInTheDocument();
   });
 
   it("shows the failure of the backend instead of the form", async () => {

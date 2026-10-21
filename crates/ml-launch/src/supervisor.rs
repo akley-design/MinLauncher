@@ -301,7 +301,11 @@ where
         let mut lines = tokio::io::BufReader::new(reader).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             if is_error {
-                tracing::debug!("game: {line}");
+                // The error of the game is not a detail: a virtual machine
+                // that refuses to start says so there, and that is the
+                // only place it says it. A log that drops it cannot
+                // explain a game that did not start.
+                tracing::warn!("game: {line}");
             } else {
                 tracing::info!("game: {line}");
             }

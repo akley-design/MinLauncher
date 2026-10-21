@@ -228,12 +228,12 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 547 |
+| Rust | 561 |
 | Java agent | 24 |
 | Java mod | 18 |
-| Interface | 84 |
+| Interface | 87 |
 | Release scripts | 2 |
-| **Total** | **675** |
+| **Total** | **692** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners

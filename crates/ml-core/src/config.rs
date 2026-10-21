@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::jvmflags::FlagsProfile;
+
 /// Download engine tuning.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -40,13 +42,19 @@ pub struct JvmConfig {
     pub max_heap: String,
     /// Minimum heap size.
     pub min_heap: String,
-    /// Garbage collector to request (`G1`, `Z`, `Shenandoah`, `Parallel`);
+    /// Garbage collector to request (`G1`, `Z`, `Parallel`);
     /// empty = the one the version of the game asks for.
     pub garbage_collector: String,
     /// Extra JVM arguments appended verbatim.
     pub extra_args: Vec<String>,
     /// Whether to enable the startup-profiling Java agent.
     pub enable_agent: bool,
+    /// The profile of the flags of the virtual machine.
+    ///
+    /// The version of the game prescribes its own flags; the profile
+    /// says whether the launcher keeps them as they are or corrects the
+    /// ones a measurement on this machine showed to be a waste.
+    pub flags_profile: FlagsProfile,
 }
 
 impl JvmConfig {
@@ -73,6 +81,9 @@ impl Default for JvmConfig {
             garbage_collector: String::new(),
             extra_args: Vec::new(),
             enable_agent: true,
+            // The flags of the version are the version's business until
+            // a measurement says otherwise on this machine.
+            flags_profile: FlagsProfile::default(),
         }
     }
 }
@@ -87,12 +98,17 @@ impl Default for JvmConfig {
 ///
 /// A name the JVM does not know means no flag at all: a game that does
 /// not start helps nobody.
+///
+/// **Shenandoah is not among the names.** The Java of Mojang that the
+/// launcher installs does not have it, and says so at the start:
+/// "Unrecognized VM option '`UseShenandoah`'". A collector that the
+/// machine refuses cannot be offered to the player, because the game
+/// would not start at all.
 #[must_use]
 pub fn collector_flag(name: &str) -> Option<&'static str> {
     match name {
         "G1" | "G1GC" => Some("-XX:+UseG1GC"),
         "Z" | "ZGC" => Some("-XX:+UseZGC"),
-        "Shenandoah" => Some("-XX:+UseShenandoah"),
         "Parallel" | "ParallelGC" => Some("-XX:+UseParallelGC"),
         "Serial" | "SerialGC" => Some("-XX:+UseSerialGC"),
         _ => None,
@@ -286,7 +302,15 @@ mod tests {
         assert_eq!(collector_flag("G1"), Some("-XX:+UseG1GC"));
         assert_eq!(collector_flag("Z"), Some("-XX:+UseZGC"));
         assert_eq!(collector_flag("Parallel"), Some("-XX:+UseParallelGC"));
-        assert_eq!(collector_flag("Shenandoah"), Some("-XX:+UseShenandoah"));
+    }
+
+    #[test]
+    fn a_collector_the_java_of_mojang_does_not_have_is_not_offered() {
+        // The Java of Mojang does not know Shenandoah: it answers
+        // "Unrecognized VM option 'UseShenandoah'" and the game does not
+        // start. A name that is not translated is no flag at all, so the
+        // game starts with the collector of the version of the game.
+        assert_eq!(collector_flag("Shenandoah"), None);
     }
 
     #[test]

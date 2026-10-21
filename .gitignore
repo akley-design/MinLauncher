@@ -40,6 +40,15 @@ dist-ssr/
 /benchmarks/*.json
 !/benchmarks/baseline.json
 
+# The measurements of the flags of the virtual machine are committed on
+# purpose: a flag is only allowed in the product when a measurement on
+# this machine showed that it wins, and that measurement is the reason
+# the flag is there. Without it the flag is a claim, and claims are not
+# shipped.
+!/benchmarks/jvm-flags.json
+!/benchmarks/jvm-flags-recheck.json
+!/benchmarks/flags-ab.json
+
 # --- Secrets ---
 .env
 .env.*

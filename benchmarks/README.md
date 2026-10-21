@@ -9,6 +9,9 @@ benchmarks of the launch path.
 | `ours.json` | what **our** launcher measured on **this** machine | no |
 | `reference.json` | what the **reference** launcher measured, by the same protocol | no |
 | `baseline.json` | the baseline of the benchmarks of **this** machine | yes |
+| `jvm-flags.json` | the start of the virtual machine with the flags of the version and with their variants | yes |
+| `jvm-flags-recheck.json` | the same measurement, made again | yes |
+| `flags-ab.json` | the profiles of the flags of the virtual machine, measured one after another | yes |
 
 The first two are the numbers of a particular machine on a particular day.
 They are ignored by git: a number of another machine would be a lie about
@@ -19,6 +22,13 @@ its author: the numbers of a benchmark are comparable **within one
 machine only**. The CI does not trust it — it measures the base of the
 branch on the same runner as the head, right before it, and compares
 the two. See below.
+
+The three measurements of the flags are committed for the same reason as
+the baseline, and for one more: **a flag of the virtual machine is only
+allowed in the product when a measurement on this machine showed that it
+wins.** The measurement is the reason the flag is there, so the reason
+travels with the flag — and a flag without a measurement is a claim, and
+claims are not shipped.
 
 ## How to take our measurement
 
@@ -44,6 +54,76 @@ and the file is named after the scenario.
 
 The script asks the player to click "Play" once per run. It watches the
 mouse, the processes and the clock — and nothing else.
+
+## How to take the measurement of the flags
+
+Two measurements, at two levels.
+
+```powershell
+# the start of the virtual machine alone: the flags of the version
+# 26.3 and their variants, thirty runs of each
+.\scripts\measure-jvm.ps1 -Runs 30 -Out benchmarks\jvm-flags.json
+
+# the game itself: the profiles of the flags, one after another
+.\scripts\measure-profiles.ps1 -Runs 8 -Profiles default,measured,measured_g1 -Fresh
+
+# the comparison out of the files of the profiles
+.\scripts\measure-profiles.ps1 -Report -Profiles default,measured,measured_g1
+.\scripts\compare-profiles.ps1
+```
+
+**Measure on a quiet machine.** A number of a busy machine is a number
+of the other work, and the series of a busy machine are wide enough to
+hide the effect that is being measured. The script
+`scripts\wait-for-quiet.ps1` waits until the machine has been quiet
+before the measurement starts:
+
+```powershell
+.\scripts\wait-for-quiet.ps1
+if ($LASTEXITCODE -eq 0) { .\scripts\measure-jvm.ps1 -Runs 30 }
+```
+
+The threshold of the quiet is **45 % of the processor**, and that is not
+a round number chosen to be lenient: the machine of a person at work is
+never empty. A browser, a chat, the system itself take twenty to thirty
+per cent of it all the time, and that is not "another work" — it is the
+machine. What the guard has to keep out is the **big** work, and that
+takes eighty per cent and more.
+
+The threshold does not decide whether the numbers are good. The variants
+are taken one after another, round by round, so a background that does
+not change takes the same share out of every variant, and the middle of
+thirty rounds puts it out. That is not a guess: two runs of the same
+eight variants — one with the machine at thirty per cent, one at seventy
+— gave middles that differ by three per cent. The load that really was
+there is written into the file of the measurement (`load_percent` — the
+worst moment, `load_median_percent` — the usual one), so that a reader
+can see it without asking, and the noise of the series decides whether
+they may be compared at all.
+
+The first measurement needs no game and no player: it starts the virtual
+machine with the flags of the version, the machine builds its heap — which
+is where the flags act — finds no class to run and leaves. That is where
+the cost of a flag shows: the flags are read when the virtual machine
+starts.
+
+The second measurement is the game, with the profiles of the flags. The
+profiles are measured **one after another** — profile, profile, profile
+— and not each one in a long run of its own: a machine that gets busier
+changes the numbers of every profile in the same way, and when the
+profiles are measured one after another, the difference between them is
+still the difference of the flags.
+
+**The archive of the classes is not among the profiles.** The profile
+`measured_cds` was the archive of the classes: the game is started once
+with `-XX:ArchiveClassesAtExit`, the virtual machine writes the archive
+when it leaves, and the runs of that profile are started with
+`-XX:SharedArchiveFile`. The archive cannot be made with the flags of
+the version 26.3: the version prescribes `-XX:+UseCompactObjectHeaders`,
+and the virtual machine **never finishes starting** with that flag and
+with `-XX:ArchiveClassesAtExit` at once. The measurement of that is in
+the section 9 of `docs/RESULTS.md`, and the profile is left out of the
+run rather than measured on a machine that does not come.
 
 ## How to read the numbers
 

@@ -4,7 +4,7 @@
 //! whole and written whole: the file is small, and a partial write of a
 //! settings file is a corrupted settings file.
 
-use ml_core::LauncherConfig;
+use ml_core::{CollectorMeasurement, FlagDecision, LauncherConfig};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -24,6 +24,27 @@ pub struct SettingsView {
     /// The interface hides the toggle of the autostart when the answer
     /// is no: a toggle that does nothing is worse than no toggle.
     pub autostart_supported: bool,
+    /// What the measurement said about the flags of the virtual machine,
+    /// so that the interface can show why a flag is on and not merely
+    /// that it is.
+    pub jvm_flags: Vec<ProfileFlags>,
+    /// What the measurement said about the collectors of the garbage.
+    ///
+    /// The player may pick a collector instead of the one the version of
+    /// the game prescribes, and that is a choice about a flag of the
+    /// virtual machine. The rule of the project is the same for it as
+    /// for every other flag: the choice is offered with the measurement
+    /// next to it.
+    pub jvm_collectors: Vec<CollectorMeasurement>,
+}
+
+/// The decisions of one profile of the flags of the virtual machine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProfileFlags {
+    /// The profile these decisions belong to.
+    pub profile: String,
+    /// The decisions themselves.
+    pub decisions: Vec<FlagDecision>,
 }
 
 /// The directories the launcher uses.
@@ -52,6 +73,13 @@ pub fn read_settings(state: State<'_, SharedState>) -> IpcResult<SettingsView> {
     })?;
 
     let paths = state.paths();
+    let jvm_flags = ml_core::jvmflags::every_profile()
+        .into_iter()
+        .map(|(profile, decisions)| ProfileFlags {
+            profile: profile.as_str().to_string(),
+            decisions,
+        })
+        .collect();
 
     Ok(SettingsView {
         config,
@@ -61,6 +89,8 @@ pub fn read_settings(state: State<'_, SharedState>) -> IpcResult<SettingsView> {
             database: paths.database_path.to_string_lossy().into_owned(),
         },
         autostart_supported: ml_core::autostart::is_supported(),
+        jvm_flags,
+        jvm_collectors: ml_core::jvmflags::collectors(),
     })
 }
 

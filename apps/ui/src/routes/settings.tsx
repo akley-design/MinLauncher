@@ -16,7 +16,13 @@ import { ErrorState, LoadingState } from "../components/States";
 import { Updates } from "../components/Updates";
 import { readSettings, toCommandError, writeSettings } from "../ipc/client";
 import { queryKeys } from "../ipc/queries";
-import type { Directories, LauncherConfig } from "../ipc/types";
+import type {
+  CollectorMeasurement,
+  Directories,
+  FlagsProfile,
+  LauncherConfig,
+  ProfileFlags,
+} from "../ipc/types";
 
 /** The screen of the settings. */
 export function SettingsRoute() {
@@ -68,6 +74,8 @@ export function SettingsRoute() {
         config={settings.data.config}
         directories={settings.data.directories}
         autostartSupported={settings.data.autostart_supported}
+        jvmFlags={settings.data.jvm_flags}
+        jvmCollectors={settings.data.jvm_collectors ?? []}
         busy={save.isPending}
         onSave={(config) => save.mutate(config)}
       />
@@ -82,6 +90,10 @@ interface SettingsFormProps {
   directories: Directories;
   /** Whether this system can start the launcher with itself. */
   autostartSupported: boolean;
+  /** What the measurement said about the flags of the virtual machine. */
+  jvmFlags: ProfileFlags[];
+  /** What the measurement said about the collectors of the garbage. */
+  jvmCollectors: CollectorMeasurement[];
   /** Whether a save is under way. */
   busy: boolean;
   /** The player asked to save the copy. */
@@ -93,6 +105,8 @@ function SettingsForm({
   config,
   directories,
   autostartSupported,
+  jvmFlags,
+  jvmCollectors,
   busy,
   onSave,
 }: SettingsFormProps) {
@@ -101,6 +115,11 @@ function SettingsForm({
   const patch = (change: Partial<LauncherConfig>) => {
     setDraft({ ...draft, ...change });
   };
+
+  // The list under the choice follows the choice: the player sees what
+  // the profile does before saving it.
+  const decisions =
+    jvmFlags.find((entry) => entry.profile === draft.jvm.flags_profile)?.decisions ?? [];
 
   return (
     <>
@@ -278,9 +297,24 @@ function SettingsForm({
               <option value="">Как в версии игры</option>
               <option value="G1">G1</option>
               <option value="Z">Z</option>
-              <option value="Shenandoah">Shenandoah</option>
               <option value="Parallel">Parallel</option>
             </select>
+            {/*
+             * A collector is a flag of the virtual machine, and the rule
+             * of the project is the same for it as for every other flag:
+             * the choice is offered with the measurement next to it. The
+             * numbers are the ones of this machine — the start of the
+             * virtual machine and the memory of the game.
+             */}
+            {jvmCollectors.map((collector) => (
+              <div key={collector.name} className="field__hint">
+                <span className="mono">{collector.name}</span> — {collector.reason}:{" "}
+                {collector.start_ms} ms старта,{" "}
+                {collector.game_rss_mib > 0
+                  ? `${collector.game_rss_mib} МиБ в игре`
+                  : "в игре не измерялся"}
+              </div>
+            ))}
           </div>
         </div>
 
@@ -323,6 +357,47 @@ function SettingsForm({
             placeholder={"-XX:+UseStringDeduplication\n-XX:+UseG1GC"}
           />
           <span className="field__hint">По одному аргументу в строке</span>
+        </div>
+
+        {/*
+         * The profile of the flags is the only place where the launcher
+         * is allowed to differ from the version of the game — and it
+         * differs only where a measurement on this machine showed a
+         * win. The list under the choice says which flags that is, what
+         * the measurement said, and why the decision was made, so that
+         * the choice is never a black box.
+         */}
+        <div className="field" style={{ marginTop: "var(--space-4)" }}>
+          <label className="field__label" htmlFor="flags-profile">
+            Флаги виртуальной машины
+          </label>
+          <select
+            id="flags-profile"
+            className="input"
+            value={draft.jvm.flags_profile}
+            onChange={(event) =>
+              patch({
+                jvm: { ...draft.jvm, flags_profile: event.target.value as FlagsProfile },
+              })
+            }
+          >
+            <option value="default">Как в версии игры</option>
+            <option value="measured">По замеру на этой машине</option>
+          </select>
+          <span className="field__hint">
+            {draft.jvm.flags_profile === "measured"
+              ? "Лаунчер выключает флаги, которые на этой машине замедляли старт"
+              : "Лаунчер не трогает флаги, которые предписывает версия игры"}
+          </span>
+
+          {decisions.map((decision) => (
+            <div key={decision.flag} style={{ marginTop: "var(--space-3)" }}>
+              <span className="mono">{decision.flag}</span>
+              <span className="field__hint">
+                {describe(decision.applied, decision.effect_ms)} — {decision.reason}
+              </span>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -446,4 +521,22 @@ function SettingsForm({
       </div>
     </>
   );
+}
+
+/**
+ * Say what a decision means, in one line.
+ *
+ * A positive effect is what the flag costs; a negative one is what it
+ * saves. The word is the same in both cases — the sign is what differs.
+ *
+ * The time is the time of the start of the virtual machine, and not the
+ * time of the launch of the game: the flag is read by the virtual
+ * machine when it starts, and the game begins long after that. Saying
+ * it otherwise would promise a launch that is faster than it is.
+ */
+function describe(applied: boolean, effectMs: number): string {
+  const millis = Math.abs(effectMs);
+  const verb = applied ? "включён" : "выключен";
+  const cost = applied ? "дольше" : "быстрее";
+  return `${verb} — виртуальная машина стартует на ${millis} мс ${cost}`;
 }

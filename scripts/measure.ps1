@@ -9,10 +9,16 @@
     saw. It never touches the launcher it measures: it reads the
     processes, the windows and the clock, and nothing else.
 
-    The click is captured passively with a low-level mouse hook that
-    lives on its own thread. The hook only reads the timestamps of the
-    clicks; it does not move the mouse, does not click and does not
-    write anything into the launcher.
+    The click of a person is captured passively with a low-level mouse
+    hook that lives on its own thread. The hook only reads the
+    timestamps of the clicks; it does not move the mouse, does not click
+    and does not write anything into the launcher.
+
+    The click that the script makes itself (`-AutoPlay`) is measured
+    where it is made. The event of the click goes into the queue of the
+    system, and the system takes it when it can - on a busy machine
+    that is half a minute after the click, and the hook would then say
+    that the game appeared before the click was made.
 
 .PARAMETER Launcher
     The executable to measure. The default is the release build of the
@@ -349,6 +355,25 @@ public static class WindowWatch
 /// launcher sees the click where a player would make it.
 public static class MouseClick
 {
+    /// The moment of the last click that the script made, in the ticks
+    /// of the performance counter.
+    private static long _lastClick;
+
+    /// The moment of the last click that the script made, in
+    /// milliseconds of the performance counter.
+    ///
+    /// The hook of the mouse is the right instrument for a click of a
+    /// person, but not for a click the script makes itself: the event
+    /// goes into the queue of the system and the system takes it when
+    /// it can - on a busy machine that is half a minute later, and the
+    /// moment of the click would be the moment the system got round to
+    /// it. The click of the script is therefore measured where it is
+    /// made.
+    public static double LastClickMs()
+    {
+        return Interlocked.Read(ref _lastClick) * 1000.0 / Stopwatch.Frequency;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT
     {
@@ -485,6 +510,9 @@ public static class MouseClick
         inputs[1].u.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
         inputs[2].type = INPUT_MOUSE;
         inputs[2].u.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+
+        // The moment of the click is the moment the event is made.
+        Interlocked.Exchange(ref _lastClick, Stopwatch.GetTimestamp());
 
         uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
         return sent == inputs.Length;
@@ -767,7 +795,8 @@ function Invoke-Element {
 
 function Click-Play {
     <#
-        Makes the click of the operator on the button "Play".
+        Makes the click of the operator on the button "Play" and returns
+        the moment of that click.
 
         The click has to be a real one - the hook of the mouse reads
         the input of the mouse, and a message sent to the window is not
@@ -843,6 +872,8 @@ function Click-Play {
     if (-not $clicked) {
         throw "the button Play was not found within $TimeoutSeconds seconds"
     }
+
+    return [MouseClick]::LastClickMs()
 }
 
 function Wait-ForWindow {
@@ -1141,6 +1172,32 @@ function Read-Samples {
     return $samples
 }
 
+function Read-FailedRuns {
+    <#
+        How many runs of the game did not come, counted by the earlier
+        measurements of the same file.
+
+        The measurement can be continued: the samples of the earlier runs
+        stay in the file, and the count of the runs that failed has to
+        stay with them. A count that is written anew by every run says
+        only about the last run, and a reader of the file then sees eight
+        runs of the game and a count of zero - and believes that nothing
+        failed.
+    #>
+    param([string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) { return 0 }
+
+    try {
+        $document = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    } catch {
+        return 0
+    }
+
+    if (-not $document.meta -or $null -eq $document.meta.failed_runs) { return 0 }
+    return [int] $document.meta.failed_runs
+}
+
 function Merge-LauncherMeasurements {
     <#
         The launcher measures what only it can see: the length of an
@@ -1328,6 +1385,20 @@ $meta = [ordered]@{
     recorded_at = (Get-Date).ToUniversalTime().ToString("o", [System.Globalization.CultureInfo]::InvariantCulture)
 }
 
+# The runs in which the game did not come. A run without a game has no
+# numbers of the game, and a number that is missing is not a number that
+# is zero: the count of them is written into the file, so that nobody
+# reads a median of the runs that happened and thinks it is the median
+# of all the runs.
+#
+# The count starts with the count that is already in the file: the
+# measurement can be continued, and the runs that failed in the earlier
+# measurements are still runs that failed. A count that is written anew
+# by every run says only about the last run, and a reader of the file
+# then sees eight runs of the game and a count of zero - and believes
+# that nothing failed.
+$failedRuns = Read-FailedRuns -Path $Out
+
 try {
     $meta["cpu"] = (Get-CimInstance Win32_Processor -ErrorAction Stop |
         Select-Object -First 1 -ExpandProperty Name)
@@ -1395,92 +1466,121 @@ try {
     for ($run = 1; $run -le $Runs; $run++) {
         Write-Host "run $run of $Runs"
 
-        $instance = Start-Launcher -Path $Launcher -TimeoutSeconds $TimeoutSeconds
-        Add-Sample -Samples $samples -Metric "launcher_warm_start" -Value $instance.Milliseconds
-        Write-Host ("  the launcher was ready in {0:N1} ms" -f $instance.Milliseconds)
-        if ($null -ne $instance.PageMilliseconds) {
-            Add-Sample -Samples $samples -Metric "launcher_warm_page_ready" -Value $instance.PageMilliseconds
-            Write-Host ("  the interface was drawn in {0:N1} ms" -f $instance.PageMilliseconds)
-        }
-
-        $instance.Process.Refresh()
-        Add-Sample -Samples $samples -Metric "launcher_rss" -Value ($instance.Process.WorkingSet64 / 1MB)
-
-        if (-not $NoGame) {
-            # The processes that are already running are listed now,
-            # right before the click: the game of this run is the one
-            # that appears after it. A game that was left over from the
-            # run before would otherwise be taken for it.
-            $known = @(Get-JavaProcesses | ForEach-Object { $_.Id })
-
-            if ($AutoPlay) {
-                Write-Host "  clicking Play in the launcher to start the game"
-                Click-Play -TimeoutSeconds $TimeoutSeconds
-            } else {
-                Write-Host "  click Play in the launcher to start the game"
+        $instance = $null
+        try {
+            $instance = Start-Launcher -Path $Launcher -TimeoutSeconds $TimeoutSeconds
+            Add-Sample -Samples $samples -Metric "launcher_warm_start" -Value $instance.Milliseconds
+            Write-Host ("  the launcher was ready in {0:N1} ms" -f $instance.Milliseconds)
+            if ($null -ne $instance.PageMilliseconds) {
+                Add-Sample -Samples $samples -Metric "launcher_warm_page_ready" -Value $instance.PageMilliseconds
+                Write-Host ("  the interface was drawn in {0:N1} ms" -f $instance.PageMilliseconds)
             }
-            $game = Wait-ForGame -KnownIds $known -TimeoutSeconds $TimeoutSeconds
 
-            # The rule of the protocol: the last click before the game
-            # appeared. A click that is older than the start of the
-            # launcher belongs to another run and is not taken.
-            $click = [ClickWatch]::LastClickMs()
-            if ($click -le $instance.StartedAt) {
-                Write-Warning "  no click was seen; the run is not measured"
-                Stop-ProcessQuietly -Process $game.Process
+            $instance.Process.Refresh()
+            Add-Sample -Samples $samples -Metric "launcher_rss" -Value ($instance.Process.WorkingSet64 / 1MB)
+
+            if (-not $NoGame) {
+                # The processes that are already running are listed now,
+                # right before the click: the game of this run is the one
+                # that appears after it. A game that was left over from
+                # the run before would otherwise be taken for it.
+                $known = @(Get-JavaProcesses | ForEach-Object { $_.Id })
+
+                if ($AutoPlay) {
+                    Write-Host "  clicking Play in the launcher to start the game"
+                    $click = Click-Play -TimeoutSeconds $TimeoutSeconds
+                } else {
+                    Write-Host "  click Play in the launcher to start the game"
+                    $click = 0
+                }
+
+                # A game that does not come is a failed run, and not the
+                # end of the measurement: the machine is busy, the
+                # network is broken, and the launcher says why in its log.
+                # The run is counted and the measurement goes on, because
+                # a measurement of thirty runs is not lost because the
+                # third one did not happen.
+                $game = $null
+                try {
+                    $game = Wait-ForGame -KnownIds $known -TimeoutSeconds $TimeoutSeconds
+                } catch {
+                    $failedRuns++
+                    $meta["failed_runs"] = $failedRuns
+                    Write-Warning "  the game did not come: $($_.Exception.Message)"
+                }
+
+                if ($null -ne $game) {
+                    # The rule of the protocol: the last click before the game
+                    # appeared. A click that is older than the start of the
+                    # launcher belongs to another run and is not taken.
+                    #
+                    # The click of the script is measured where it is made. The
+                    # hook of the mouse is the instrument for a click of a
+                    # person, and it is read here, when the game appeared,
+                    # because that is the last moment the rule talks about.
+                    if (-not $AutoPlay) {
+                        $click = [ClickWatch]::LastClickMs()
+                    }
+                    if ($click -le $instance.StartedAt) {
+                        Write-Warning "  no click was seen; the run is not measured"
+                        Stop-ProcessQuietly -Process $game.Process
+                        continue
+                    }
+
+                    $appeared = $game.AppearedAt
+                    Add-Sample -Samples $samples -Metric "click_to_window" -Value ($appeared - $click)
+                    Write-Host ("  the game was ready in {0:N1} ms" -f ($appeared - $click))
+
+                    # How much of that time was the launcher's and how much was
+                    # the game's. The process of the game was created at a known
+                    # moment of the clock of the wall, and the click was at a
+                    # known moment of the counter of the performance: the anchor
+                    # ties the two together.
+                    try {
+                        $started = $game.Process.StartTime.ToUniversalTime()
+                        $clicked = ConvertTo-WallTime $click
+                        $toProcess = ($started - $clicked).TotalMilliseconds
+                        Add-Sample -Samples $samples -Metric "click_to_process" -Value $toProcess
+                        Write-Host ("  the process of the game was started {0:N1} ms after the click" -f $toProcess)
+                    } catch {
+                        Write-Warning "  the moment the game was started is not known"
+                    }
+
+                    Write-Host "  waiting $GameWaitSeconds seconds for the game to settle"
+                    Start-Sleep -Seconds $GameWaitSeconds
+
+                    $gameProcess = $game.Process
+                    $gameProcess.Refresh()
+                    Add-Sample -Samples $samples -Metric "game_rss" -Value ($gameProcess.WorkingSet64 / 1MB)
+                    Write-Host ("  the game used {0:N1} MiB" -f ($gameProcess.WorkingSet64 / 1MB))
+
+                    # The game is closed, not killed: the agent writes its
+                    # report from a shutdown hook, and a killed process does not
+                    # run its hooks.
+                    Close-Game -Process $gameProcess
+
+                    # The launcher reads the report of the agent and writes the
+                    # measurements of the game as soon as the game is gone.
+                    Start-Sleep -Seconds 10
+                }
+            }
+        } finally {
+            # The launcher is stopped and the games that are left are
+            # stopped, whatever happened in the run: a launcher that is
+            # left running takes the window away from the next run, and
+            # the plugin of the single instance closes the next launcher
+            # without a word.
+            if ($null -ne $instance) {
                 Stop-ProcessQuietly -Process $instance.Process
-                Stop-LeftOverGames
-                continue
             }
+            Stop-LeftOverGames
 
-            $appeared = $game.AppearedAt
-            Add-Sample -Samples $samples -Metric "click_to_window" -Value ($appeared - $click)
-            Write-Host ("  the game was ready in {0:N1} ms" -f ($appeared - $click))
-
-            # How much of that time was the launcher's and how much was
-            # the game's. The process of the game was created at a known
-            # moment of the clock of the wall, and the click was at a
-            # known moment of the counter of the performance: the anchor
-            # ties the two together.
-            try {
-                $started = $game.Process.StartTime.ToUniversalTime()
-                $clicked = ConvertTo-WallTime $click
-                $toProcess = ($started - $clicked).TotalMilliseconds
-                Add-Sample -Samples $samples -Metric "click_to_process" -Value $toProcess
-                Write-Host ("  the process of the game was started {0:N1} ms after the click" -f $toProcess)
-            } catch {
-                Write-Warning "  the moment the game was started is not known"
-            }
-
-            Write-Host "  waiting $GameWaitSeconds seconds for the game to settle"
-            Start-Sleep -Seconds $GameWaitSeconds
-
-            $gameProcess = $game.Process
-            $gameProcess.Refresh()
-            Add-Sample -Samples $samples -Metric "game_rss" -Value ($gameProcess.WorkingSet64 / 1MB)
-            Write-Host ("  the game used {0:N1} MiB" -f ($gameProcess.WorkingSet64 / 1MB))
-
-            # The game is closed, not killed: the agent writes its
-            # report from a shutdown hook, and a killed process does not
-            # run its hooks.
-            Close-Game -Process $gameProcess
-
-            # The launcher reads the report of the agent and writes the
-            # measurements of the game as soon as the game is gone.
-            Start-Sleep -Seconds 10
+            # The samples of the run that is done are on the disk: the
+            # measurement of thirty runs is an hour of work, and it must
+            # not be lost because of a later run.
+            $meta["failed_runs"] = $failedRuns
+            Save-Samples -Meta $meta -Samples $samples -Scenario $Scenario -Path $Out
         }
-
-        Stop-ProcessQuietly -Process $instance.Process
-
-        # A game that is still running is stopped: the launcher is gone
-        # by now, and a game of the run before must not be measured by
-        # the run that comes next.
-        Stop-LeftOverGames
-
-        # The samples of the run that is done are on the disk: the
-        # measurement of thirty runs is an hour of work, and it must
-        # not be lost because of a later run.
-        Save-Samples -Meta $meta -Samples $samples -Scenario $Scenario -Path $Out
     }
 } finally {
     [ClickWatch]::Remove()

@@ -34,7 +34,7 @@ pub mod state;
 
 use std::sync::Arc;
 
-use ml_core::{OsArch, OsName, Platform};
+use ml_core::{AppPaths, OsArch, OsName, Platform};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, RunEvent, State, WindowEvent};
@@ -81,6 +81,10 @@ pub fn run() {
             })?;
 
             let shared: SharedState = Arc::new(state);
+
+            // The log of the launcher is written only when it is asked
+            // for, and it is asked for before anything else happens.
+            install_log(shared.paths());
 
             // The autostart of the machine is brought in line with the
             // settings every time the launcher starts: a record that
@@ -160,6 +164,69 @@ pub fn run() {
                 tracing::info!("MinLauncher is closing with code {code:?}");
             }
         });
+}
+
+/// The name of the file the launcher writes its log into.
+const LAUNCHER_LOG: &str = "launcher.log";
+
+/// Install the log of the launcher, when it is asked for.
+///
+/// The launcher has no console in a release build, so everything it has
+/// to say about a launch goes nowhere unless it is written into a file.
+/// The file is written only when the environment asks for it: a launcher
+/// that writes a log on every launch pays for it in the time of the
+/// launch, and the promise of the launcher is the speed of the launch.
+///
+/// The variable `MINLAUNCHER_LOG` holds the path of the file. The value
+/// `1` means the file of the launcher in the directory of its logs.
+///
+/// # Limits
+///
+/// The log is not written by default, so a launcher that was never asked
+/// to log says nothing about what it did. The log is also not rotated:
+/// the file grows for as long as the launcher writes into it, and a
+/// player who leaves the variable set for months pays for the disk.
+fn install_log(paths: &AppPaths) {
+    let Ok(value) = std::env::var("MINLAUNCHER_LOG") else {
+        return;
+    };
+
+    let value = value.trim();
+    let path = if value.is_empty() || value == "1" {
+        paths.logs_dir.join(LAUNCHER_LOG)
+    } else {
+        std::path::PathBuf::from(value)
+    };
+
+    if let Some(directory) = path.parent()
+        && let Err(error) = std::fs::create_dir_all(directory)
+    {
+        eprintln!("MinLauncher: cannot create the directory of the log: {error}");
+        return;
+    }
+
+    let file = match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        Ok(file) => file,
+        Err(error) => {
+            eprintln!(
+                "MinLauncher: cannot open the log {}: {error}",
+                path.display()
+            );
+            return;
+        }
+    };
+
+    // The subscriber is global and can be set only once, so the failure
+    // of a second attempt is not a failure of the launcher.
+    let _ = tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::INFO)
+        .with_writer(std::sync::Mutex::new(file))
+        .try_init();
 }
 
 /// The platform the launcher runs on.

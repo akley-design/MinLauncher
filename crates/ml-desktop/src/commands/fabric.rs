@@ -206,14 +206,53 @@ pub trait Fetcher: Send + Sync {
     fn fetch(&self, url: &str) -> impl Future<Output = Result<Vec<u8>>> + Send;
 }
 
+/// How long the answer of the network is waited for.
+///
+/// The documents of the loader are small, and the project answers them in
+/// a fraction of a second: the answer to the list of the loaders of the
+/// version 26.3 came in 0.23 s on this machine. The launch must not wait
+/// for a network that is broken — a socket that hangs is worse than a
+/// socket that refuses, because a refusal is answered at once and a hang
+/// is not answered at all. Without this limit the launch could stand still
+/// for minutes on a broken network, and the game would not start at all.
+///
+/// Three seconds are long enough for a slow connection and short enough
+/// that a broken one is not felt as a hang. The game is started without
+/// the loader when the answer does not come in time.
+pub const FETCH_TIMEOUT: Duration = Duration::from_secs(3);
+
 /// The fetcher that goes to the network.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct NetworkFetcher;
+#[derive(Debug, Clone, Copy)]
+pub struct NetworkFetcher {
+    /// How long the answer of the server is waited for.
+    timeout: Duration,
+}
+
+impl Default for NetworkFetcher {
+    fn default() -> Self {
+        Self {
+            timeout: FETCH_TIMEOUT,
+        }
+    }
+}
+
+impl NetworkFetcher {
+    /// The fetcher that waits for the answer of the server for a while.
+    ///
+    /// The wait is a parameter so that the test can prove that a server
+    /// that never answers does not hold the launch, without waiting three
+    /// seconds for it.
+    #[must_use]
+    pub fn with_timeout(timeout: Duration) -> Self {
+        Self { timeout }
+    }
+}
 
 impl Fetcher for NetworkFetcher {
     async fn fetch(&self, url: &str) -> Result<Vec<u8>> {
         let client = reqwest::Client::builder()
             .user_agent(concat!("MinLauncher/", env!("CARGO_PKG_VERSION")))
+            .timeout(self.timeout)
             .build()
             .map_err(|e| Error::network("http client", e))?;
 
@@ -784,5 +823,50 @@ mod tests {
         let missing = dir.path().join("missing.jar");
 
         assert!(install_mod_jar(&missing, &dir.path().join("mods")).is_err());
+    }
+
+    #[tokio::test]
+    async fn a_server_that_does_not_answer_cannot_hold_the_launch() {
+        // A socket that hangs is worse than a socket that refuses: the
+        // refusal is answered at once, and the hang is not answered at
+        // all. The launcher has to give up on it and start the game
+        // without the loader, and it has to do it in a bounded time.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            // The connection is accepted, and nothing is ever said on
+            // it: the socket is held open and silent.
+            for stream in listener.incoming() {
+                let Ok(stream) = stream else { break };
+                std::thread::sleep(Duration::from_secs(5));
+                drop(stream);
+            }
+        });
+
+        let fetcher = NetworkFetcher::with_timeout(Duration::from_millis(300));
+        let started = std::time::Instant::now();
+        let answer = fetcher.fetch(&format!("http://{address}/")).await;
+
+        assert!(
+            answer.is_err(),
+            "a server that says nothing cannot answer the launcher"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the launcher waited {} ms on a server that says nothing",
+            started.elapsed().as_millis()
+        );
+    }
+
+    #[test]
+    fn the_wait_of_the_network_is_bounded() {
+        // The limit is a promise: the launch does not stand still on a
+        // broken network.
+        assert!(FETCH_TIMEOUT < Duration::from_secs(10));
+        assert_eq!(
+            NetworkFetcher::default().timeout,
+            FETCH_TIMEOUT,
+            "the fetcher of the launcher waits as long as it promises"
+        );
     }
 }

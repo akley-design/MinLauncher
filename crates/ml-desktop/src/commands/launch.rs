@@ -569,7 +569,7 @@ async fn prepare_loader(state: &SharedState, request: &mut LaunchRequest, versio
     let cache = crate::commands::fabric::LoaderCache::new(state.paths());
 
     let Some(loader_version) = crate::commands::fabric::loader_version_for(
-        &crate::commands::fabric::NetworkFetcher,
+        &crate::commands::fabric::NetworkFetcher::default(),
         &cache,
         version_id,
         &config.mods.loader_version,
@@ -582,7 +582,7 @@ async fn prepare_loader(state: &SharedState, request: &mut LaunchRequest, versio
     };
 
     let profile = match crate::commands::fabric::profile(
-        &crate::commands::fabric::NetworkFetcher,
+        &crate::commands::fabric::NetworkFetcher::default(),
         &cache,
         version_id,
         &loader_version,
@@ -807,10 +807,40 @@ fn extra_jvm_args(state: &SharedState) -> Vec<String> {
     if !config.jvm.min_heap.is_empty() {
         args.push(format!("-Xms{}", config.jvm.min_heap));
     }
-    if let Some(flag) = config.jvm.collector_flag() {
-        args.push(flag);
+    // The player may name a collector in the free-text field, and the
+    // dropdown may name another one. The virtual machine refuses to
+    // start when two different collectors are named at once ("Multiple
+    // garbage collectors selected"), so the choice written out by hand
+    // replaces the one of the dropdown — the same rule that lets the
+    // choice of the player replace the one of the version of the game
+    // (see `build_command`).
+    let player_names_a_collector = config
+        .jvm
+        .extra_args
+        .iter()
+        .any(|argument| ml_core::config::is_collector_flag(argument));
+    if !player_names_a_collector {
+        args.extend(config.jvm.collector_flag());
     }
+
+    // The profile of the flags comes after the arguments of the version
+    // and before the arguments of the player: the last of a pair
+    // `+Flag` / `-Flag` is the one the virtual machine obeys, so a flag
+    // of the version can be switched off without deleting it, and a
+    // player who writes the flag out by hand still gets what they
+    // asked for.
+    args.extend(ml_core::jvmflags::adjustment(config.jvm.flags_profile));
     args.extend(config.jvm.extra_args.iter().cloned());
+
+    // The log says what was asked of the virtual machine, so that a
+    // measurement of the flags can be checked against what the launcher
+    // really did. The arguments of the virtual machine hold no secret:
+    // the token of the player is in the arguments of the game.
+    tracing::info!(
+        "the profile of the flags of the virtual machine is {}; the extra arguments are {:?}",
+        config.jvm.flags_profile.as_str(),
+        args
+    );
 
     args
 }
@@ -898,6 +928,85 @@ mod tests {
 
         let args = extra_jvm_args(&state);
         assert!(args.is_empty(), "{args:?}");
+    }
+
+    #[test]
+    fn the_profile_of_the_flags_follows_the_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
+        let platform = Platform::new(OsName::Windows, OsArch::X86_64);
+        let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
+
+        // The profile of the version adds nothing: the version's own
+        // flags are already in the command.
+        let mut config = state.storage().load_settings().unwrap();
+        config.jvm.flags_profile = ml_core::FlagsProfile::Default;
+        state.storage().save_settings(&config).unwrap();
+
+        let args = extra_jvm_args(&state);
+        assert!(
+            !args.iter().any(|arg| arg.contains("AlwaysPreTouch")),
+            "{args:?}"
+        );
+
+        // The measured profile switches the flag off — by appending, so
+        // that the argument of the version stays where it is.
+        config.jvm.flags_profile = ml_core::FlagsProfile::Measured;
+        state.storage().save_settings(&config).unwrap();
+
+        let args = extra_jvm_args(&state);
+        assert_eq!(args, vec!["-XX:-AlwaysPreTouch".to_string()], "{args:?}");
+    }
+
+    #[test]
+    fn the_arguments_of_the_player_come_after_the_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
+        let platform = Platform::new(OsName::Windows, OsArch::X86_64);
+        let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
+
+        let mut config = state.storage().load_settings().unwrap();
+        config.jvm.flags_profile = ml_core::FlagsProfile::Measured;
+        // The player writes the flag out by hand, against the profile.
+        config.jvm.extra_args = vec!["-XX:+AlwaysPreTouch".to_string()];
+        state.storage().save_settings(&config).unwrap();
+
+        // The profile switches the flag off, and the player switches it
+        // back on: the last of a pair `+Flag` / `-Flag` is the one the
+        // virtual machine obeys, and the player is the one who has the
+        // last word.
+        let args = extra_jvm_args(&state);
+        assert_eq!(
+            args,
+            vec![
+                "-XX:-AlwaysPreTouch".to_string(),
+                "-XX:+AlwaysPreTouch".to_string()
+            ],
+            "{args:?}"
+        );
+    }
+
+    #[test]
+    fn two_collectors_are_never_sent_to_the_virtual_machine() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
+        let platform = Platform::new(OsName::Windows, OsArch::X86_64);
+        let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
+
+        let mut config = state.storage().load_settings().unwrap();
+        // The dropdown names one collector and the free-text field
+        // another. The virtual machine refuses to start when two
+        // different collectors are named at once.
+        config.jvm.garbage_collector = "G1".to_string();
+        config.jvm.extra_args = vec!["-XX:+UseZGC".to_string()];
+        state.storage().save_settings(&config).unwrap();
+
+        let args = extra_jvm_args(&state);
+        let collectors: Vec<&String> = args
+            .iter()
+            .filter(|arg| ml_core::config::is_collector_flag(arg))
+            .collect();
+        assert_eq!(collectors, vec!["-XX:+UseZGC"], "{args:?}");
     }
 
     #[test]

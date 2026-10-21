@@ -102,6 +102,39 @@ export interface JvmConfig {
   garbage_collector: string;
   extra_args: string[];
   enable_agent: boolean;
+  /**
+   * The profile of the flags of the virtual machine.
+   *
+   * `default` keeps the flags the version of the game prescribes;
+   * `measured` corrects the ones a measurement on this machine showed
+   * to be a waste.
+   */
+  flags_profile: FlagsProfile;
+}
+
+/** The profile of the flags of the virtual machine. */
+export type FlagsProfile = "default" | "measured";
+
+/**
+ * What the measurement said about one flag of the virtual machine.
+ *
+ * The interface shows this next to the choice of the profile: a flag
+ * that is on because of a measurement has to say which measurement.
+ */
+export interface FlagDecision {
+  /** The flag itself. */
+  flag: string;
+  /** Whether the flag is in effect with this profile. */
+  applied: boolean;
+  /**
+   * What the measurement showed, in milliseconds.
+   *
+   * A positive number means the flag costs that much; a negative one
+   * means it saves that much.
+   */
+  effect_ms: number;
+  /** Why the decision was made. */
+  reason: string;
 }
 
 /** The settings of the mods. */
@@ -155,6 +188,42 @@ export interface SettingsView {
   directories: Directories;
   /** Whether this system can start the launcher with itself. */
   autostart_supported: boolean;
+  /** What the measurement said about the flags of the virtual machine. */
+  jvm_flags: ProfileFlags[];
+  /** What the measurement said about the collectors of the garbage. */
+  jvm_collectors: CollectorMeasurement[];
+}
+
+/**
+ * What the measurement said about one collector of the garbage.
+ *
+ * The player may pick a collector instead of the one the version of the
+ * game prescribes. The choice is offered with the measurement next to
+ * it, so that the player knows what the choice costs.
+ */
+export interface CollectorMeasurement {
+  /** The name of the collector, as it is written in the settings. */
+  name: string;
+  /** The flag that turns the collector on. */
+  flag: string;
+  /** The start of the virtual machine with this collector, in milliseconds. */
+  start_ms: number;
+  /**
+   * The resident memory of the game with this collector, in mebibytes.
+   *
+   * Zero when the collector was not measured with the game itself.
+   */
+  game_rss_mib: number;
+  /** What the measurement showed. */
+  reason: string;
+}
+
+/** The decisions of one profile of the flags of the virtual machine. */
+export interface ProfileFlags {
+  /** The profile these decisions belong to. */
+  profile: FlagsProfile;
+  /** The decisions themselves. */
+  decisions: FlagDecision[];
 }
 
 /**
