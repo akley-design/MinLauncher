@@ -485,6 +485,34 @@ function Get-JavaProcesses {
     return @(Get-Process -Name java, javaw -ErrorAction SilentlyContinue)
 }
 
+function Stop-LeftOverGames {
+    <#
+        Stops the game of the launcher that is still running.
+
+        Only the game of the launcher is stopped, and not the java of
+        anything else on the machine: the game is found by the path of
+        its runtime, and that path lies in the directory of the
+        launcher.
+
+        A game that lives on into the next run would be measured
+        there. Its window is a window of the game, and it would be
+        taken for the game of the click of that run - and the number
+        would be the length of nothing.
+    #>
+    foreach ($process in (Get-Process -Name java, javaw -ErrorAction SilentlyContinue)) {
+        try {
+            $path = $process.Path
+        } catch {
+            continue
+        }
+        if ($null -eq $path) { continue }
+        if ($path -like "*MinLauncher*runtimes*") {
+            Write-Host "  stopping the game that is still running"
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Stop-StaleProcesses {
     <#
         Stops what a previous run left running.
@@ -503,20 +531,75 @@ function Stop-StaleProcesses {
     Get-Process -Name "minlaucher" -ErrorAction SilentlyContinue |
         Stop-Process -Force -ErrorAction SilentlyContinue
 
-    foreach ($process in (Get-Process -Name java, javaw -ErrorAction SilentlyContinue)) {
-        try {
-            $path = $process.Path
-        } catch {
-            continue
-        }
-        if ($null -eq $path) { continue }
-        # Only the game of the launcher, and not the java of anything
-        # else on the machine.
-        if ($path -like "*MinLauncher*runtimes*") {
-            Write-Host "  stopping the game that is still running"
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-        }
+    Stop-LeftOverGames
+}
+
+function Set-AutomaticRestart {
+    <#
+        Switches the auto-restart of the launcher off for the time of
+        the measurement, and keeps the settings so that they can be
+        given back exactly as they were.
+
+        The game of this machine falls over when it is closed: it asks
+        the server of the sessions for an answer, the server is not
+        reachable, and the game goes down with an error. The launcher
+        sees a game that fell over and starts it again - five seconds
+        later, with a window of its own. The run after that one would
+        find that window and take it for the game of its own click,
+        and the number would be the length of nothing.
+
+        The rules of the restart are read once, when the game is
+        started, so the switch has to be off before the launcher
+        starts.
+
+        Only the one word is changed and the document is not written
+        again: everything else in it stays as it was. The file is
+        written without a byte order mark, because the reader of the
+        settings is Rust and a mark at the beginning of the file is
+        not JSON.
+    #>
+    $path = Join-Path $env:APPDATA "MinLauncher\settings.json"
+    if (-not (Test-Path -LiteralPath $path)) {
+        Write-Warning "there are no settings; the automatic restart cannot be switched off"
+        return [pscustomobject]@{ Existed = $false; Text = "" }
     }
+
+    $text = [System.IO.File]::ReadAllText($path)
+    $regex = [regex]::new('("restart"\s*:\s*\{[^}]*?"enabled"\s*:\s*)(true|false)')
+    if (-not $regex.Match($text).Success) {
+        throw "the rules of the restart are not in the settings; they cannot be switched off"
+    }
+
+    $changed = $regex.Replace($text, '${1}false', 1)
+    [System.IO.File]::WriteAllText($path, $changed, (New-Object System.Text.UTF8Encoding($false)))
+
+    $check = $regex.Match([System.IO.File]::ReadAllText($path))
+    if (-not $check.Success -or $check.Groups[2].Value -ne "false") {
+        throw "the automatic restart could not be switched off"
+    }
+
+    Write-Host "  the automatic restart of the launcher is switched off for the measurement"
+    return [pscustomobject]@{ Existed = $true; Text = $text }
+}
+
+function Restore-AutomaticRestart {
+    <#
+        Gives the settings of the launcher back as they were before
+        the measurement.
+    #>
+    param($Backup)
+
+    if ($null -eq $Backup) { return }
+
+    $path = Join-Path $env:APPDATA "MinLauncher\settings.json"
+    if (-not $Backup.Existed) {
+        if (Test-Path -LiteralPath $path) {
+            Remove-Item -LiteralPath $path -Force
+        }
+        return
+    }
+
+    [System.IO.File]::WriteAllText($path, $Backup.Text, (New-Object System.Text.UTF8Encoding($false)))
 }
 
 # The name of the play button, written without a single Cyrillic
@@ -1202,6 +1285,12 @@ Write-Host "  the file of the measurements is $Out"
 # running would take the window away from the one that is measured.
 Stop-StaleProcesses
 
+# The auto-restart of the launcher is switched off for the time of the
+# measurement: a game that falls over would be started again by the
+# launcher, and the second game of that run would be measured by the
+# next one.
+$restartBackup = Set-AutomaticRestart
+
 [ClickWatch]::Install()
 try {
     # --- the cold phase ------------------------------------------------
@@ -1245,8 +1334,6 @@ try {
     for ($run = 1; $run -le $Runs; $run++) {
         Write-Host "run $run of $Runs"
 
-        $known = @(Get-JavaProcesses | ForEach-Object { $_.Id })
-
         $instance = Start-Launcher -Path $Launcher -TimeoutSeconds $TimeoutSeconds
         Add-Sample -Samples $samples -Metric "launcher_warm_start" -Value $instance.Milliseconds
         Write-Host ("  the launcher was ready in {0:N1} ms" -f $instance.Milliseconds)
@@ -1259,6 +1346,12 @@ try {
         Add-Sample -Samples $samples -Metric "launcher_rss" -Value ($instance.Process.WorkingSet64 / 1MB)
 
         if (-not $NoGame) {
+            # The processes that are already running are listed now,
+            # right before the click: the game of this run is the one
+            # that appears after it. A game that was left over from the
+            # run before would otherwise be taken for it.
+            $known = @(Get-JavaProcesses | ForEach-Object { $_.Id })
+
             if ($AutoPlay) {
                 Write-Host "  clicking Play in the launcher to start the game"
                 Click-Play -TimeoutSeconds $TimeoutSeconds
@@ -1275,6 +1368,7 @@ try {
                 Write-Warning "  no click was seen; the run is not measured"
                 Stop-ProcessQuietly -Process $game.Process
                 Stop-ProcessQuietly -Process $instance.Process
+                Stop-LeftOverGames
                 continue
             }
 
@@ -1302,6 +1396,11 @@ try {
 
         Stop-ProcessQuietly -Process $instance.Process
 
+        # A game that is still running is stopped: the launcher is gone
+        # by now, and a game of the run before must not be measured by
+        # the run that comes next.
+        Stop-LeftOverGames
+
         # The samples of the run that is done are on the disk: the
         # measurement of thirty runs is an hour of work, and it must
         # not be lost because of a later run.
@@ -1314,6 +1413,8 @@ try {
     Merge-LauncherMeasurements -Samples $samples -BenchmarksDir $benchmarksDir -Scenario $Scenario
 
     Save-Samples -Meta $meta -Samples $samples -Scenario $Scenario -Path $Out
+
+    Restore-AutomaticRestart -Backup $restartBackup
 }
 
 Write-Host "the measurements are in $Out"
