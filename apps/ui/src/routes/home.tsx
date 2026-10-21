@@ -14,7 +14,6 @@ import { Button } from "../components/Button";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import {
   addOfflineAccount,
-  launchGame,
   listAccounts,
   listInstances,
   listVersions,
@@ -22,7 +21,7 @@ import {
   stopGame,
   toCommandError,
 } from "../ipc/client";
-import { queryKeys } from "../ipc/queries";
+import { queryKeys, useLaunchGame } from "../ipc/queries";
 import { plural } from "../lib/plural";
 import { useGameStore } from "../stores/game";
 
@@ -31,11 +30,12 @@ export function HomeRoute() {
   const queryClient = useQueryClient();
   const starting = useGameStore((state) => state.starting);
   const running = useGameStore((state) => state.running);
-  const beginStart = useGameStore((state) => state.beginStart);
-  const endStart = useGameStore((state) => state.endStart);
-  const failed = useGameStore((state) => state.failed);
 
   const [newAccount, setNewAccount] = useState("");
+  // The version the player picked on this screen. It is empty until the
+  // player picks one, and then the choice is theirs — the version the
+  // launcher would have picked on its own is only the default.
+  const [picked, setPicked] = useState<string | null>(null);
 
   const versions = useQuery({
     queryKey: queryKeys.versions(),
@@ -52,38 +52,23 @@ export function HomeRoute() {
     queryFn: listInstances,
   });
 
-  // The version that will be played. It is the one the settings name,
-  // or the latest release, or the newest installed one.
-  const chosenVersion =
-    versions.data?.versions.find((version) => version.installed && version.kind === "release")
-      ?.id ??
-    versions.data?.versions.find((version) => version.installed)?.id ??
+  // The version that will be played. It is the one the player picked,
+  // or the newest release that is installed, or the newest version that
+  // is installed, or the latest release of Mojang.
+  const installed = versions.data?.versions.filter((version) => version.installed) ?? [];
+  const fallback =
+    installed.find((version) => version.kind === "release")?.id ??
+    installed[0]?.id ??
     versions.data?.latest_release ??
     "";
+  const chosenVersion =
+    picked && installed.some((version) => version.id === picked) ? picked : fallback;
 
-  const installed = versions.data?.versions.filter((version) => version.installed) ?? [];
   const selected = accounts.data?.accounts.find(
     (account) => account.id === accounts.data?.selected_id,
   );
 
-  const launch = useMutation({
-    mutationFn: async () => {
-      if (!chosenVersion) {
-        throw new Error("не выбрана версия");
-      }
-      return launchGame({ version_id: chosenVersion });
-    },
-    onMutate: () => beginStart(),
-    onSuccess: (result) => {
-      endStart();
-      // The result carries the time the launcher spent preparing the
-      // launch. It is the number M3 is built on, so it is worth
-      // showing rather than throwing away.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks() });
-      void result;
-    },
-    onError: (error) => failed(toCommandError(error).message),
-  });
+  const launch = useLaunchGame();
 
   const stop = useMutation({
     mutationFn: stopGame,
@@ -135,7 +120,26 @@ export function HomeRoute() {
         <div className="play">
           <div className="play__info">
             <div className="play__label">Версия</div>
-            <div className="play__value">{chosenVersion || "—"}</div>
+            {installed.length > 0 ? (
+              // The list of the installed versions. The version that is
+              // played is the one that is picked here, and not the one
+              // the launcher would have chosen on its own.
+              <select
+                className="input"
+                style={{ maxWidth: 280 }}
+                aria-label="Версия"
+                value={chosenVersion}
+                onChange={(event) => setPicked(event.target.value)}
+              >
+                {installed.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {version.id}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="play__value">{chosenVersion || "—"}</div>
+            )}
             {chosenVersion ? (
               <div className="play__hint">
                 {versions.data?.versions.find((version) => version.id === chosenVersion)?.java_major
@@ -155,7 +159,7 @@ export function HomeRoute() {
               className="button--large"
               disabled={!canPlay}
               busy={starting}
-              onClick={() => launch.mutate()}
+              onClick={() => launch.mutate(chosenVersion)}
             >
               {starting ? "Запуск…" : "Играть"}
             </Button>

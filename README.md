@@ -231,9 +231,9 @@ path both lines can go away.
 | Rust | 531 |
 | Java agent | 24 |
 | Java mod | 18 |
-| Interface | 68 |
+| Interface | 72 |
 | Release scripts | 2 |
-| **Total** | **643** |
+| **Total** | **647** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners
@@ -280,6 +280,12 @@ ordinary tree of files. The launcher decides which by the id of the index
 the document names, lays the tree out where the game of that age reads it
 from, and points `--assetsDir` at it — the test walks all 920 versions and
 asserts that every one of them is pointed at the assets it actually reads.
+
+And every installed version can be played, not only the newest one. The
+screen «Играть» offers the installed versions in a list, and a version that
+is installed has a button «Играть» in its row on the screen «Версии» —
+the launcher starts the version that was picked, and the tests assert which
+one reaches the backend.
 
 ## Releasing it
 

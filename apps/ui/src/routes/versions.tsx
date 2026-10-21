@@ -19,9 +19,10 @@ import { useMemo, useState } from "react";
 import { Button } from "../components/Button";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { installVersion, listVersions, refreshManifest, toCommandError } from "../ipc/client";
-import { queryKeys } from "../ipc/queries";
+import { queryKeys, useLaunchGame } from "../ipc/queries";
 import type { VersionKind } from "../ipc/types";
 import { formatBytes, formatTime } from "../lib/format";
+import { useGameStore } from "../stores/game";
 import { progressOf, useInstallStore } from "../stores/install";
 
 /** The screen of the versions. */
@@ -49,6 +50,12 @@ export function VersionsRoute() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.versions() });
     },
   });
+
+  // The game is started from here as well: the version the player wants
+  // to play is often the one they are looking at.
+  const launch = useLaunchGame();
+  const running = useGameStore((state) => state.running);
+  const starting = useGameStore((state) => state.starting);
 
   // The state of the installation is in a store of its own, because the
   // frame of the launcher shows it too.
@@ -102,6 +109,10 @@ export function VersionsRoute() {
 
       {install.isError ? (
         <p className="field__error">{toCommandError(install.error).message}</p>
+      ) : null}
+
+      {launch.isError ? (
+        <p className="field__error">{toCommandError(launch.error).message}</p>
       ) : null}
 
       {installing ? (
@@ -170,7 +181,16 @@ export function VersionsRoute() {
                   <td>
                     <div className="table__actions">
                       {version.installed ? (
-                        <span className="badge badge--success">Установлена</span>
+                        <>
+                          <span className="badge badge--success">Установлена</span>
+                          <Button
+                            busy={launch.isPending && launch.variables === version.id}
+                            disabled={Boolean(running) || starting}
+                            onClick={() => launch.mutate(version.id)}
+                          >
+                            Играть
+                          </Button>
+                        </>
                       ) : (
                         <Button
                           variant="primary"
