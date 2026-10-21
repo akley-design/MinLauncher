@@ -563,18 +563,32 @@ async fn prepare_loader(state: &SharedState, request: &mut LaunchRequest, versio
         return;
     }
 
-    // The loader needs a version of the game it supports.
-    let Some(loader_version) =
-        crate::commands::fabric::loader_version_for(version_id, &config.mods.loader_version)
-            .await
-            .ok()
-            .flatten()
-    else {
+    // The loader needs a version of the game it supports. The answers of
+    // the project are kept on the disk, so that the second launch of a
+    // version does not wait for a server that may be slow or down.
+    let cache = crate::commands::fabric::LoaderCache::new(state.paths());
+
+    let Some(loader_version) = crate::commands::fabric::loader_version_for(
+        &crate::commands::fabric::NetworkFetcher,
+        &cache,
+        version_id,
+        &config.mods.loader_version,
+    )
+    .await
+    .ok()
+    .flatten() else {
         tracing::info!("the loader has no release for the version {version_id}");
         return;
     };
 
-    let profile = match crate::commands::fabric::profile(version_id, &loader_version).await {
+    let profile = match crate::commands::fabric::profile(
+        &crate::commands::fabric::NetworkFetcher,
+        &cache,
+        version_id,
+        &loader_version,
+    )
+    .await
+    {
         Ok(profile) => profile,
         Err(error) => {
             tracing::warn!("cannot fetch the profile of the loader: {error}");

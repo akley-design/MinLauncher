@@ -228,12 +228,12 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 534 |
+| Rust | 538 |
 | Java agent | 24 |
 | Java mod | 18 |
 | Interface | 84 |
 | Release scripts | 2 |
-| **Total** | **662** |
+| **Total** | **666** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners
@@ -299,6 +299,14 @@ preparing the launch is shown under the button «Играть» and gathered by
 version on the screen «Производительность» — it is the number the promise
 of five seconds is about, and it does not disappear when the player changes
 the screen.
+
+A launch that waits for a server cannot promise five seconds, so the second
+launch of a version of the game does not wait for anybody. The list of the
+loaders and the profile of the loader are kept on the disk for a day, and a
+version of the game that the project does not know at all is remembered too
+— so an old version of the game, which the loader does not support, does not
+cost a request on every launch. A network that is down is not an answer and
+is not remembered as one: the next launch tries again.
 
 ## Releasing it
 
