@@ -232,11 +232,12 @@ path both lines can go away.
 | Java agent | 24 |
 | Java mod | 18 |
 | Interface | 68 |
-| **Total** | **604** |
+| Release scripts | 2 |
+| **Total** | **606** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
-same command the CI runs. The three others are the reports of the test
-runners of their own parts.
+same command the CI runs. The others are the reports of the test runners
+of their own parts.
 
 Plus the end-to-end tests against the real game and the real servers of
 Mojang, which are switched on by hand.
