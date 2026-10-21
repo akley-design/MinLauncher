@@ -103,6 +103,19 @@ impl Argument {
         }
     }
 
+    /// The templates of this entry, with the values unresolved.
+    ///
+    /// The values still carry their placeholders and the rules are not
+    /// applied: this is what the document says, not what the machine
+    /// gets.
+    #[must_use]
+    pub fn templates(&self) -> Vec<String> {
+        match self {
+            Self::Plain(value) => vec![value.clone()],
+            Self::Guarded(guarded) => guarded.value.to_vec(),
+        }
+    }
+
     /// The rules attached to this entry, if any.
     #[must_use]
     pub fn rules(&self) -> &[Rule] {
@@ -327,6 +340,14 @@ pub struct VersionJson {
     /// The command line arguments.
     #[serde(default)]
     pub arguments: Arguments,
+    /// The game arguments of the versions before 1.13.
+    ///
+    /// The versions before 1.13 spell their arguments as one string with
+    /// the placeholders inside it, and the versions from 1.13 on use the
+    /// `arguments` block. No document carries both, so the two forms
+    /// never have to be reconciled.
+    #[serde(default, rename = "minecraftArguments")]
+    pub minecraft_arguments: Option<String>,
     /// The downloadable files of the version itself.
     #[serde(default)]
     pub downloads: Downloads,
@@ -349,6 +370,54 @@ impl VersionJson {
     /// shape.
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         serde_json::from_slice(bytes).map_err(|e| Error::json("version_json", &e))
+    }
+
+    /// The game arguments the document names, with the values unresolved.
+    ///
+    /// The values still carry their placeholders. The versions before
+    /// 1.13 spell their arguments as one string, and the versions from
+    /// 1.13 on use the `arguments` block; no document carries both, so
+    /// the two forms never have to be reconciled.
+    #[must_use]
+    pub fn game_templates(&self) -> Vec<String> {
+        if !self.arguments.game.is_empty() {
+            return self
+                .arguments
+                .game
+                .iter()
+                .flat_map(Argument::templates)
+                .collect();
+        }
+        self.legacy_game_templates()
+    }
+
+    /// The game arguments the document prescribes on a platform.
+    ///
+    /// The same two forms as [`VersionJson::game_templates`], but the
+    /// rules are applied and the entries they exclude are dropped.
+    #[must_use]
+    pub fn prescribed_game_arguments(
+        &self,
+        platform: Platform,
+        version: Option<&str>,
+        features: &FeatureSet,
+    ) -> Vec<String> {
+        if !self.arguments.game.is_empty() {
+            return self.arguments.resolve_game(platform, version, features);
+        }
+        self.legacy_game_templates()
+    }
+
+    /// The arguments of the versions before 1.13, split on the spaces.
+    ///
+    /// The string of those versions holds no quotes and no doubled
+    /// spaces — checked over every version Mojang publishes — so the
+    /// split on the whitespace is the exact reading of the document.
+    fn legacy_game_templates(&self) -> Vec<String> {
+        match &self.minecraft_arguments {
+            Some(line) => line.split_whitespace().map(str::to_string).collect(),
+            None => Vec::new(),
+        }
     }
 
     /// The libraries that apply on the given platform.

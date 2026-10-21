@@ -56,6 +56,7 @@
 #![warn(missing_docs)]
 
 pub mod assets;
+pub mod corpus;
 pub mod download;
 pub mod fabric;
 pub mod install;

@@ -228,12 +228,12 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 494 |
+| Rust | 502 |
 | Java agent | 24 |
 | Java mod | 18 |
 | Interface | 68 |
 | Release scripts | 2 |
-| **Total** | **606** |
+| **Total** | **614** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners
@@ -241,6 +241,29 @@ of their own parts.
 
 Plus the end-to-end tests against the real game and the real servers of
 Mojang, which are switched on by hand.
+
+### The contract over every version
+
+Mojang publishes a new version every now and then, and no two of the
+documents are alike: the arguments changed their form in 1.13, the assets
+changed their layout in 1.7, and the oldest releases are not the shape of
+the newest ones at all. The launcher has to start **every** one of them, and
+a few examples do not catch that.
+
+So the whole corpus is in the repository: every one of the **920** documents
+Mojang publishes, stripped of the fields the launcher does not read, in
+[`crates/ml-minecraft/tests/corpus`](crates/ml-minecraft/tests/corpus). The
+test `cargo test -p ml-minecraft --test version_corpus` walks all of them,
+and eighteen fixtures pin one per shape the document of a version can take.
+The corpus is refreshed by hand:
+
+```bash
+cargo run -p ml-minecraft --bin fetch_corpus
+```
+
+The test `the_corpus_is_the_one_of_mojang` compares the corpus with the
+live documents of Mojang byte for byte; it needs the network and is run by
+hand.
 
 ## Releasing it
 
