@@ -100,6 +100,25 @@ pub async fn launch_game(
     // --- the request ------------------------------------------------
     let mut request = build_request(&state, &account, &meta, &options)?;
 
+    let launch_config = state.storage().load_settings().map_err(|error| {
+        IpcError::with_detail(
+            ErrorCode::Storage,
+            "cannot read the optimization profile",
+            error.to_string(),
+        )
+    })?;
+    ml_launch::gameoptions::apply_profile(
+        &request.session.game_directory,
+        launch_config.optimization.profile,
+    )
+    .map_err(|error| {
+        IpcError::with_detail(
+            ErrorCode::Storage,
+            "cannot apply the graphics profile to this MinLauncher instance",
+            error.to_string(),
+        )
+    })?;
+
     // --- the loader -------------------------------------------------
     //
     // The loader makes the game itself faster. It is optional: a
@@ -110,7 +129,13 @@ pub async fn launch_game(
     // The scenario of the run is known now: the preset of the mod that
     // was in the game. The runs with the mod and without it are stored
     // apart, because they are compared against each other.
-    let scenario = scenario_of_run(&state, !request.mod_jars.is_empty());
+    let forge_minopt = request.version.main_class.as_deref()
+        == Some("cpw.mods.bootstraplauncher.BootstrapLauncher")
+        && ml_minecraft::mod_meta::directory_contains_forge_mod(
+            &request.session.game_directory.join("mods"),
+            "minopt",
+        );
+    let scenario = scenario_of_run(&state, !request.mod_jars.is_empty() || forge_minopt);
 
     // --- the command ------------------------------------------------
     let platform = state.platform();
@@ -339,9 +364,16 @@ fn store_agent_report(state: &SharedState, path: &std::path::Path, scenario: &st
     let mut meta = ml_bench::Meta::of_this_machine();
     meta.set("frames", report.frames.to_string());
     meta.set("agent", "minlaucher-agent");
-
-    let stored = ml_bench::store_measurements(state.storage(), &measurements, &mut meta, scenario);
-    tracing::info!("the agent report was stored as {stored} measurements under {scenario}");
+    if measurements.heap_mib > 0.0 {
+        meta.set("heap_mib", measurements.heap_mib.to_string());
+    }
+    if let Ok(config) = state.storage().load_settings() {
+        let profile = match config.optimization.profile {
+            ml_core::GamePerformanceProfile::Original => "original",
+            ml_core::GamePerformanceProfile::MaxFps => "max_fps",
+        };
+        meta.set("game_performance_profile", profile);
+    }
 
     // The measurements are also written into the file of the scenario,
     // so that a measurer outside can pick them up.
@@ -355,6 +387,31 @@ fn store_agent_report(state: &SharedState, path: &std::path::Path, scenario: &st
             tracing::warn!("the measurement of {} was not written: {error}", metric);
         }
     }
+
+    // The JSON file is the source of truth for the whole run series. The
+    // database stores its summary, so each session refreshes the summary
+    // from all runs collected under this scenario instead of replacing it
+    // with a one-run "benchmark".
+    let samples_path = ml_bench::samples::scenario_file(state.paths(), scenario);
+    let Ok(samples) = ml_bench::SampleFile::read(&samples_path) else {
+        tracing::warn!(
+            "cannot read the accumulated game samples at {}",
+            samples_path.display()
+        );
+        return;
+    };
+    let mut stored = 0;
+    for metric in [
+        ml_bench::Metric::InGameFps,
+        ml_bench::Metric::InGameFrametime,
+    ] {
+        if let Some(series) = samples.series_of(metric)
+            && ml_bench::store(state.storage(), metric, scenario, &series, &meta).is_some()
+        {
+            stored += 1;
+        }
+    }
+    tracing::info!("the agent report refreshed {stored} cumulative measurements under {scenario}");
 }
 
 /// The scenario of a run: the preset of the mod that was in the game.
@@ -370,12 +427,16 @@ fn scenario_of_run(state: &SharedState, mod_is_in_the_game: bool) -> String {
         return ml_bench::scenario_without_mod();
     }
 
-    let preset = match state.storage().load_settings() {
-        Ok(config) => config.mods.preset,
-        Err(_) => ml_bench::PRESET_OFF.to_string(),
+    let config = match state.storage().load_settings() {
+        Ok(config) => config,
+        Err(_) => return ml_bench::scenario_without_mod(),
     };
 
-    ml_bench::scenario_of(&preset)
+    if config.optimization.profile == ml_core::GamePerformanceProfile::MaxFps {
+        ml_bench::scenario_of("max_fps")
+    } else {
+        ml_bench::scenario_of(&config.mods.preset)
+    }
 }
 
 /// What the launcher tells the frontend while the game runs.
@@ -554,6 +615,11 @@ fn build_request(
 /// those cases the game is started without the loader, and the launcher
 /// says why in its log.
 async fn prepare_loader(state: &SharedState, request: &mut LaunchRequest, version_id: &str) {
+    if request.version.main_class.as_deref() == Some("cpw.mods.bootstraplauncher.BootstrapLauncher")
+    {
+        tracing::info!("Forge profile already provides its own mod loader");
+        return;
+    }
     let Ok(config) = state.storage().load_settings() else {
         return;
     };
@@ -803,6 +869,10 @@ fn extra_jvm_args(state: &SharedState) -> Vec<String> {
 
     if !config.jvm.max_heap.is_empty() {
         args.push(format!("-Xmx{}", config.jvm.max_heap));
+    } else if config.optimization.profile == ml_core::GamePerformanceProfile::MaxFps {
+        // The target machine has 24 GiB RAM. Four GiB gives Forge 1.20.1
+        // headroom without reserving an excessive heap for this client pack.
+        args.push("-Xmx4G".to_string());
     }
     if !config.jvm.min_heap.is_empty() {
         args.push(format!("-Xms{}", config.jvm.min_heap));
@@ -909,6 +979,10 @@ mod tests {
         let platform = Platform::new(OsName::Windows, OsArch::X86_64);
         let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
 
+        let mut config = state.storage().load_settings().unwrap();
+        config.optimization.profile = ml_core::GamePerformanceProfile::Original;
+        state.storage().save_settings(&config).unwrap();
+
         let args = extra_jvm_args(&state);
         assert!(args.is_empty(), "{args:?}");
         assert!(!args.iter().any(|arg| arg.starts_with("-Xmx")), "{args:?}");
@@ -923,6 +997,7 @@ mod tests {
         let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
 
         let mut config = state.storage().load_settings().unwrap();
+        config.optimization.profile = ml_core::GamePerformanceProfile::Original;
         config.jvm.garbage_collector = String::new();
         state.storage().save_settings(&config).unwrap();
 
@@ -940,6 +1015,7 @@ mod tests {
         // The profile of the version adds nothing: the version's own
         // flags are already in the command.
         let mut config = state.storage().load_settings().unwrap();
+        config.optimization.profile = ml_core::GamePerformanceProfile::Original;
         config.jvm.flags_profile = ml_core::FlagsProfile::Default;
         state.storage().save_settings(&config).unwrap();
 
@@ -966,6 +1042,7 @@ mod tests {
         let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
 
         let mut config = state.storage().load_settings().unwrap();
+        config.optimization.profile = ml_core::GamePerformanceProfile::Original;
         config.jvm.flags_profile = ml_core::FlagsProfile::Measured;
         // The player writes the flag out by hand, against the profile.
         config.jvm.extra_args = vec!["-XX:+AlwaysPreTouch".to_string()];
@@ -1142,9 +1219,62 @@ mod tests {
         // With the mod, under the preset of the settings.
         let mut config = state.storage().load_settings().unwrap();
         config.mods.preset = "fast".into();
+        config.optimization.profile = ml_core::GamePerformanceProfile::Original;
         state.storage().save_settings(&config).unwrap();
 
         assert_eq!(scenario_of_run(&state, true), "in_game/fast");
+
+        config.optimization.profile = ml_core::GamePerformanceProfile::MaxFps;
+        state.storage().save_settings(&config).unwrap();
+        assert_eq!(scenario_of_run(&state, true), "in_game/max_fps");
+    }
+
+    #[test]
+    fn game_measurements_accumulate_across_launches() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path().join("data"), dir.path().join("cache"));
+        let platform = Platform::new(OsName::Windows, OsArch::X86_64);
+        let state = std::sync::Arc::new(crate::state::AppState::new(paths, platform).unwrap());
+        let report_path = dir.path().join("agent-report.json");
+        let scenario = "in_game/max_fps";
+
+        let mut report = ml_launch::agent::AgentReport {
+            agent_started_at_nanos: 1,
+            uptime_nanos: 1_000_000_000,
+            frames: 120,
+            average_fps: 120.0,
+            average_frametime_ms: 8.3,
+            p99_frametime_ms: 10.0,
+            p95_frametime_ms: 9.0,
+            p50_frametime_ms: 8.0,
+            one_percent_low_ms: 10.0,
+            heap_used_mib: 1024.0,
+            frames_counted: true,
+            notes: Vec::new(),
+            failures: Vec::new(),
+        };
+
+        std::fs::write(&report_path, serde_json::to_vec(&report).unwrap()).unwrap();
+        store_agent_report(&state, &report_path, scenario);
+
+        report.average_fps = 130.0;
+        report.one_percent_low_ms = 9.0;
+        std::fs::write(&report_path, serde_json::to_vec(&report).unwrap()).unwrap();
+        store_agent_report(&state, &report_path, scenario);
+
+        let fps = state
+            .storage()
+            .benchmarks()
+            .latest("in_game_fps", scenario)
+            .unwrap()
+            .unwrap();
+        assert_eq!(fps.samples, 2);
+        assert!((fps.p50 - 120.0).abs() < 1e-6);
+        assert!(
+            fps.meta_json
+                .as_deref()
+                .is_some_and(|metadata| metadata.contains("game_performance_profile"))
+        );
     }
 
     #[test]

@@ -52,9 +52,15 @@ export function JavaRuntimes() {
       <div className="card__title">Java</div>
 
       {download.isError ? (
-        <p className="field__error">{toCommandError(download.error).message}</p>
+        <p role="alert" aria-live="polite" className="field__error">
+          {toCommandError(download.error).message}
+        </p>
       ) : null}
-      {state.error ? <p className="field__error">{state.error}</p> : null}
+      {state.error ? (
+        <p role="alert" aria-live="polite" className="field__error">
+          {state.error}
+        </p>
+      ) : null}
 
       {component ? (
         <div className="progress" role="status">
@@ -64,7 +70,14 @@ export function JavaRuntimes() {
               {state.completed} из {state.total} · {formatBytes(state.bytes)} · {progress}%
             </span>
           </div>
-          <div className="progress__track">
+          <div
+            className="progress__track"
+            role="progressbar"
+            aria-label={`Загрузка Java ${component}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
+          >
             <div className="progress__fill" style={{ width: `${progress}%` }} />
           </div>
         </div>
@@ -73,7 +86,7 @@ export function JavaRuntimes() {
       {runtimes.data.length === 0 ? (
         <p className="field__hint">Mojang не публикует Java для этой системы.</p>
       ) : (
-        <div className="card" style={{ padding: 0 }}>
+        <div className="card table-panel">
           <table className="table">
             <thead>
               <tr>

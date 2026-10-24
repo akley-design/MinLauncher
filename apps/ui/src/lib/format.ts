@@ -6,6 +6,14 @@
  * nothing but components.
  */
 
+function formatNumber(value: number, digits: number): string {
+  return new Intl.NumberFormat("ru-RU", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: false,
+  }).format(value);
+}
+
 /**
  * The time of a release, in the format a player reads.
  *
@@ -39,18 +47,18 @@ export function formatTime(value: string | undefined): string {
  */
 export function formatValue(value: number, unit: string): string {
   if (unit === "ms") {
-    return value >= 1000 ? `${(value / 1000).toFixed(2)} с` : `${value.toFixed(1)} мс`;
+    return value >= 1000 ? `${formatNumber(value / 1000, 2)} с` : `${formatNumber(value, 1)} мс`;
   }
   if (unit === "fps") {
-    return value.toFixed(1);
+    return formatNumber(value, 1);
   }
   if (unit === "mb") {
-    return `${value.toFixed(1)} МБ`;
+    return `${formatNumber(value, 1)} МБ`;
   }
   if (unit === "ratio") {
-    return `${(value * 100).toFixed(1)} %`;
+    return `${formatNumber(value * 100, 1)} %`;
   }
-  return `${value.toFixed(2)} ${unit}`;
+  return `${formatNumber(value, 2)} ${unit}`;
 }
 
 /**
@@ -67,7 +75,7 @@ export function formatImprovement(percent: number | null): string {
   }
 
   const sign = percent > 0 ? "+" : percent < 0 ? "-" : "";
-  return `${sign}${Math.abs(percent).toFixed(1)} %`;
+  return `${sign}${formatNumber(Math.abs(percent), 1)} %`;
 }
 
 /**
@@ -94,6 +102,6 @@ export function formatBytes(bytes: number): string {
 
   // A whole number of bytes is written as it is; everything else gets
   // one digit, because the second one is noise.
-  const text = unit === 0 ? String(Math.round(value)) : value.toFixed(1);
+  const text = formatNumber(value, unit === 0 ? 0 : 1);
   return `${text} ${units[unit]}`;
 }

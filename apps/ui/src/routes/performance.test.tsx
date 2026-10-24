@@ -83,10 +83,12 @@ describe("the screen of the performance", () => {
         {
           metric: "in_game_fps",
           unit: "fps",
-          with_mod_scenario: "in_game/balanced",
-          with_mod: 120,
-          without_mod_scenario: "in_game/off",
-          without_mod: 60,
+          optimized_scenario: "in_game/max_fps",
+          optimized: 120,
+          optimized_samples: 30,
+          reference_scenario: "in_game/tlauncher",
+          reference: 60,
+          reference_samples: 30,
           improvement_percent: 100,
           verdict: "met",
         },
@@ -95,10 +97,10 @@ describe("the screen of the performance", () => {
     renderScreen();
 
     expect(await screen.findByText("FPS в игре")).toBeInTheDocument();
-    expect(screen.getByText("60.0")).toBeInTheDocument();
-    expect(screen.getByText("120.0")).toBeInTheDocument();
-    expect(screen.getByText("+100.0 %")).toBeInTheDocument();
-    expect(screen.getByText("цель достигнута")).toBeInTheDocument();
+    expect(screen.getAllByText("60,0")).toHaveLength(2);
+    expect(screen.getAllByText("120,0")).toHaveLength(2);
+    expect(screen.getByText("+100,0 %")).toBeInTheDocument();
+    expect(screen.getByText("Цель достигнута")).toBeInTheDocument();
   });
 
   it("shows nothing about the pair when only one of the runs was made", async () => {
@@ -107,10 +109,8 @@ describe("the screen of the performance", () => {
     compareInGame.mockResolvedValue({ comparisons: [] });
     renderScreen();
 
-    expect(
-      await screen.findByText(/Сравнение появляется, когда один и тот же билд запущен дважды/),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("+100.0 %")).not.toBeInTheDocument();
+    expect(await screen.findByText(/Сравнение появится после импорта эталона/)).toBeInTheDocument();
+    expect(screen.queryByText("+100,0 %")).not.toBeInTheDocument();
   });
 
   it("shows the stored measurements of every scenario", async () => {

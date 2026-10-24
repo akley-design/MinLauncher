@@ -63,10 +63,15 @@ pub fn run() {
             // A second launch focuses the window that is already running
             // instead of opening a second one.
             if let Some(window) = app.get_webview_window("main") {
+                // The close-to-tray setting hides the window without
+                // terminating the process. A second launch must restore a
+                // hidden window before attempting to focus it.
+                let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_deep_link::init())
         .setup(move |app| {
             let handle = app.handle();
 
@@ -117,8 +122,13 @@ pub fn run() {
             commands::accounts::select_account,
             commands::accounts::add_offline_account,
             commands::accounts::remove_account,
+            commands::identity::identity_storage_get,
+            commands::identity::identity_storage_set,
+            commands::identity::identity_storage_remove,
             commands::instances::list_instances,
             commands::instances::create_instance,
+            commands::instances::import_forge_instance,
+            commands::instances::install_performance_mods,
             commands::instances::remove_instance,
             commands::launch::launch_game,
             commands::launch::stop_game,
@@ -130,6 +140,7 @@ pub fn run() {
             commands::benchmarks::latest_benchmarks,
             commands::benchmarks::list_benchmarks,
             commands::benchmarks::compare_in_game,
+            commands::benchmarks::import_tlauncher_baseline,
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {

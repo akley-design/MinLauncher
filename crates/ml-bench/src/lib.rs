@@ -1,7 +1,7 @@
 //! Benchmark harness for `MinLauncher`.
 //!
-//! The project promises to start Minecraft at least **20 % faster** than
-//! the reference launcher, and to make the game itself measurably faster.
+//! The project targets at least **40 % more game frames** than the
+//! reference launcher, while keeping launch time independently measurable.
 //! A promise like that is only worth something if the measurement is
 //! fixed before the result is known, so the harness is built around the
 //! metrics of `docs/PLAN.md` § 1:

@@ -201,6 +201,33 @@ impl Default for RestartConfig {
     }
 }
 
+/// The graphics profile applied to a MinLauncher game directory.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GamePerformanceProfile {
+    /// Preserve the game's current graphics settings.
+    Original,
+    /// Prefer frame rate by reducing expensive graphics settings.
+    #[default]
+    MaxFps,
+}
+
+/// Game-side performance tuning.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OptimizationConfig {
+    /// The graphics profile applied before a game starts.
+    pub profile: GamePerformanceProfile,
+}
+
+impl Default for OptimizationConfig {
+    fn default() -> Self {
+        Self {
+            profile: GamePerformanceProfile::MaxFps,
+        }
+    }
+}
+
 /// The launcher's complete settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -223,6 +250,8 @@ pub struct LauncherConfig {
     pub downloads: DownloadConfig,
     /// JVM tuning.
     pub jvm: JvmConfig,
+    /// Game-side performance tuning.
+    pub optimization: OptimizationConfig,
     /// The settings of the mods.
     pub mods: ModConfig,
     /// The rules of the restart of a crashed game.
@@ -243,6 +272,7 @@ impl Default for LauncherConfig {
             show_console: false,
             downloads: DownloadConfig::default(),
             jvm: JvmConfig::default(),
+            optimization: OptimizationConfig::default(),
             mods: ModConfig::default(),
             restart: RestartConfig::default(),
             telemetry_enabled: false,

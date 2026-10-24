@@ -21,9 +21,18 @@ export interface EmptyStateProps {
 /** A screen that has nothing to show. */
 export function EmptyState({ title, description, action }: EmptyStateProps) {
   return (
-    <div className="empty">
-      <div className="empty__title">{title}</div>
-      {description ? <div>{description}</div> : null}
+    <div className="empty empty--empty" role="status" aria-live="polite">
+      <span className="empty__icon" aria-hidden="true">
+        <svg viewBox="0 0 40 40">
+          <path d="M7 13.5 20 7l13 6.5v13L20 33 7 26.5z" />
+          <path d="m7.5 13.5 12.5 6.2 12.5-6.2M20 20v12.5" />
+          <path d="M13 10.5 26 17" />
+        </svg>
+      </span>
+      <div className="empty__copy">
+        <div className="empty__title">{title}</div>
+        {description ? <div className="empty__description">{description}</div> : null}
+      </div>
       {action}
     </div>
   );
@@ -37,9 +46,9 @@ export interface LoadingStateProps {
 /** A screen that is waiting. */
 export function LoadingState({ label = "Загрузка…" }: LoadingStateProps) {
   return (
-    <div className="empty">
+    <div className="empty empty--loading" role="status" aria-live="polite">
       <span className="spinner" aria-hidden="true" />
-      <div>{label}</div>
+      <div className="empty__description">{label}</div>
     </div>
   );
 }
@@ -67,16 +76,16 @@ export function ErrorState({ error, action }: ErrorStateProps) {
   const commandError = toCommandError(error);
 
   return (
-    <div className="empty">
-      <div className="empty__title">Что-то пошло не так</div>
-      <div className="selectable">{commandError.message}</div>
+    <div className="empty empty--error" role="alert" aria-live="polite">
+      <span className="empty__icon" aria-hidden="true">
+        !
+      </span>
+      <div className="empty__copy">
+        <div className="empty__title">Что-то пошло не так</div>
+        <div className="empty__description selectable">{commandError.message}</div>
+      </div>
       {commandError.detail ? (
-        <div
-          className="selectable"
-          style={{ color: "var(--text-dim)", fontSize: "var(--text-xs)" }}
-        >
-          {commandError.detail}
-        </div>
+        <div className="empty__detail selectable">{commandError.detail}</div>
       ) : null}
       {action}
     </div>

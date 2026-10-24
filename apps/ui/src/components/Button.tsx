@@ -37,7 +37,7 @@ export function Button({
   }
 
   return (
-    <button className={classes.join(" ")} disabled={disabled || busy} {...rest}>
+    <button className={classes.join(" ")} disabled={disabled || busy} aria-busy={busy} {...rest}>
       {busy ? <span className="spinner" aria-hidden="true" /> : null}
       {children}
     </button>

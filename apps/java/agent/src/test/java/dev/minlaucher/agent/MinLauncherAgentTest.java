@@ -51,6 +51,17 @@ class MinLauncherAgentTest {
     }
 
     @Test
+    void the_report_path_can_be_unique_to_each_java_process() {
+        System.setProperty(MinLauncherAgent.OUTPUT_PROPERTY, "C:\\reports\\game-{pid}.json");
+        try {
+            Path path = MinLauncherAgent.outputPath(MinLauncherAgent.parseArguments(""));
+            assertTrue(path.getFileName().toString().matches("game-[0-9]+\\.json"));
+        } finally {
+            System.clearProperty(MinLauncherAgent.OUTPUT_PROPERTY);
+        }
+    }
+
+    @Test
     void the_option_of_the_agent_is_used_when_there_is_no_property() {
         System.clearProperty(MinLauncherAgent.OUTPUT_PROPERTY);
         Path path = MinLauncherAgent.outputPath(

@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AccountList,
+  Instance,
   InstanceList,
   InstallResult,
   LaunchResult,
@@ -28,7 +29,7 @@ import { HomeRoute } from "./home";
 const listVersions = vi.fn<() => Promise<VersionList>>();
 const listAccounts = vi.fn<() => Promise<AccountList>>();
 const listInstances = vi.fn<() => Promise<InstanceList>>();
-const launchGame = vi.fn<(options: { version_id: string }) => Promise<LaunchResult>>();
+const launchGame = vi.fn<(options: { version_id: string; instance_id?: string }) => Promise<LaunchResult>>();
 const installVersion = vi.fn<(options: { version_id: string }) => Promise<InstallResult>>();
 
 vi.mock("../ipc/client", async () => {
@@ -38,7 +39,7 @@ vi.mock("../ipc/client", async () => {
     listVersions: () => listVersions(),
     listAccounts: () => listAccounts(),
     listInstances: () => listInstances(),
-    launchGame: (options: { version_id: string }) => launchGame(options),
+    launchGame: (options: { version_id: string; instance_id?: string }) => launchGame(options),
     installVersion: (options: { version_id: string }) => installVersion(options),
   };
 });
@@ -137,6 +138,30 @@ describe("the screen of the launch", () => {
     const options = Array.from(picker.querySelectorAll("option")).map((option) => option.value);
 
     expect(options).toEqual(["26.3", "1.12.2"]);
+  });
+
+  it("starts the selected isolated instance", async () => {
+    const instance: Instance = {
+      id: "forge-1201",
+      version_id: "1.20.1-forge-47.4.20",
+      name: "Forge 1.20.1 · MinLauncher",
+      game_dir: "C:/MinLauncher/instances/forge-1201",
+      java_path: null,
+      jvm_args: null,
+      created_at: "2026-10-22T10:00:00Z",
+    };
+    listInstances.mockResolvedValue({ instances: [instance] });
+
+    renderScreen();
+    const picker = await screen.findByLabelText("Версия");
+    expect(picker).toHaveValue("instance:forge-1201");
+    await userEvent.click(screen.getByRole("button", { name: "Играть" }));
+
+    await waitFor(() => expect(launchGame).toHaveBeenCalledTimes(1));
+    expect(launchGame.mock.calls[0]?.[0]).toEqual({
+      version_id: "1.20.1-forge-47.4.20",
+      instance_id: "forge-1201",
+    });
   });
 
   it("offers to install a version when none is installed", async () => {

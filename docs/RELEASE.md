@@ -121,9 +121,17 @@ npm ci
 npm run tauri:build
 ```
 
-Подпись на локальной машине необязательна: без ключа сборка пройдёт,
-но файлов `.sig` не будет, и такой релиз публиковать нельзя. Чтобы
-собрать с подписью:
+Подпись на локальной машине необязательна, но **сборка без приватного
+ключа не проходит**: публичный ключ лежит в `tauri.conf.json`, и на
+последнем шаге команда падает с «A public key has been found, but no
+private key» и возвращает код 1. К этому моменту исполняемый файл и
+оба установщика **уже собраны** — падает только подпись.
+
+Опаснее всего то, что рядом с новым установщиком остаётся **старый**
+файл `.sig` от прошлой сборки: он на месте, он выглядит свежим, и он не
+подходит к новому файлу. Публиковать такую пару нельзя. Поэтому
+локальная сборка без ключа годится ровно для одного: убедиться, что
+исполняемый файл собрался и запускается. Чтобы собрать с подписью:
 
 ```bash
 export TAURI_SIGNING_PRIVATE_KEY="$HOME/.tauri/minlaucher.key"
@@ -150,7 +158,7 @@ target/release/bundle/nsis/MinLauncher_<версия>_x64-setup.exe /S /D=C:\Use
 4. публикует установщики, их подписи и `latest.json` в релизе GitHub.
 
 Манифест нужен обновляющемуся лаунчеру: он спрашивает у endpoint
-`https://github.com/minlaucher/minlaucher/releases/latest/download/latest.json`
+`https://github.com/akley-design/MinLauncher/releases/latest/download/latest.json`
 и по нему узнаёт, что вышло, какой файл качать и какой подписью его
 проверять.
 
@@ -237,3 +245,33 @@ Git, и если он попадёт раньше, линкером окажет
 Java-часть (агент и мод) собирается отдельно, Gradle, и в установщик не
 входит: её требование — `GRADLE_USER_HOME` на пути без кириллицы, см.
 `apps/java/gradle.properties`.
+
+---
+
+## 8. Выпуск с рабочего стола
+
+Файл `Update MinLauncher.bat` в корне рабочего стола запускает
+`scripts/publish-release.mjs` из папки `Desktop/minlaucher`. Нужны Node.js
+20.19+, Git for Windows и GitHub CLI (`gh`). Авторизуйте CLI командой
+`gh auth login` и создайте публичный репозиторий `akley-design/MinLauncher`
+либо разрешите скрипту создать его после явного подтверждения.
+
+При запуске скрипт показывает локальные изменения и номер выпуска. Только
+после ввода `YES` он проверяет настройки GitHub Actions, обновляет patch-
+версию во всех манифестах проекта, коммитит все неигнорируемые изменения,
+отправляет ветку и тег `v<версия>`. Этот тег запускает workflow выше;
+публиковать релиз вручную в GitHub Releases не нужно. Если скрипт остановился
+из-за отсутствующих секретов или переменных, добавьте их в репозиторий и
+запустите `.bat` снова.
+
+До первого выпуска добавьте значения, совпадающие с конфигурацией проекта:
+
+```powershell
+gh secret set TAURI_SIGNING_PRIVATE_KEY --repo akley-design/MinLauncher
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo akley-design/MinLauncher
+gh variable set VITE_SUPABASE_URL --repo akley-design/MinLauncher --body "https://<project-ref>.supabase.co"
+gh variable set VITE_SUPABASE_ANON_KEY --repo akley-design/MinLauncher
+```
+
+Скрипт отказывается добавлять к релизу файлы `.env`, ключи, PEM, `secrets.json`
+и `credentials.json`. Список игнорируемых файлов определяется `.gitignore`.

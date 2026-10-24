@@ -24,6 +24,7 @@
 pub mod agent;
 pub mod args;
 pub mod command;
+pub mod gameoptions;
 pub mod jvm;
 pub mod natives;
 pub mod supervisor;

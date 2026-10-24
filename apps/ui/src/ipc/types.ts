@@ -86,6 +86,13 @@ export interface InstanceList {
   instances: Instance[];
 }
 
+/** The result of installing the pinned Forge 1.20.1 performance mods. */
+export interface PerformanceModInstall {
+  instance_id: string;
+  installed: string[];
+  already_present: string[];
+}
+
 /** Download engine tuning. */
 export interface DownloadConfig {
   max_concurrent: number;
@@ -170,9 +177,15 @@ export interface LauncherConfig {
   show_console: boolean;
   downloads: DownloadConfig;
   jvm: JvmConfig;
+  optimization: OptimizationConfig;
   mods: ModConfig;
   restart: RestartConfig;
   telemetry_enabled: boolean;
+}
+
+/** Graphics policy applied to a MinLauncher game directory before launch. */
+export interface OptimizationConfig {
+  profile: "original" | "max_fps";
 }
 
 /** The directories the launcher uses. */
@@ -318,24 +331,17 @@ export interface BenchmarkList {
  */
 export type Verdict = "met" | "missed" | "unknown";
 
-/**
- * One metric of the game, measured with the mod and without it.
- *
- * The run without the mod is the base, and the run with it is what the
- * mod changed. Both of them are the medians of their own series.
- */
+/** One metric measured by TLauncher and MinLauncher's optimized profile. */
 export interface InGameComparison {
   metric: string;
   unit: string;
-  /** The scenario of the run with the mod, e.g. `in_game/balanced`. */
-  with_mod_scenario: string;
-  /** The median of the run with the mod. */
-  with_mod: number;
-  /** The scenario of the run without the mod, e.g. `in_game/off`. */
-  without_mod_scenario: string;
-  /** The median of the run without the mod. */
-  without_mod: number;
-  /** How much the mod changed the game, in percent. */
+  optimized_scenario: string;
+  optimized: number;
+  optimized_samples: number;
+  reference_scenario: string;
+  reference: number;
+  reference_samples: number;
+  /** How much the optimized MinLauncher run changed the game, in percent. */
   improvement_percent: number | null;
   /** The verdict on the target of the metric. */
   verdict: Verdict | null;
@@ -344,6 +350,12 @@ export interface InGameComparison {
 /** The comparisons of the game: the metrics M5 and M6. */
 export interface InGameComparisons {
   comparisons: InGameComparison[];
+}
+
+/** The result of loading a measured TLauncher reference file. */
+export interface TLauncherBaselineImport {
+  scenario: string;
+  runs_per_metric: number;
 }
 
 /** The state of the running game. */

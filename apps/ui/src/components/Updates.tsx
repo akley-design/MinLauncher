@@ -12,14 +12,20 @@
  * such: the button stays, the check can be repeated later.
  */
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { Button } from "../components/Button";
 import { checkForUpdate, installUpdate, toCommandError } from "../ipc/client";
 
+const UPDATE_QUERY_KEY = ["launcher", "update"] as const;
+
 /** The section of the settings that updates the launcher itself. */
 export function Updates() {
-  const check = useMutation({ mutationFn: checkForUpdate });
+  const check = useQuery({
+    queryKey: UPDATE_QUERY_KEY,
+    queryFn: checkForUpdate,
+    staleTime: 60_000,
+  });
 
   const install = useMutation({
     mutationFn: () => installUpdate(check.data?.raw_json),
@@ -32,9 +38,15 @@ export function Updates() {
     <section className="card">
       <div className="card__title">Обновления</div>
 
-      {check.isError ? <p className="field__error">{toCommandError(check.error).message}</p> : null}
+      {check.isError ? (
+        <p role="alert" aria-live="polite" className="field__error">
+          {toCommandError(check.error).message}
+        </p>
+      ) : null}
       {install.isError ? (
-        <p className="field__error">{toCommandError(install.error).message}</p>
+        <p role="alert" aria-live="polite" className="field__error">
+          {toCommandError(install.error).message}
+        </p>
       ) : null}
 
       {update && !update.configured ? (
@@ -59,7 +71,7 @@ export function Updates() {
       ) : null}
 
       <div className="form-row" style={{ marginTop: "var(--space-3)" }}>
-        <Button busy={check.isPending} onClick={() => check.mutate()}>
+        <Button busy={check.isFetching} onClick={() => void check.refetch()}>
           Проверить обновления
         </Button>
         {available ? (

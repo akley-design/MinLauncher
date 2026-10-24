@@ -133,6 +133,7 @@ pub struct GuardedArgument {
     #[serde(default)]
     pub rules: Vec<Rule>,
     /// The argument itself.
+    #[serde(alias = "values")]
     pub value: ArgumentValue,
 }
 
@@ -297,6 +298,9 @@ pub struct Library {
     /// The files of the library.
     #[serde(default)]
     pub downloads: LibraryDownloads,
+    /// The direct artifact shape used by Forge version documents.
+    #[serde(default)]
+    pub artifact: Option<FileDownload>,
     /// Rules that decide whether the library is used.
     #[serde(default)]
     pub rules: Vec<Rule>,
@@ -824,5 +828,42 @@ mod tests {
         argument
             .resolve(platform(), Some("26.3"), &features())
             .contains(&"-XX:+UseZGC".to_string())
+    }
+
+    #[test]
+    fn forge_profile_values_and_direct_artifacts_parse() {
+        let raw = r#"{
+            "id":"1.20.1-forge-47.4.20",
+            "type":"release",
+            "mainClass":"cpw.mods.bootstraplauncher.BootstrapLauncher",
+            "arguments":{
+                "game":[{"values":["--launchTarget","forgeclient"],"rules":[]}],
+                "jvm":[{"values":["-p","${library_directory}${classpath_separator}${classpath}"],"rules":[]}]
+            },
+            "libraries":[{
+                "name":"net.minecraftforge:forge:1.20.1-47.4.20",
+                "artifact":{"path":"net/minecraftforge/forge/1.20.1-47.4.20/forge-1.20.1-47.4.20.jar","url":"https://maven.minecraftforge.net/forge.jar","sha1":"abc","size":3}
+            }]
+        }"#;
+
+        let version = VersionJson::parse(raw.as_bytes()).unwrap();
+        let game = version
+            .arguments
+            .resolve_game(platform(), Some(&version.id), &features());
+        let jvm = version
+            .arguments
+            .resolve_jvm(platform(), Some(&version.id), &features());
+        let resolved = version.resolve_libraries(platform(), Some(&version.id));
+
+        assert_eq!(game, vec!["--launchTarget", "forgeclient"]);
+        assert!(
+            jvm.iter()
+                .any(|argument| argument.contains("${classpath_separator}"))
+        );
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(
+            resolved[0].artifact_path().as_deref(),
+            Some("net/minecraftforge/forge/1.20.1-47.4.20/forge-1.20.1-47.4.20.jar")
+        );
     }
 }

@@ -104,6 +104,7 @@ export function DownloadsRoute() {
     <div className="screen">
       <div className="screen__header">
         <div>
+          <div className="screen__eyebrow">Центр загрузок</div>
           <h1 className="screen__title">Загрузки</h1>
           <p className="screen__subtitle">
             {groups.length} задач, {entries.length} записей, из них неудачных — {failed.length}
@@ -128,14 +129,22 @@ export function DownloadsRoute() {
       </div>
 
       {clearFailed.isError ? (
-        <p className="field__error">{toCommandError(clearFailed.error).message}</p>
+        <p role="alert" aria-live="polite" className="field__error">
+          {toCommandError(clearFailed.error).message}
+        </p>
       ) : null}
 
       {clearCompleted.isError ? (
-        <p className="field__error">{toCommandError(clearCompleted.error).message}</p>
+        <p role="alert" aria-live="polite" className="field__error">
+          {toCommandError(clearCompleted.error).message}
+        </p>
       ) : null}
 
-      {retry.isError ? <p className="field__error">{toCommandError(retry.error).message}</p> : null}
+      {retry.isError ? (
+        <p role="alert" aria-live="polite" className="field__error">
+          {toCommandError(retry.error).message}
+        </p>
+      ) : null}
 
       {entries.length === 0 ? (
         <EmptyState
@@ -143,7 +152,7 @@ export function DownloadsRoute() {
           description="Загрузки появятся здесь, когда лаунчер начнёт устанавливать версию."
         />
       ) : (
-        <div className="card" style={{ padding: 0 }}>
+        <div className="card table-panel">
           <table className="table">
             <thead>
               <tr>
@@ -155,12 +164,17 @@ export function DownloadsRoute() {
               </tr>
             </thead>
             <tbody>
-              {groups.map((group) => (
+              {groups.map((group, index) => (
                 <Fragment key={group.name}>
                   <tr>
                     <td>
-                      <Button variant="ghost" onClick={() => toggle(group.name)}>
-                        {opened.has(group.name) ? "▾" : "▸"} {taskName(group.name)}
+                      <Button
+                        variant="ghost"
+                        aria-expanded={opened.has(group.name)}
+                        onClick={() => toggle(group.name)}
+                      >
+                        <span aria-hidden="true">{opened.has(group.name) ? "⌄" : "›"}</span>{" "}
+                        {taskName(group.name)}
                       </Button>
                     </td>
                     <td>
@@ -179,7 +193,7 @@ export function DownloadsRoute() {
                     </td>
                   </tr>
                   {opened.has(group.name) ? (
-                    <tr>
+                    <tr id={`download-task-${index}`}>
                       <td colSpan={5}>
                         <table className="table">
                           <thead>

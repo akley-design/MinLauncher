@@ -10,11 +10,12 @@
  * whether the launcher got faster.
  */
 
-import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useRef, useState } from "react";
 
+import { Button } from "../components/Button";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
-import { compareInGame, latestBenchmarks } from "../ipc/client";
+import { compareInGame, importTLauncherBaseline, latestBenchmarks } from "../ipc/client";
 import { queryKeys } from "../ipc/queries";
 import { formatImprovement, formatValue } from "../lib/format";
 import { LAUNCH_BUDGET_MS, summarizeLaunches } from "../lib/launches";
@@ -22,6 +23,18 @@ import { useGameStore } from "../stores/game";
 
 /** The screen of the performance. */
 export function PerformanceRoute() {
+  const queryClient = useQueryClient();
+  const baselineFile = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const baselineImport = useMutation({
+    mutationFn: importTLauncherBaseline,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.inGameComparison() }),
+      ]);
+    },
+  });
   const benchmarks = useQuery({
     queryKey: queryKeys.benchmarks(),
     queryFn: latestBenchmarks,
@@ -53,8 +66,9 @@ export function PerformanceRoute() {
     <div className="screen">
       <div className="screen__header">
         <div>
+          <div className="screen__eyebrow">Аналитика и тесты</div>
           <h1 className="screen__title">Производительность</h1>
-          <p className="screen__subtitle">Результаты измерителя, а не оценка на глаз</p>
+          <p className="screen__subtitle">Здесь показаны результаты замеров.</p>
         </div>
       </div>
 
@@ -99,50 +113,165 @@ export function PerformanceRoute() {
       </section>
 
       <section className="card">
-        <div className="card__title">Игра с модом и без него</div>
+        <div className="card__title">Сравнение MinLauncher с TLauncher</div>
+        <p className="field__hint">
+          Сначала соберите 30 игровых запусков TLauncher скриптом из папки проекта, затем выберите
+          созданный JSON. Он должен относиться к Minecraft 1.20.1 на этом компьютере.
+        </p>
+        <p className="field__hint">
+          Профиль «Максимум кадров» ставит дальность прорисовки и симуляции на 4 чанка. Результат
+          отражает этот обмен качества картинки на скорость.
+        </p>
+        <input
+          ref={baselineFile}
+          type="file"
+          accept=".json,application/json"
+          className="visually-hidden"
+          aria-label="Файл замеров TLauncher"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = "";
+            setFileError(null);
+            if (!file) return;
+            void file
+              .text()
+              .then((json) => baselineImport.mutate(json))
+              .catch((error: unknown) =>
+                setFileError(error instanceof Error ? error.message : String(error)),
+              );
+          }}
+        />
+        <div className="form-row" style={{ marginTop: "var(--space-3)" }}>
+          <Button
+            variant="primary"
+            busy={baselineImport.isPending}
+            onClick={() => baselineFile.current?.click()}
+          >
+            Импортировать замеры TLauncher
+          </Button>
+          {baselineImport.data ? (
+            <span className="badge badge--success">
+              Эталон загружен · {baselineImport.data.runs_per_metric} запусков
+            </span>
+          ) : null}
+        </div>
+        {fileError ? (
+          <p role="alert" aria-live="polite" className="field__error">
+            {fileError}
+          </p>
+        ) : null}
+        {baselineImport.isError ? (
+          <p role="alert" aria-live="polite" className="field__error">
+            {baselineImport.error.message}
+          </p>
+        ) : null}
+
         {comparisons.length === 0 ? (
           <p className="field__hint">
-            Сравнение появляется, когда один и тот же билд запущен дважды: один раз с модом
-            оптимизаций, другой — без него. Оба запуска хранятся рядом и не затирают друг друга.
+            Сравнение появится после импорта эталона и 30 замеров игры через MinLauncher с профилем
+            «Максимум кадров».
           </p>
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Метрика</th>
-                <th>Без мода</th>
-                <th>С модом</th>
-                <th>Разница</th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparisons.map((comparison) => (
-                <tr key={comparison.metric}>
-                  <td>{METRIC_LABELS[comparison.metric] ?? comparison.metric}</td>
-                  <td className="mono">{formatValue(comparison.without_mod, comparison.unit)}</td>
-                  <td className="mono">{formatValue(comparison.with_mod, comparison.unit)}</td>
-                  <td className="mono">
-                    {formatImprovement(comparison.improvement_percent)}
-                    {comparison.verdict === "met" ? (
-                      <span className="badge badge--success">цель достигнута</span>
-                    ) : comparison.verdict === "missed" ? (
-                      <span className="badge badge--warning">цель не достигнута</span>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="comparison-list">
+            {comparisons.map((comparison) => {
+              const scale = Math.max(comparison.reference, comparison.optimized, 1);
+              const verdictLabel =
+                comparison.verdict === "met"
+                  ? "Цель достигнута"
+                  : comparison.verdict === "missed"
+                    ? "Цель не достигнута"
+                    : "Недостаточно данных";
+              const verdictClass =
+                comparison.verdict === "met"
+                  ? "badge badge--success"
+                  : comparison.verdict === "missed"
+                    ? "badge badge--warning"
+                    : "badge";
+
+              return (
+                <article className="comparison-card" key={comparison.metric}>
+                  <div className="comparison-card__heading">
+                    <div>
+                      <div className="card__eyebrow">
+                        {comparison.metric === "in_game_fps" ? "M5 · СКОРОСТЬ" : "M6 · ПЛАВНОСТЬ"}
+                      </div>
+                      <h3 className="comparison-card__title">
+                        {METRIC_LABELS[comparison.metric] ?? comparison.metric}
+                      </h3>
+                    </div>
+                    <span className={verdictClass}>{verdictLabel}</span>
+                  </div>
+                  <div className="benchmark-compare">
+                    <div className="benchmark-stat">
+                      <span className="benchmark-stat__label">TLauncher</span>
+                      <strong className="benchmark-stat__value">
+                        {formatValue(comparison.reference, comparison.unit)}
+                      </strong>
+                      <span className="benchmark-stat__detail">
+                        {comparison.reference_samples} замеров
+                      </span>
+                    </div>
+                    <div className="benchmark-stat benchmark-stat--optimized">
+                      <span className="benchmark-stat__label">MinLauncher</span>
+                      <strong className="benchmark-stat__value">
+                        {formatValue(comparison.optimized, comparison.unit)}
+                      </strong>
+                      <span className="benchmark-stat__detail">
+                        {comparison.optimized_samples} замеров · Max FPS
+                      </span>
+                    </div>
+                    <div className="benchmark-stat benchmark-stat--result">
+                      <span className="benchmark-stat__label">Изменение</span>
+                      <strong className="benchmark-stat__value">
+                        {formatImprovement(comparison.improvement_percent)}
+                      </strong>
+                      <span className="benchmark-stat__detail">по медиане серии</span>
+                    </div>
+                  </div>
+                  <div className="benchmark-bars" aria-label="Сравнение измеренных значений">
+                    <div className="benchmark-bars__row">
+                      <span className="benchmark-bars__label">TLauncher</span>
+                      <div className="benchmark-bars__track" aria-hidden="true">
+                        <div
+                          className="benchmark-bars__fill benchmark-bars__fill--reference"
+                          style={{ width: `${(comparison.reference / scale) * 100}%` }}
+                        />
+                      </div>
+                      <span className="benchmark-bars__value">
+                        {formatValue(comparison.reference, comparison.unit)}
+                      </span>
+                    </div>
+                    <div className="benchmark-bars__row">
+                      <span className="benchmark-bars__label">MinLauncher</span>
+                      <div className="benchmark-bars__track" aria-hidden="true">
+                        <div
+                          className="benchmark-bars__fill benchmark-bars__fill--optimized"
+                          style={{ width: `${(comparison.optimized / scale) * 100}%` }}
+                        />
+                      </div>
+                      <span className="benchmark-bars__value">
+                        {formatValue(comparison.optimized, comparison.unit)}
+                      </span>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         )}
       </section>
 
       {records.length === 0 ? (
         <EmptyState
-          title="Замеров пока нет"
-          description="Запустите измеритель, и его результаты появятся здесь."
+          title={comparisons.length > 0 ? "Замеров запуска лаунчера пока нет" : "Замеров пока нет"}
+          description={
+            comparisons.length > 0
+              ? "Игровое сравнение уже отображается выше. Метрики запуска лаунчера появятся после работы измерителя."
+              : "Запустите измеритель, и его результаты появятся здесь."
+          }
         />
       ) : (
-        <div className="card" style={{ padding: 0 }}>
+        <div className="card table-panel">
           <table className="table">
             <thead>
               <tr>
@@ -175,8 +304,8 @@ export function PerformanceRoute() {
           видно, что игра подтормаживает.
         </p>
         <p className="field__hint" style={{ marginTop: "var(--space-2)" }}>
-          Сравнение с эталонным лаунчером ставится по медианам обеих сторон: вердикт не должен
-          зависеть от того, сколько замеров попало в серию.
+          Сравнение с TLauncher считается по медианам обеих сторон: вердикт не должен зависеть от
+          того, сколько замеров попало в серию.
         </p>
       </section>
     </div>

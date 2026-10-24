@@ -8,7 +8,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { type MouseEvent, useState } from "react";
 
 import { Button } from "../components/Button";
 import { JavaRuntimes } from "../components/JavaRuntimes";
@@ -49,16 +49,14 @@ export function SettingsRoute() {
   }
 
   return (
-    <div className="screen">
+    <div className="screen settings-screen">
       <div className="screen__header">
         <div>
+          <div className="screen__eyebrow">Конфигурация лаунчера</div>
           <h1 className="screen__title">Настройки</h1>
           <p className="screen__subtitle">Сохраняются в файле рядом с базой</p>
         </div>
       </div>
-
-      {save.isError ? <p className="field__error">{toCommandError(save.error).message}</p> : null}
-      {save.isSuccess ? <p className="field__hint">Сохранено.</p> : null}
 
       {/*
        * The form is a child of the screen, and it is keyed on the
@@ -77,6 +75,8 @@ export function SettingsRoute() {
         jvmFlags={settings.data.jvm_flags}
         jvmCollectors={settings.data.jvm_collectors ?? []}
         busy={save.isPending}
+        saved={save.isSuccess}
+        saveError={save.isError ? toCommandError(save.error).message : null}
         onSave={(config) => save.mutate(config)}
       />
     </div>
@@ -96,6 +96,10 @@ interface SettingsFormProps {
   jvmCollectors: CollectorMeasurement[];
   /** Whether a save is under way. */
   busy: boolean;
+  /** Whether the last save completed. */
+  saved: boolean;
+  /** The error from the last save, if it failed. */
+  saveError: string | null;
   /** The player asked to save the copy. */
   onSave: (config: LauncherConfig) => void;
 }
@@ -108,9 +112,12 @@ function SettingsForm({
   jvmFlags,
   jvmCollectors,
   busy,
+  saved,
+  saveError,
   onSave,
 }: SettingsFormProps) {
   const [draft, setDraft] = useState<LauncherConfig>(config);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(config);
 
   const patch = (change: Partial<LauncherConfig>) => {
     setDraft({ ...draft, ...change });
@@ -123,13 +130,78 @@ function SettingsForm({
 
   return (
     <>
-      <section className="card">
+      <nav className="settings-section-nav" aria-label="Разделы настроек">
+        <a href="#optimization" onClick={scrollToSettingsSection}>
+          Игра
+        </a>
+        <a href="#launch" onClick={scrollToSettingsSection}>
+          Запуск
+        </a>
+        <a href="#jvm" onClick={scrollToSettingsSection}>
+          Java и память
+        </a>
+        <a href="#downloads" onClick={scrollToSettingsSection}>
+          Загрузки
+        </a>
+        <a href="#java" onClick={scrollToSettingsSection}>
+          Среда Java
+        </a>
+        <a href="#updates" onClick={scrollToSettingsSection}>
+          Обновления
+        </a>
+        <a href="#folders" onClick={scrollToSettingsSection}>
+          Папки
+        </a>
+      </nav>
+      <section className="card settings-section" id="optimization">
+        <div className="card__title">Игровая оптимизация</div>
+        <div className="profile-choice" role="group" aria-label="Профиль графики">
+          <button
+            type="button"
+            className={
+              draft.optimization.profile === "max_fps"
+                ? "profile-choice__option profile-choice__option--active"
+                : "profile-choice__option"
+            }
+            aria-pressed={draft.optimization.profile === "max_fps"}
+            onClick={() => patch({ optimization: { profile: "max_fps" } })}
+          >
+            <span className="profile-choice__eyebrow">ДЛЯ МАКСИМАЛЬНОГО FPS</span>
+            <strong>Максимум кадров</strong>
+            <span className="profile-choice__description">
+              Снижает тяжёлые эффекты и дальность прорисовки, отключает VSync и включает
+              неограниченный лимит кадров.
+            </span>
+          </button>
+          <button
+            type="button"
+            className={
+              draft.optimization.profile === "original"
+                ? "profile-choice__option profile-choice__option--active"
+                : "profile-choice__option"
+            }
+            aria-pressed={draft.optimization.profile === "original"}
+            onClick={() => patch({ optimization: { profile: "original" } })}
+          >
+            <span className="profile-choice__eyebrow">БЕЗ ПЕРЕНАСТРОЙКИ</span>
+            <strong>Исходные настройки</strong>
+            <span className="profile-choice__description">
+              Возвращает сохранённый options.txt и запускает игру с обычной графикой.
+            </span>
+          </button>
+        </div>
+        <p className="profile-choice__note">
+          Профиль действует только в папках MinLauncher. Исходный файл сохраняется для возврата.
+        </p>
+      </section>
+      <section className="card settings-section" id="launch">
         <div className="card__title">Запуск</div>
 
         <div className="settings-grid">
           <label className="toggle">
             <input
               type="checkbox"
+              name="minimizeToTray"
               checked={draft.minimize_to_tray}
               onChange={(event) => patch({ minimize_to_tray: event.target.checked })}
             />
@@ -145,6 +217,7 @@ function SettingsForm({
             <label className="toggle">
               <input
                 type="checkbox"
+                name="autostart"
                 checked={draft.autostart}
                 onChange={(event) => patch({ autostart: event.target.checked })}
               />
@@ -158,6 +231,7 @@ function SettingsForm({
           <label className="toggle">
             <input
               type="checkbox"
+              name="restartEnabled"
               checked={draft.restart.enabled}
               onChange={(event) =>
                 patch({ restart: { ...draft.restart, enabled: event.target.checked } })
@@ -174,6 +248,7 @@ function SettingsForm({
           <label className="toggle">
             <input
               type="checkbox"
+              name="showConsole"
               checked={draft.show_console}
               onChange={(event) => patch({ show_console: event.target.checked })}
             />
@@ -186,6 +261,7 @@ function SettingsForm({
           <label className="toggle">
             <input
               type="checkbox"
+              name="telemetryEnabled"
               checked={draft.telemetry_enabled}
               onChange={(event) => patch({ telemetry_enabled: event.target.checked })}
             />
@@ -205,6 +281,8 @@ function SettingsForm({
             </label>
             <input
               id="restarts"
+              name="restartLimit"
+              autoComplete="off"
               className="input"
               type="number"
               min={0}
@@ -228,6 +306,9 @@ function SettingsForm({
             </label>
             <input
               id="language"
+              name="language"
+              autoComplete="off"
+              spellCheck={false}
               className="input"
               value={draft.language}
               onChange={(event) => patch({ language: event.target.value })}
@@ -241,6 +322,8 @@ function SettingsForm({
             </label>
             <input
               id="default-jre"
+              name="defaultJavaRuntime"
+              autoComplete="off"
               className="input"
               value={draft.default_jre}
               onChange={(event) => patch({ default_jre: event.target.value })}
@@ -251,7 +334,7 @@ function SettingsForm({
         </div>
       </section>
 
-      <section className="card">
+      <section className="card settings-section" id="jvm">
         <div className="card__title">Память и сборщик мусора</div>
 
         <div className="form-row">
@@ -261,6 +344,8 @@ function SettingsForm({
             </label>
             <input
               id="max-heap"
+              name="maxHeap"
+              autoComplete="off"
               className="input"
               value={draft.jvm.max_heap}
               onChange={(event) => patch({ jvm: { ...draft.jvm, max_heap: event.target.value } })}
@@ -275,6 +360,8 @@ function SettingsForm({
             </label>
             <input
               id="min-heap"
+              name="minHeap"
+              autoComplete="off"
               className="input"
               value={draft.jvm.min_heap}
               onChange={(event) => patch({ jvm: { ...draft.jvm, min_heap: event.target.value } })}
@@ -288,6 +375,7 @@ function SettingsForm({
             </label>
             <select
               id="gc"
+              name="garbageCollector"
               className="input"
               value={draft.jvm.garbage_collector}
               onChange={(event) =>
@@ -321,6 +409,7 @@ function SettingsForm({
         <label className="toggle" style={{ marginTop: "var(--space-4)" }}>
           <input
             type="checkbox"
+            name="enableProfiler"
             checked={draft.jvm.enable_agent}
             onChange={(event) =>
               patch({ jvm: { ...draft.jvm, enable_agent: event.target.checked } })
@@ -340,6 +429,8 @@ function SettingsForm({
           </label>
           <textarea
             id="extra-args"
+            name="extraJvmArguments"
+            autoComplete="off"
             className="input"
             style={{ height: 84, paddingTop: "var(--space-2)", resize: "vertical" }}
             value={draft.jvm.extra_args.join("\n")}
@@ -373,6 +464,7 @@ function SettingsForm({
           </label>
           <select
             id="flags-profile"
+            name="vmFlagsProfile"
             className="input"
             value={draft.jvm.flags_profile}
             onChange={(event) =>
@@ -401,7 +493,7 @@ function SettingsForm({
         </div>
       </section>
 
-      <section className="card">
+      <section className="card settings-section" id="downloads">
         <div className="card__title">Загрузка</div>
 
         <div className="form-row">
@@ -411,6 +503,8 @@ function SettingsForm({
             </label>
             <input
               id="concurrent"
+              name="downloadConcurrency"
+              autoComplete="off"
               className="input"
               type="number"
               min={1}
@@ -433,6 +527,8 @@ function SettingsForm({
             </label>
             <input
               id="retries"
+              name="downloadRetries"
+              autoComplete="off"
               className="input"
               type="number"
               min={0}
@@ -455,6 +551,8 @@ function SettingsForm({
             </label>
             <input
               id="timeout"
+              name="downloadTimeout"
+              autoComplete="off"
               className="input"
               type="number"
               min={1}
@@ -475,6 +573,7 @@ function SettingsForm({
         <label className="toggle" style={{ marginTop: "var(--space-4)" }}>
           <input
             type="checkbox"
+            name="verifyChecksums"
             checked={draft.downloads.verify_checksums}
             onChange={(event) =>
               patch({
@@ -492,11 +591,15 @@ function SettingsForm({
         </label>
       </section>
 
-      <JavaRuntimes />
+      <div id="java">
+        <JavaRuntimes />
+      </div>
 
-      <Updates />
+      <div id="updates">
+        <Updates />
+      </div>
 
-      <section className="card">
+      <section className="card settings-section" id="folders">
         <div className="card__title">Папки</div>
         <dl className="paths">
           <div className="paths__row">
@@ -514,13 +617,40 @@ function SettingsForm({
         </dl>
       </section>
 
-      <div className="screen__actions" style={{ justifyContent: "flex-end" }}>
+      <div className="settings-savebar">
+        {saveError ? (
+          <span className="settings-savebar__status settings-savebar__status--error" role="alert">
+            {saveError}
+          </span>
+        ) : busy ? (
+          <span className="settings-savebar__status" role="status" aria-live="polite">
+            Сохраняем настройки…
+          </span>
+        ) : dirty ? (
+          <span className="settings-savebar__status settings-savebar__status--dirty" role="status">
+            Есть несохранённые изменения
+          </span>
+        ) : saved ? (
+          <span className="settings-savebar__status settings-savebar__status--saved" role="status">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="m3 8.5 3.1 3L13 4.8" />
+            </svg>
+            Сохранено
+          </span>
+        ) : null}
         <Button variant="primary" busy={busy} onClick={() => onSave(draft)}>
           Сохранить
         </Button>
       </div>
     </>
   );
+}
+
+function scrollToSettingsSection(event: MouseEvent<HTMLAnchorElement>) {
+  event.preventDefault();
+  document.getElementById(event.currentTarget.hash.slice(1))?.scrollIntoView({
+    block: "start",
+  });
 }
 
 /**

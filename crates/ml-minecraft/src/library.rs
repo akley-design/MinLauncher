@@ -304,7 +304,11 @@ impl ResolvedLibrary {
             name: library.name.clone(),
             coordinate,
             is_native,
-            artifact: library.downloads.artifact.clone(),
+            artifact: library
+                .downloads
+                .artifact
+                .clone()
+                .or_else(|| library.artifact.clone()),
             natives,
             rules_json: library
                 .rules
@@ -563,6 +567,7 @@ mod tests {
         // is part of the Maven name and the natives jar is the artifact.
         let library = Library {
             name: "org.lwjgl:lwjgl:3.4.3:natives-windows".into(),
+            artifact: None,
             downloads: LibraryDownloads {
                 artifact: Some(FileDownload {
                     path: String::new(),
@@ -601,6 +606,7 @@ mod tests {
         );
         let library = Library {
             name: "org.lwjgl:lwjgl:3.3.1".into(),
+            artifact: None,
             downloads: LibraryDownloads {
                 artifact: None,
                 classifiers,
@@ -625,6 +631,7 @@ mod tests {
         // to find it again.
         let library = Library {
             name: "org.ow2.asm:asm:9.6".into(),
+            artifact: None,
             downloads: LibraryDownloads {
                 artifact: Some(FileDownload {
                     path: "org/ow2/asm/asm/9.6/asm-9.6.jar".into(),
@@ -649,6 +656,7 @@ mod tests {
     fn the_coordinate_is_the_fallback_when_the_document_has_no_path() {
         let library = Library {
             name: "com.google.code.gson:gson:2.14.0".into(),
+            artifact: None,
             downloads: LibraryDownloads {
                 artifact: Some(FileDownload {
                     path: String::new(),
@@ -673,6 +681,7 @@ mod tests {
     fn a_plain_library_has_no_natives() {
         let library = Library {
             name: "com.google.code.gson:gson:2.14.0".into(),
+            artifact: None,
             downloads: LibraryDownloads {
                 artifact: Some(FileDownload {
                     path: String::new(),
@@ -697,6 +706,7 @@ mod tests {
         // of the platform the launcher runs on may be unpacked.
         let library = Library {
             name: "org.lwjgl:lwjgl:3.4.3:natives-linux".into(),
+            artifact: None,
             downloads: LibraryDownloads {
                 artifact: Some(FileDownload {
                     path: String::new(),
@@ -760,6 +770,7 @@ mod tests {
         // of their own, both of which the rules of the version allow.
         let library = Library {
             name: "org.lwjgl:lwjgl:3.4.3:natives-windows-arm64".into(),
+            artifact: None,
             downloads: LibraryDownloads {
                 artifact: Some(FileDownload {
                     path: String::new(),

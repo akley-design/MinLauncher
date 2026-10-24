@@ -60,6 +60,7 @@ function settings(
       enable_agent: false,
       flags_profile: "default",
     },
+    optimization: { profile: "max_fps" },
     mods: {
       enabled: true,
       loader_version: "0.16.9",

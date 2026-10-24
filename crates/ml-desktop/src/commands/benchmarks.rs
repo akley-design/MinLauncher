@@ -4,6 +4,7 @@
 //! the UI reads, so the tab "Performance" shows what was measured
 //! rather than a number that somebody typed in.
 
+use ml_bench::SampleFile;
 use ml_bench::metric::{Metric, Verdict};
 use ml_storage::BenchmarkRecord;
 use serde::{Deserialize, Serialize};
@@ -133,13 +134,17 @@ pub struct InGameComparison {
     /// The unit of the measurement.
     pub unit: String,
     /// The scenario of the run with the mod.
-    pub with_mod_scenario: String,
+    pub optimized_scenario: String,
     /// The median of the run with the mod.
-    pub with_mod: f64,
+    pub optimized: f64,
+    /// How many runs contribute to the measurement with the optimization.
+    pub optimized_samples: i64,
     /// The scenario of the run without the mod.
-    pub without_mod_scenario: String,
+    pub reference_scenario: String,
     /// The median of the run without the mod.
-    pub without_mod: f64,
+    pub reference: f64,
+    /// How many reference runs contribute to the comparison.
+    pub reference_samples: i64,
     /// How much the mod changed the game, in percent.
     ///
     /// A positive number means the game got better. It is absent when
@@ -169,6 +174,111 @@ pub fn compare_in_game(state: State<'_, SharedState>) -> InGameComparisons {
     compare_in_game_of(state.inner())
 }
 
+/// The result of importing the TLauncher side of an in-game comparison.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TLauncherBaselineImport {
+    /// The canonical scenario used for future comparisons.
+    pub scenario: String,
+    /// The number of complete game sessions in each metric.
+    pub runs_per_metric: usize,
+}
+
+/// Import the TLauncher FPS file produced by `scripts/measure-tlauncher-fps.ps1`.
+///
+/// The file is validated for the same Minecraft version and machine, then
+/// stored under a launcher-owned scenario. The source `.minecraft` directory
+/// is never read or written by this command.
+#[tauri::command]
+pub fn import_tlauncher_baseline(
+    samples_json: String,
+    state: State<'_, SharedState>,
+) -> IpcResult<TLauncherBaselineImport> {
+    if samples_json.len() > 1_000_000 {
+        return Err(IpcError::invalid("the benchmark file is too large"));
+    }
+    let mut file: SampleFile = serde_json::from_str(&samples_json).map_err(|error| {
+        IpcError::with_detail(
+            ErrorCode::InvalidInput,
+            "invalid benchmark JSON",
+            error.to_string(),
+        )
+    })?;
+
+    if !file
+        .meta
+        .launcher
+        .as_deref()
+        .is_some_and(|launcher| launcher.to_ascii_lowercase().contains("tlauncher"))
+    {
+        return Err(IpcError::invalid(
+            "the benchmark file is not marked as TLauncher data",
+        ));
+    }
+    if file.meta.game_version.as_deref() != Some("1.20.1") {
+        return Err(IpcError::invalid(
+            "the TLauncher reference must be measured on Minecraft 1.20.1",
+        ));
+    }
+    let current_host = std::env::var("COMPUTERNAME").unwrap_or_default();
+    if current_host.is_empty() || file.meta.host.as_deref() != Some(current_host.as_str()) {
+        return Err(IpcError::invalid(
+            "the TLauncher reference must come from this same PC",
+        ));
+    }
+
+    let fps = file.samples.get(Metric::InGameFps.as_str());
+    let frametime = file.samples.get(Metric::InGameFrametime.as_str());
+    let (Some(fps), Some(frametime)) = (fps, frametime) else {
+        return Err(IpcError::invalid(
+            "the TLauncher file must contain FPS and frame-time samples",
+        ));
+    };
+    if fps.len() < ml_bench::DEFAULT_SAMPLES || fps.len() != frametime.len() {
+        return Err(IpcError::invalid(format!(
+            "the TLauncher file must contain at least {} matched runs for both metrics",
+            ml_bench::DEFAULT_SAMPLES
+        )));
+    }
+    if fps
+        .iter()
+        .chain(frametime)
+        .any(|sample| !sample.is_finite() || *sample <= 0.0)
+    {
+        return Err(IpcError::invalid(
+            "the TLauncher file contains an invalid FPS or frame-time value",
+        ));
+    }
+
+    let runs_per_metric = fps.len();
+    file.samples.retain(|metric, _| {
+        metric == Metric::InGameFps.as_str() || metric == Metric::InGameFrametime.as_str()
+    });
+    let scenario = ml_bench::scenario_of("tlauncher");
+    file.scenario = Some(scenario.clone());
+    std::fs::create_dir_all(&state.paths().benchmarks_dir).map_err(|error| {
+        IpcError::with_detail(
+            ErrorCode::Storage,
+            "cannot prepare the benchmark directory",
+            error.to_string(),
+        )
+    })?;
+    let path = ml_bench::samples::scenario_file(state.paths(), &scenario);
+    file.write(&path).map_err(IpcError::from)?;
+
+    let stored = file.import(state.storage());
+    if stored != 2 {
+        return Err(IpcError::new(
+            ErrorCode::Storage,
+            "the TLauncher samples could not be stored",
+        ));
+    }
+
+    Ok(TLauncherBaselineImport {
+        scenario,
+        runs_per_metric,
+    })
+}
+
 /// The comparison of the game with the mod and without it.
 ///
 /// A pair that is not there is not a failure: a run that has not
@@ -178,26 +288,49 @@ fn compare_in_game_of(state: &SharedState) -> InGameComparisons {
     let mut comparisons = Vec::new();
 
     for metric in [Metric::InGameFps, Metric::InGameFrametime] {
-        let Some(pair) = ml_bench::pair_of(storage, metric) else {
+        let with_mod_scenario = if state.storage().load_settings().is_ok_and(|config| {
+            config.optimization.profile == ml_core::GamePerformanceProfile::MaxFps
+        }) {
+            ml_bench::scenario_of("max_fps")
+        } else if let Some(scenario) = ml_bench::scenario_with_mod(storage, metric) {
+            scenario
+        } else {
+            continue;
+        };
+        let reference_scenario = ml_bench::scenario_of("tlauncher");
+        let Ok(Some(with_mod)) = storage
+            .benchmarks()
+            .latest(metric.as_str(), &with_mod_scenario)
+        else {
+            continue;
+        };
+        let Ok(Some(reference)) = storage
+            .benchmarks()
+            .latest(metric.as_str(), &reference_scenario)
+        else {
             continue;
         };
 
-        let Some(with_mod) = pair.with_mod.summary() else {
-            continue;
-        };
-        let Some(without_mod) = pair.without_mod.summary() else {
-            continue;
-        };
-
-        let comparison = ml_bench::compare(metric, &pair.with_mod, &pair.without_mod);
+        let with_mod_samples = series_from_samples(state, metric, &with_mod_scenario);
+        let reference_samples = series_from_samples(state, metric, &reference_scenario);
+        let comparison = with_mod_samples
+            .as_ref()
+            .zip(reference_samples.as_ref())
+            .filter(|(with, without)| {
+                with.len() >= ml_bench::DEFAULT_SAMPLES
+                    && without.len() >= ml_bench::DEFAULT_SAMPLES
+            })
+            .and_then(|(with, without)| ml_bench::compare(metric, with, without));
 
         comparisons.push(InGameComparison {
             metric: metric.as_str().to_string(),
             unit: metric.unit().to_string(),
-            with_mod_scenario: pair.with_mod_scenario,
-            with_mod: with_mod.p50,
-            without_mod_scenario: pair.without_mod_scenario,
-            without_mod: without_mod.p50,
+            optimized_scenario: with_mod_scenario,
+            optimized: with_mod.p50,
+            optimized_samples: with_mod.samples,
+            reference_scenario,
+            reference: reference.p50,
+            reference_samples: reference.samples,
             improvement_percent: comparison
                 .as_ref()
                 .map(ml_bench::Comparison::improvement_percent),
@@ -206,6 +339,15 @@ fn compare_in_game_of(state: &SharedState) -> InGameComparisons {
     }
 
     InGameComparisons { comparisons }
+}
+
+fn series_from_samples(
+    state: &SharedState,
+    metric: Metric,
+    scenario: &str,
+) -> Option<ml_bench::Series> {
+    let path = ml_bench::samples::scenario_file(state.paths(), scenario);
+    ml_bench::SampleFile::read(&path).ok()?.series_of(metric)
 }
 
 /// The measurements of one metric, newest first.
@@ -254,12 +396,24 @@ mod tests {
     /// measurement is a series of one sample: the record holds the same
     /// number in every percentile.
     fn store_run(state: &SharedState, metric: Metric, scenario: &str, value: f64) {
+        store_run_values(
+            state,
+            metric,
+            scenario,
+            vec![value; ml_bench::DEFAULT_SAMPLES],
+        );
+    }
+
+    fn store_run_values(state: &SharedState, metric: Metric, scenario: &str, values: Vec<f64>) {
         let meta = ml_bench::Meta::of_this_machine();
+        for value in &values {
+            ml_bench::samples::append(state.paths(), scenario, metric, *value, &meta).unwrap();
+        }
         ml_bench::store(
             state.storage(),
             metric,
             scenario,
-            &ml_bench::Series::from_samples(vec![value]),
+            &ml_bench::Series::from_samples(values),
             &meta,
         )
         .unwrap();
@@ -343,13 +497,16 @@ mod tests {
     }
 
     #[test]
-    fn the_pair_of_the_game_is_compared() {
+    fn minlauncher_is_compared_with_tlauncher_samples() {
         let (_dir, state) = state();
+        let mut config = state.storage().load_settings().unwrap();
+        config.optimization.profile = ml_core::GamePerformanceProfile::Original;
+        state.storage().save_settings(&config).unwrap();
 
         store_run(
             &state,
             Metric::InGameFps,
-            &ml_bench::scenario_without_mod(),
+            &ml_bench::scenario_of("tlauncher"),
             60.0,
         );
         store_run(
@@ -366,10 +523,10 @@ mod tests {
             .find(|comparison| comparison.metric == "in_game_fps")
             .expect("there is no comparison of the frame rate");
 
-        assert!((fps.with_mod - 120.0).abs() < 1e-6);
-        assert!((fps.without_mod - 60.0).abs() < 1e-6);
-        assert_eq!(fps.with_mod_scenario, "in_game/balanced");
-        assert_eq!(fps.without_mod_scenario, "in_game/off");
+        assert!((fps.optimized - 120.0).abs() < 1e-6);
+        assert!((fps.reference - 60.0).abs() < 1e-6);
+        assert_eq!(fps.optimized_scenario, "in_game/balanced");
+        assert_eq!(fps.reference_scenario, "in_game/tlauncher");
 
         // Twice the frame rate is a hundred percent better.
         let improvement = fps.improvement_percent.expect("there is no difference");
@@ -392,5 +549,34 @@ mod tests {
 
         let comparisons = compare_in_game_of(&state);
         assert_eq!(comparisons.comparisons.len(), 0, "{comparisons:?}");
+    }
+
+    #[test]
+    fn the_game_target_is_not_judged_before_thirty_runs_per_side() {
+        let (_dir, state) = state();
+        store_run(
+            &state,
+            Metric::InGameFps,
+            &ml_bench::scenario_of("tlauncher"),
+            60.0,
+        );
+        store_run_values(
+            &state,
+            Metric::InGameFps,
+            &ml_bench::scenario_of("max_fps"),
+            vec![120.0],
+        );
+
+        let comparisons = compare_in_game_of(&state);
+        let fps = comparisons
+            .comparisons
+            .iter()
+            .find(|comparison| comparison.metric == "in_game_fps")
+            .expect("the measurements should still be visible");
+
+        assert_eq!(fps.optimized_samples, 1);
+        assert_eq!(fps.reference_samples, 30);
+        assert_eq!(fps.improvement_percent, None);
+        assert_eq!(fps.verdict, None);
     }
 }

@@ -172,7 +172,10 @@ public final class MinLauncherAgent {
             // knows.
             return Paths.get(Report.DEFAULT_FILE_NAME).toAbsolutePath();
         }
-        return Paths.get(output.trim()).toAbsolutePath();
+        String process = ManagementFactory.getRuntimeMXBean().getName();
+        int separator = process.indexOf('@');
+        String pid = separator > 0 ? process.substring(0, separator) : process;
+        return Paths.get(output.trim().replace("{pid}", pid)).toAbsolutePath();
     }
 
     /**

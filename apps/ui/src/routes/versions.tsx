@@ -90,6 +90,7 @@ export function VersionsRoute() {
     <div className="screen">
       <div className="screen__header">
         <div>
+          <div className="screen__eyebrow">Библиотека игры</div>
           <h1 className="screen__title">Версии</h1>
           <p className="screen__subtitle">
             {versions.data?.installed_count ?? 0} установлено, {versions.data?.versions.length ?? 0}{" "}
@@ -104,15 +105,21 @@ export function VersionsRoute() {
       </div>
 
       {refresh.isError ? (
-        <p className="field__error">{toCommandError(refresh.error).message}</p>
+        <p role="alert" aria-live="polite" className="field__error">
+          {toCommandError(refresh.error).message}
+        </p>
       ) : null}
 
       {install.isError ? (
-        <p className="field__error">{toCommandError(install.error).message}</p>
+        <p role="alert" aria-live="polite" className="field__error">
+          {toCommandError(install.error).message}
+        </p>
       ) : null}
 
       {launch.isError ? (
-        <p className="field__error">{toCommandError(launch.error).message}</p>
+        <p role="alert" aria-live="polite" className="field__error">
+          {toCommandError(launch.error).message}
+        </p>
       ) : null}
 
       {installing ? (
@@ -124,7 +131,14 @@ export function VersionsRoute() {
               {progress}%
             </span>
           </div>
-          <div className="progress__track">
+          <div
+            className="progress__track"
+            role="progressbar"
+            aria-label={`Установка ${installing}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
+          >
             <div className="progress__fill" style={{ width: `${progress}%` }} />
           </div>
         </div>
@@ -133,8 +147,10 @@ export function VersionsRoute() {
       <div className="toolbar">
         <input
           className="input"
-          style={{ maxWidth: 280 }}
-          placeholder="Поиск по идентификатору"
+          name="versionSearch"
+          aria-label="Поиск версии"
+          autoComplete="off"
+          placeholder="Например, 1.20.1…"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
@@ -144,6 +160,7 @@ export function VersionsRoute() {
               key={kind}
               type="button"
               className={filter === kind ? "filters__chip filters__chip--active" : "filters__chip"}
+              aria-pressed={filter === kind}
               onClick={() => setFilter(kind)}
             >
               {KIND_LABELS[kind]}
@@ -158,7 +175,7 @@ export function VersionsRoute() {
           description="Измените фильтр или обновите список версий."
         />
       ) : (
-        <div className="card" style={{ padding: 0 }}>
+        <div className="card table-panel">
           <table className="table">
             <thead>
               <tr>

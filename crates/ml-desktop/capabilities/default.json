@@ -11,6 +11,7 @@
     "dialog:default",
     "dialog:allow-message",
     "shell:allow-open",
+    "deep-link:default",
     "process:allow-restart",
     "updater:default",
     {

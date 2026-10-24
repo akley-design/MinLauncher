@@ -202,6 +202,15 @@ pub fn build_command(
         "classpath",
         build_classpath(&request.client_jar, &request.classpath_entries()),
     );
+    values.insert(
+        "classpath_separator",
+        if platform.os.as_str() == "windows" {
+            ";"
+        } else {
+            ":"
+        }
+        .to_string(),
+    );
     let classpath = values.get("classpath").map_or("", String::as_str);
 
     // The JVM arguments, in the order the version prescribes.
@@ -679,6 +688,7 @@ mod tests {
         let mut request = request();
         request.version.libraries = vec![Library {
             name: "com.google.code.gson:gson:2.14.0".into(),
+            artifact: None,
             downloads: ml_minecraft::version::LibraryDownloads {
                 artifact: Some(ml_minecraft::version::FileDownload {
                     path: String::new(),
@@ -702,6 +712,7 @@ mod tests {
         let mut request = request();
         request.version.libraries = vec![Library {
             name: "org.lwjgl:lwjgl:3.4.3:natives-windows".into(),
+            artifact: None,
             downloads: ml_minecraft::version::LibraryDownloads {
                 artifact: Some(ml_minecraft::version::FileDownload {
                     path: String::new(),
@@ -812,6 +823,7 @@ mod tests {
         request.version.libraries = vec![
             Library {
                 name: "org.ow2.asm:asm:9.6".into(),
+                artifact: None,
                 downloads: ml_minecraft::version::LibraryDownloads {
                     artifact: Some(ml_minecraft::version::FileDownload {
                         path: String::new(),
@@ -825,6 +837,7 @@ mod tests {
             },
             Library {
                 name: "org.ow2.asm:asm:9.10.1".into(),
+                artifact: None,
                 downloads: ml_minecraft::version::LibraryDownloads {
                     artifact: Some(ml_minecraft::version::FileDownload {
                         path: String::new(),

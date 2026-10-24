@@ -37,27 +37,27 @@ describe("the time of a release", () => {
  */
 describe("a number with its unit", () => {
   it("shows the milliseconds as they are", () => {
-    expect(formatValue(12.34, "ms")).toBe("12.3 мс");
+    expect(formatValue(12.34, "ms")).toBe("12,3 мс");
   });
 
   it("shows the seconds when the milliseconds are too many", () => {
-    expect(formatValue(2500, "ms")).toBe("2.50 с");
+    expect(formatValue(2500, "ms")).toBe("2,50 с");
   });
 
   it("shows the frames per second as they are", () => {
-    expect(formatValue(143.7, "fps")).toBe("143.7");
+    expect(formatValue(143.7, "fps")).toBe("143,7");
   });
 
   it("shows the megabytes", () => {
-    expect(formatValue(58.25, "mb")).toBe("58.3 МБ");
+    expect(formatValue(58.25, "mb")).toBe("58,3 МБ");
   });
 
   it("shows the ratio as a percentage", () => {
-    expect(formatValue(0.83, "ratio")).toBe("83.0 %");
+    expect(formatValue(0.83, "ratio")).toBe("83,0 %");
   });
 
   it("shows an unknown unit as it is", () => {
-    expect(formatValue(1.5, "widgets")).toBe("1.50 widgets");
+    expect(formatValue(1.5, "widgets")).toBe("1,50 widgets");
   });
 });
 
@@ -74,15 +74,15 @@ describe("a number of bytes", () => {
   });
 
   it("shows the kilobytes", () => {
-    expect(formatBytes(2048)).toBe("2.0 КБ");
+    expect(formatBytes(2048)).toBe("2,0 КБ");
   });
 
   it("shows the megabytes", () => {
-    expect(formatBytes(484_829_952)).toBe("462.4 МБ");
+    expect(formatBytes(484_829_952)).toBe("462,4 МБ");
   });
 
   it("shows the gigabytes", () => {
-    expect(formatBytes(3 * 1024 * 1024 * 1024)).toBe("3.0 ГБ");
+    expect(formatBytes(3 * 1024 * 1024 * 1024)).toBe("3,0 ГБ");
   });
 
   it("shows nothing as zero", () => {

@@ -68,6 +68,7 @@ impl Meta {
     pub fn of_this_machine() -> Self {
         Self {
             os: Some(std::env::consts::OS.to_string()),
+            host: std::env::var("COMPUTERNAME").ok(),
             launcher: Some(format!("MinLauncher {}", env!("CARGO_PKG_VERSION"))),
             recorded_at: Some(chrono::Utc::now().to_rfc3339()),
             ..Self::default()

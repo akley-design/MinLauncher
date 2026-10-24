@@ -48,9 +48,21 @@ npm run tauri:build
 .\scripts\measure.ps1 -Runs 30 -Scenario 26.3 -GameVersion 26.3 -Out benchmarks\ours.json
 ```
 
-The scenario is named on purpose: the length of an installation is merged
-into the file from the file of the launcher that belongs to that version,
-and the file is named after the scenario.
+The scenario name matters: installation time is merged into the file
+produced by the launcher for that version, and the file is named after the
+scenario.
+
+**Measure into a new file.** The script appends samples to the file you give
+it. Measuring a second build into the same file mixes results from both
+builds, so neither has its own series. Use a new file:
+
+```powershell
+.\scripts\measure.ps1 -Runs 30 -Scenario 26.3 -GameVersion 26.3 -Out benchmarks\ours-new.json
+```
+
+After the new file is complete, replace the old file with it. The script
+writes each sample to disk, so an interrupted measurement keeps the runs
+that already finished.
 
 The script asks the player to click "Play" once per run. It watches the
 mouse, the processes and the clock — and nothing else.
@@ -124,6 +136,36 @@ and the virtual machine **never finishes starting** with that flag and
 with `-XX:ArchiveClassesAtExit` at once. The measurement of that is in
 the section 9 of `docs/RESULTS.md`, and the profile is left out of the
 run rather than measured on a machine that does not come.
+
+## TLauncher game FPS baseline
+
+For a same-PC comparison on Minecraft Forge 1.20.1, the reference setup
+uses a physical copy of the TLauncher game directory. It copies the game
+libraries, assets, mods, options, configuration, and saves so Minecraft
+cannot write benchmark settings or gameplay data into the source
+`.minecraft` directory.
+
+The current machine's isolated copy is prepared at
+`E:\C_Offload\MinLauncher\benchmarks\TLauncherReference`. To create a new
+copy on another machine, run:
+
+```powershell
+.\scripts\prepare-tlauncher-reference.ps1
+```
+
+Collect 30 runs with the same save, viewpoint, resolution, and graphics
+settings. The script temporarily points TLauncher at the copy, then restores
+its previous game-directory setting after TLauncher is closed:
+
+```powershell
+.\scripts\measure-tlauncher-fps.ps1 -Runs 30
+```
+
+The script writes a JSON file under `%APPDATA%\MinLauncher\benchmarks` and
+retains completed runs if collection is interrupted. Import that file from
+MinLauncher → Производительность → Импортировать замеры TLauncher. The
+importer accepts only 30 or more matched FPS/frame-time samples from this PC
+and Minecraft 1.20.1.
 
 ## How to read the numbers
 

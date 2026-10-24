@@ -4,7 +4,8 @@
   "private": true,
   "description": "MinLauncher — fast Minecraft launcher (Tauri + React)",
   "workspaces": [
-    "apps/ui"
+    "apps/ui",
+    "apps/site"
   ],
   "scripts": {
     "dev": "npm run dev --workspace @minlaucher/ui",
@@ -17,6 +18,10 @@
     "typecheck": "npm run typecheck --workspace @minlaucher/ui",
     "format": "npm run format --workspace @minlaucher/ui",
     "format:check": "npm run format:check --workspace @minlaucher/ui",
+    "site:dev": "npm run dev --workspace @minlaucher/site",
+    "site:build": "npm run build --workspace @minlaucher/site",
+    "site:start": "npm run start --workspace @minlaucher/site",
+    "site:test": "npm run test --workspace @minlaucher/site",
     "tauri": "tauri",
     "tauri:dev": "cd crates/ml-desktop && tauri dev",
     "tauri:build": "cd crates/ml-desktop && tauri build"

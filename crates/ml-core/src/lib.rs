@@ -22,7 +22,10 @@ pub mod sys;
 pub mod version;
 
 pub use account::{Account, AccountSecrets, AccountType, offline_uuid};
-pub use config::{DownloadConfig, JvmConfig, LauncherConfig, ModConfig, RestartConfig};
+pub use config::{
+    DownloadConfig, GamePerformanceProfile, JvmConfig, LauncherConfig, ModConfig,
+    OptimizationConfig, RestartConfig,
+};
 pub use error::{Error, Result};
 pub use jvmflags::{CollectorMeasurement, FlagDecision, FlagsProfile};
 pub use paths::{APP_DIR_NAME, AppPaths, plain_object, safe_relative_path};

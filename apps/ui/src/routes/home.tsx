@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
 import { Button } from "../components/Button";
+import { MinLauncherAccount } from "../components/MinLauncherAccount";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import {
   addOfflineAccount,
@@ -23,6 +24,7 @@ import {
   toCommandError,
 } from "../ipc/client";
 import { queryKeys, useLaunchGame } from "../ipc/queries";
+import type { AccountType } from "../ipc/types";
 import { LAUNCH_BUDGET_MS } from "../lib/launches";
 import { plural } from "../lib/plural";
 import { useGameStore } from "../stores/game";
@@ -39,6 +41,7 @@ export function HomeRoute() {
   // player picks one, and then the choice is theirs — the version the
   // launcher would have picked on its own is only the default.
   const [picked, setPicked] = useState<string | null>(null);
+  const [pickedInstance, setPickedInstance] = useState<string | null>(null);
   // The field of the name of the player. The empty state of the
   // account points at it, so that the player knows where to type.
   const nameInput = useRef<HTMLInputElement>(null);
@@ -69,15 +72,34 @@ export function HomeRoute() {
     latestRelease;
   const chosenVersion =
     picked && installed.some((version) => version.id === picked) ? picked : fallback;
+  const chosenInstance = pickedInstance
+    ? instances.data?.instances.find((instance) => instance.id === pickedInstance)
+    : picked
+      ? undefined
+      : instances.data?.instances[0];
+  const playVersion = chosenInstance?.version_id ?? chosenVersion;
 
   // The last launch of the version that is picked. The number is read
   // from the store and not from the answer of the button, so that it is
   // still there when the player comes back to this screen.
-  const lastLaunch = launches.find((record) => record.versionId === chosenVersion);
+  const lastLaunch = launches.find((record) => record.versionId === playVersion);
 
   const selected = accounts.data?.accounts.find(
     (account) => account.id === accounts.data?.selected_id,
   );
+  const heroStatus = running
+    ? "МИР ЗАПУЩЕН"
+    : starting
+      ? "ИГРА ЗАПУСКАЕТСЯ"
+      : accounts.isPending
+        ? "ПРОВЕРКА АККАУНТА"
+        : accounts.isError
+          ? "ОШИБКА ПРОФИЛЯ"
+          : !playVersion
+            ? "НУЖНА ВЕРСИЯ"
+            : !selected
+              ? "НУЖЕН АККАУНТ"
+              : "ГОТОВ К ЗАПУСКУ";
 
   const launch = useLaunchGame();
 
@@ -88,9 +110,8 @@ export function HomeRoute() {
 
   const chooseAccount = useMutation({
     mutationFn: selectAccount,
-    onSuccess: (list) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
-      void list;
     },
   });
 
@@ -119,13 +140,14 @@ export function HomeRoute() {
     return <ErrorState error={versions.error} />;
   }
 
-  const canPlay = Boolean(chosenVersion) && Boolean(selected) && !running && !starting;
+  const canPlay = Boolean(playVersion) && Boolean(selected) && !running && !starting;
 
   return (
-    <div className="screen">
-      <div className="screen__header">
+    <div className="screen home-screen">
+      <div className="screen__header home-screen__heading">
         <div>
-          <h1 className="screen__title">Играть</h1>
+          <div className="home-screen__kicker">Minecraft · выбери версию</div>
+          <h1 className="screen__title">Игровой центр</h1>
           <p className="screen__subtitle">
             {installed.length > 0
               ? `${installed.length} ${plural(installed.length, "версия", "версии", "версий")} установлено`
@@ -134,72 +156,113 @@ export function HomeRoute() {
         </div>
       </div>
 
-      <section className="card">
-        <div className="card__title">Запуск</div>
+      <section className="home-hero" aria-label="Запуск Minecraft">
+        <div className="home-hero__shade" />
+        <div className="home-hero__content">
+          <div className="home-hero__status">
+            <span className="home-hero__status-dot" aria-hidden="true" />
+            {heroStatus}
+          </div>
+          <h2 className="home-hero__title">
+            Выбери
+            <br />
+            <span>версию.</span>
+          </h2>
+          <p className="home-hero__description">
+            {selected
+              ? `Привет, ${selected.username}. Выбери версию и запускай игру.`
+              : "Выбери версию, чтобы запустить игру."}
+          </p>
 
-        <div className="play">
-          <div className="play__info">
-            <div className="play__label">Версия</div>
-            {installed.length > 0 ? (
-              // The list of the installed versions. The version that is
-              // played is the one that is picked here, and not the one
-              // the launcher would have chosen on its own.
-              <select
-                className="input"
-                style={{ maxWidth: 280 }}
-                aria-label="Версия"
-                value={chosenVersion}
-                onChange={(event) => setPicked(event.target.value)}
+          <div className="home-hero__controls">
+            <label className="home-hero__version">
+              <span>АКТИВНАЯ ВЕРСИЯ</span>
+              {installed.length > 0 ? (
+                <select
+                  className="input"
+                  aria-label="Версия"
+                  value={chosenInstance ? `instance:${chosenInstance.id}` : chosenVersion}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value.startsWith("instance:")) {
+                      setPickedInstance(value.slice("instance:".length));
+                      setPicked(null);
+                    } else {
+                      setPicked(value);
+                      setPickedInstance(null);
+                    }
+                  }}
+                >
+                  {(instances.data?.instances ?? []).map((instance) => (
+                    <option key={instance.id} value={`instance:${instance.id}`}>
+                      {instance.name} · {instance.version_id}
+                    </option>
+                  ))}
+                  {installed.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      {version.id}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <strong>{chosenVersion || "Нет установленной версии"}</strong>
+              )}
+            </label>
+            {running ? (
+              <Button
+                variant="danger"
+                className="button--large home-hero__play"
+                onClick={() => stop.mutate()}
               >
-                {installed.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    {version.id}
-                  </option>
-                ))}
-              </select>
+                Остановить игру <span aria-hidden="true">■</span>
+              </Button>
             ) : (
-              <div className="play__value">{chosenVersion || "—"}</div>
+              <Button
+                variant="primary"
+                className="button--large home-hero__play"
+                disabled={!canPlay}
+                busy={starting}
+                onClick={() =>
+                  launch.mutate(
+                    chosenInstance
+                      ? { version_id: chosenInstance.version_id, instance_id: chosenInstance.id }
+                      : chosenVersion,
+                  )
+                }
+              >
+                {starting ? "Запуск…" : "Играть"} <span aria-hidden="true">↗</span>
+              </Button>
             )}
-            {chosenVersion ? (
-              <div className="play__hint">
-                {versions.data?.versions.find((version) => version.id === chosenVersion)?.java_major
-                  ? `Java ${versions.data.versions.find((version) => version.id === chosenVersion)?.java_major}`
-                  : "Java определяется автоматически"}
-              </div>
-            ) : null}
           </div>
 
-          {running ? (
-            <Button variant="danger" className="button--large" onClick={() => stop.mutate()}>
-              Остановить
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              className="button--large"
-              disabled={!canPlay}
-              busy={starting}
-              onClick={() => launch.mutate(chosenVersion)}
-            >
-              {starting ? "Запуск…" : "Играть"}
-            </Button>
-          )}
+          {playVersion ? (
+            <div className="home-hero__specs">
+              <span>
+                <b>MC</b> {playVersion}
+              </span>
+              <span>
+                <b>JAVA</b>{" "}
+                {versions.data?.versions.find((version) => version.id === playVersion)
+                  ?.java_major ?? "AUTO"}
+              </span>
+              <span>
+                <b>СТАТУС</b> {playVersion && selected ? "ГОТОВ" : "НЕ ГОТОВ"}
+              </span>
+            </div>
+          ) : null}
+          {launch.isError ? (
+            <p role="alert" aria-live="polite" className="field__error home-hero__error">
+              {toCommandError(launch.error).message}
+            </p>
+          ) : null}
+          {lastLaunch ? (
+            <p className="home-hero__last-launch">
+              Подготовка {lastLaunch.versionId} заняла {lastLaunch.prepareMs} мс
+              {lastLaunch.prepareMs > LAUNCH_BUDGET_MS ? " · дольше 5 с" : ""}
+            </p>
+          ) : null}
         </div>
-
-        {launch.isError ? (
-          <p className="field__error" style={{ marginTop: "var(--space-3)" }}>
-            {toCommandError(launch.error).message}
-          </p>
-        ) : null}
-
-        {lastLaunch ? (
-          <p className="play__hint" style={{ marginTop: "var(--space-3)" }}>
-            Подготовка {lastLaunch.versionId} заняла {lastLaunch.prepareMs} мс
-            {lastLaunch.prepareMs > LAUNCH_BUDGET_MS ? (
-              <span className="badge badge--warning">больше 5 с</span>
-            ) : null}
-          </p>
-        ) : null}
+        <div className="home-hero__caption">Профиль и запуск Minecraft</div>
       </section>
 
       {installed.length === 0 ? (
@@ -222,88 +285,120 @@ export function HomeRoute() {
       ) : null}
 
       {install.isError ? (
-        <p className="field__error">{toCommandError(install.error).message}</p>
+        <p role="alert" aria-live="polite" className="field__error">
+          {toCommandError(install.error).message}
+        </p>
       ) : null}
 
-      <section className="card">
-        <div className="card__title">Аккаунт</div>
-
-        {accounts.isPending ? (
-          <LoadingState label="Читаем аккаунты…" />
-        ) : (accounts.data?.accounts.length ?? 0) === 0 ? (
-          <EmptyState
-            title="Аккаунта нет"
-            description="Добавьте оффлайн-аккаунт, чтобы начать игру без входа в Microsoft."
-            action={<Button onClick={() => nameInput.current?.focus()}>Добавить аккаунт</Button>}
-          />
-        ) : (
-          <ul className="accounts">
-            {accounts.data?.accounts.map((account) => (
-              <li key={account.id} className="accounts__item">
-                <button
-                  type="button"
-                  className={
-                    account.id === accounts.data?.selected_id
-                      ? "accounts__button accounts__button--active"
-                      : "accounts__button"
-                  }
-                  onClick={() => chooseAccount.mutate(account.id)}
-                >
-                  <span className="accounts__avatar" aria-hidden="true">
-                    {account.username.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="accounts__name">{account.username}</span>
-                  <span className="badge">{account.kind}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <form
-          className="accounts__add"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (newAccount.trim()) {
-              addAccount.mutate(newAccount.trim());
-            }
-          }}
-        >
-          <input
-            ref={nameInput}
-            className="input"
-            placeholder="Имя игрока"
-            value={newAccount}
-            onChange={(event) => setNewAccount(event.target.value)}
-            maxLength={16}
-          />
-          <Button type="submit" busy={addAccount.isPending} disabled={!newAccount.trim()}>
-            Добавить
-          </Button>
-        </form>
-
-        {addAccount.isError ? (
-          <p className="field__error" style={{ marginTop: "var(--space-2)" }}>
-            {toCommandError(addAccount.error).message}
-          </p>
-        ) : null}
-      </section>
-
-      {instances.data && instances.data.instances.length > 0 ? (
+      <div
+        className={
+          instances.data && instances.data.instances.length > 0
+            ? "home-screen__lower"
+            : "home-screen__lower home-screen__lower--single"
+        }
+      >
         <section className="card">
-          <div className="card__title">Инстансы</div>
-          <ul className="accounts">
-            {instances.data.instances.map((instance) => (
-              <li key={instance.id} className="accounts__item">
-                <div className="accounts__button accounts__button--static">
-                  <span className="accounts__name">{instance.name}</span>
-                  <span className="badge">{instance.version_id}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="card__title">Аккаунт</div>
+
+          {accounts.isPending ? (
+            <LoadingState label="Читаем аккаунты…" />
+          ) : accounts.isError ? (
+            <ErrorState error={accounts.error} />
+          ) : (accounts.data?.accounts.length ?? 0) === 0 ? (
+            <EmptyState
+              title="Аккаунта нет"
+              description="Добавьте оффлайн-аккаунт, чтобы начать игру без входа в Microsoft."
+              action={<Button onClick={() => nameInput.current?.focus()}>Добавить аккаунт</Button>}
+            />
+          ) : (
+            <ul className="accounts">
+              {accounts.data?.accounts.map((account) => (
+                <li key={account.id} className="accounts__item">
+                  <button
+                    type="button"
+                    className={
+                      account.id === accounts.data?.selected_id
+                        ? "accounts__button accounts__button--active"
+                        : "accounts__button"
+                    }
+                    onClick={() => chooseAccount.mutate(account.id)}
+                  >
+                    <span className="accounts__avatar" aria-hidden="true">
+                      {account.username.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="accounts__name">{account.username}</span>
+                    <span className={`badge badge--account badge--account-${account.kind}`}>
+                      {ACCOUNT_KIND_LABELS[account.kind]}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <form
+            className="accounts__add"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (newAccount.trim()) {
+                addAccount.mutate(newAccount.trim());
+              }
+            }}
+          >
+            <input
+              ref={nameInput}
+              name="playerName"
+              aria-label="Имя игрока"
+              autoComplete="off"
+              spellCheck={false}
+              className="input"
+              placeholder="Например, Steve…"
+              value={newAccount}
+              onChange={(event) => setNewAccount(event.target.value)}
+              maxLength={16}
+            />
+            <Button type="submit" busy={addAccount.isPending} disabled={!newAccount.trim()}>
+              Добавить
+            </Button>
+          </form>
+
+          {addAccount.isError ? (
+            <p
+              role="alert"
+              aria-live="polite"
+              className="field__error"
+              style={{ marginTop: "var(--space-2)" }}
+            >
+              {toCommandError(addAccount.error).message}
+            </p>
+          ) : null}
         </section>
-      ) : null}
+
+        {instances.data && instances.data.instances.length > 0 ? (
+          <section className="card">
+            <div className="card__title">Инстансы</div>
+            <ul className="accounts">
+              {instances.data.instances.map((instance) => (
+                <li key={instance.id} className="accounts__item">
+                  <div className="accounts__button accounts__button--static">
+                    <span className="accounts__name">{instance.name}</span>
+                    <span className="badge">{instance.version_id}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </div>
+
+      <MinLauncherAccount />
     </div>
   );
 }
+
+const ACCOUNT_KIND_LABELS: Record<AccountType, string> = {
+  microsoft: "Microsoft",
+  mojang: "Mojang",
+  offline: "Оффлайн",
+  third_party: "Другой",
+};

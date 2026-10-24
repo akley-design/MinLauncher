@@ -22,11 +22,40 @@ crates/
   ml-desktop     the Tauri shell: IPC commands, state, plugins
   ml-bench       the measurement harness and the comparison protocol
 apps/
+  site           responsive promotional website (React + Vite)
   ui             React 19 + TypeScript + Vite
   java/
     agent        a `-javaagent` that measures the start-up and the frames
     mod          a Fabric mod that makes the game itself faster
 ```
+
+## Public website
+
+The public website lives in `apps/site`; the Tauri launcher UI remains in
+`apps/ui`. The site has responsive pages and editorial posts. Supabase handles
+Google and Discord sign-in, and the download button uses the signed Windows
+installer URL from the latest release manifest.
+
+```bash
+npm run site:dev
+npm run site:build
+npm run site:test
+npm run site:start
+```
+
+For local OAuth, create `apps/site/.env.local` from
+`apps/site/.env.example` and set `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_ANON_KEY`. In Supabase, allow new user signups, enable Google
+and Discord providers, and set the site's public URL. Add
+`<site-origin>/auth/callback` to the allowed redirect URLs. In Google and
+Discord, set `https://<project-ref>.supabase.co/auth/v1/callback` as the
+callback URL. The publishable/anon key is intended for browser use. Keep
+provider secrets in Supabase's dashboard.
+
+To deploy on Wispbyte, build with `npm run site:build` and set
+`npm run site:start` as the startup command. Set the Supabase variables at
+build time and expose the configured `PORT`. Add the public HTTPS origin to
+Supabase before enabling OAuth.
 
 The launcher is written in Rust, the interface in TypeScript, and the part
 that touches the game is Java: one piece is a Java agent that measures, the

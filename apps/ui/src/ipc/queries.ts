@@ -54,7 +54,8 @@ export function useLaunchGame() {
   const prepared = useGameStore((state) => state.prepared);
 
   return useMutation({
-    mutationFn: (versionId: string) => launchGame({ version_id: versionId }),
+    mutationFn: (request: string | import("./types").LaunchOptions) =>
+      launchGame(typeof request === "string" ? { version_id: request } : request),
     onMutate: () => beginStart(),
     onSuccess: (result) => {
       endStart();

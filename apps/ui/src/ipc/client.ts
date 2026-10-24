@@ -29,9 +29,11 @@ import type {
   LaunchOptions,
   LaunchResult,
   ManifestSummary,
+  PerformanceModInstall,
   RuntimeResult,
   RuntimeView,
   SettingsView,
+  TLauncherBaselineImport,
   UpdateView,
   VersionList,
   VersionManifest,
@@ -193,6 +195,20 @@ export function createInstance(name: string, versionId: string): Promise<Instanc
   return call<InstanceList>("create_instance", { name, versionId });
 }
 
+/** Copy the local Forge profile into a private MinLauncher instance. */
+export function importForgeInstance(sourceProfileId: string, name: string): Promise<InstanceList> {
+  return call<InstanceList>("import_forge_instance", {
+    sourceProfileId,
+    name,
+    sourceGameDir: null,
+  });
+}
+
+/** Install the checksum-pinned Forge 1.20.1 performance bundle into a private instance. */
+export function installPerformanceMods(instanceId: string): Promise<PerformanceModInstall> {
+  return call<PerformanceModInstall>("install_performance_mods", { instanceId });
+}
+
 /** Remove an instance. Its directory is kept. */
 export function removeInstance(instanceId: string): Promise<InstanceList> {
   return call<InstanceList>("remove_instance", { instanceId });
@@ -252,6 +268,11 @@ export function listBenchmarks(metric: string, scenario: string): Promise<Benchm
 /** The comparison of the game with the mod and without it. */
 export function compareInGame(): Promise<InGameComparisons> {
   return call<InGameComparisons>("compare_in_game");
+}
+
+/** Import a TLauncher baseline produced by the local FPS collector. */
+export function importTLauncherBaseline(samplesJson: string): Promise<TLauncherBaselineImport> {
+  return call<TLauncherBaselineImport>("import_tlauncher_baseline", { samplesJson });
 }
 
 // --- the game --------------------------------------------------------

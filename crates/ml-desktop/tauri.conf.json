@@ -16,12 +16,17 @@
     "frontendDist": "../../apps/ui/dist"
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["minlauncher"]
+      }
+    },
     "updater": {
       "//": "The public key of the release signing key. The private key lives outside the repository — it is the secret TAURI_SIGNING_PRIVATE_KEY of the CI, and it is the only thing that can sign an update.",
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkyM0Q0ODIyREJGRjVCM0IKUldRN1cvL2JJa2c5a28wckJHL3RzUXNzMmZ2TnVOY09HNm5FdkhIT3JOaU5GTVZaZ0JFK09OMW0K",
       "//2": "The manifest of the update. It is the file the release job writes and publishes next to the installers.",
       "endpoints": [
-        "https://github.com/minlaucher/minlaucher/releases/latest/download/latest.json"
+        "https://github.com/akley-design/MinLauncher/releases/latest/download/latest.json"
       ],
       "//3": "The version of the release is read from the signature itself and has to match the version of the manifest. Without this a crafted answer of the endpoint could pair a new version number with the file of an old release and roll the player back to a genuine but outdated build. The signature of every release carries its version, so this holds from the first release.",
       "requireSignedVersion": true
@@ -40,11 +45,11 @@
         "resizable": true,
         "center": true,
         "theme": "Dark",
-        "decorations": true
+        "decorations": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://*.supabase.co wss://*.supabase.co",
       "assetProtocol": {
         "enable": true,
         "scope": {

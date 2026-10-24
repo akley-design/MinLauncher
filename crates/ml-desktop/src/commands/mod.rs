@@ -27,6 +27,7 @@ pub mod agent;
 pub mod benchmarks;
 pub mod downloads;
 pub mod fabric;
+pub mod identity;
 pub mod instances;
 pub mod launch;
 pub mod runtimes;

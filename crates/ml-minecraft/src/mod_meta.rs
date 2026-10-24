@@ -86,6 +86,52 @@ pub fn fit_of_mod(jar: &Path, game_version: &str) -> ModFit {
     }
 }
 
+/// Whether a Forge mod with this id is present in a mods directory.
+///
+/// This is used to report game measurements under the correct scenario:
+/// Forge mods are installed in `mods/` and do not appear in the launcher's
+/// Fabric mod list.
+#[must_use]
+pub fn directory_contains_forge_mod(directory: &Path, mod_id: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return false;
+    };
+
+    entries.filter_map(std::result::Result::ok).any(|entry| {
+        let path = entry.path();
+        path.extension()
+            .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("jar"))
+            && forge_jar_contains_mod(&path, mod_id)
+    })
+}
+
+fn forge_jar_contains_mod(jar: &Path, expected_id: &str) -> bool {
+    let Ok(file) = std::fs::File::open(jar) else {
+        return false;
+    };
+    let Ok(mut archive) = zip::ZipArchive::new(file) else {
+        return false;
+    };
+    let Ok(mut entry) = archive.by_name("META-INF/mods.toml") else {
+        return false;
+    };
+    let mut text = String::new();
+    if entry.read_to_string(&mut text).is_err() {
+        return false;
+    }
+
+    text.lines().any(|line| {
+        let Some((key, value)) = line.split_once('=') else {
+            return false;
+        };
+        if key.trim() != "modId" {
+            return false;
+        }
+        let value = value.split('#').next().unwrap_or_default().trim();
+        value.trim_matches(['"', '\'']) == expected_id
+    })
+}
+
 /// Whether a version of the game satisfies a requirement of a mod.
 ///
 /// The requirement is written the way the loader reads it: `1.21.4` means
@@ -325,6 +371,27 @@ mod tests {
         writer.finish().unwrap();
 
         (dir, path)
+    }
+
+    fn forge_jar_with(manifest: &str, directory: &Path) -> PathBuf {
+        let path = directory.join("forge-mod.jar");
+        let file = std::fs::File::create(&path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        let options: zip::write::FileOptions<'_, '_, ()> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        writer.start_file("META-INF/mods.toml", options).unwrap();
+        writer.write_all(manifest.as_bytes()).unwrap();
+        writer.finish().unwrap();
+        path
+    }
+
+    #[test]
+    fn a_forge_mod_is_found_by_its_mod_id() {
+        let directory = tempfile::tempdir().unwrap();
+        forge_jar_with("[[mods]]\nmodId = \"minopt\"\n", directory.path());
+
+        assert!(directory_contains_forge_mod(directory.path(), "minopt"));
+        assert!(!directory_contains_forge_mod(directory.path(), "other"));
     }
 
     #[test]

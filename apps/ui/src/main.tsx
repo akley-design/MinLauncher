@@ -20,6 +20,7 @@ import { createRoot } from "react-dom/client";
 
 import { router } from "./router";
 import "./styles/global.css";
+import "./styles/redesign.css";
 
 /**
  * The client of the queries.
