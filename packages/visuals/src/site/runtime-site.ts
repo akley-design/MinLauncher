@@ -49,8 +49,8 @@ const PRESETS: Record<DioramaVariant, CameraPreset> = {
   },
   portal: {
     position: [7.2, 4.7, 10.4],
-    target: [0, 0.85, 0],
-    halfHeight: 3.3,
+    target: [0, 0.7, 0],
+    halfHeight: 2.8,
     shadowY: -2.45,
   },
 };
