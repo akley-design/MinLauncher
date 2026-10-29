@@ -116,7 +116,9 @@ export default {
       });
     }
 
-    const page = await env.ASSETS.fetch(assetRequest(request, pathname, true));
+    const page = await env.ASSETS.fetch(
+      assetRequest(request, pathname === "/" ? "/" : `${pathname}/`, true),
+    );
     if (page.status === 200) {
       return withHeaders(page, {
         ...HTML_SECURITY,

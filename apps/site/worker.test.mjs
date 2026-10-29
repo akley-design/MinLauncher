@@ -4,7 +4,7 @@ import worker from "./public/_worker.js";
 
 const files = new Map([
   ["/", "<main>home</main>"],
-  ["/features", "<main>features</main>"],
+  ["/features/", "<main>features</main>"],
   ["/404", "<main>missing</main>"],
   ["/assets/app.js", "console.log('app')"],
 ]);
@@ -54,7 +54,7 @@ test("worker serves prerendered HTML, redirects and real 404s", async () => {
   );
   assert.equal(features.status, 200);
   assert.equal(await features.text(), "<main>features</main>");
-  assert.equal(seen.at(-1).pathname, "/features");
+  assert.equal(seen.at(-1).pathname, "/features/");
   assert.equal(seen.at(-1).etag, null, "HTML fetch must ignore stale ETag");
 
   const head = await worker.fetch(
