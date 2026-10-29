@@ -8,21 +8,28 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import { Button } from "../components/Button";
-import { MinLauncherAccount } from "../components/MinLauncherAccount";
+import { Diorama } from "@minlauncher/visuals";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import {
   addOfflineAccount,
+  clearNicknameClaim,
+  offlineAccountIdentity,
   installVersion,
   listAccounts,
   listInstances,
   listVersions,
+  removeAccount,
+  queueNicknameRelease,
   selectAccount,
+  setNicknameClaimStatus,
   stopGame,
   toCommandError,
 } from "../ipc/client";
+import { launcherAuth } from "../auth";
 import { queryKeys, useLaunchGame } from "../ipc/queries";
 import type { AccountType } from "../ipc/types";
 import { LAUNCH_BUDGET_MS } from "../lib/launches";
@@ -37,6 +44,8 @@ export function HomeRoute() {
   const launches = useGameStore((state) => state.launches);
 
   const [newAccount, setNewAccount] = useState("");
+  const [nicknameConflicts, setNicknameConflicts] = useState<Record<string, string>>({});
+  const reconciledAccounts = useRef(new Set<string>());
   // The version the player picked on this screen. It is empty until the
   // player picks one, and then the choice is theirs — the version the
   // launcher would have picked on its own is only the default.
@@ -55,6 +64,76 @@ export function HomeRoute() {
     queryKey: queryKeys.accounts(),
     queryFn: listAccounts,
   });
+
+  useEffect(() => {
+    if (!launcherAuth || !accounts.data) return;
+    for (const claim of accounts.data.nickname_claims) {
+      if (
+        claim.status !== "release_pending" ||
+        reconciledAccounts.current.has(`release:${claim.account_id}`)
+      )
+        continue;
+      reconciledAccounts.current.add(`release:${claim.account_id}`);
+      void (async () => {
+        const key = `ml-nickname-${claim.account_id}`;
+        try {
+          const token = await invoke<string | null>("identity_storage_get", { key });
+          if (!token) throw new Error("Не найден токен для освобождения ника.");
+          const { error } = await launcherAuth.functions.invoke("launcher-nickname", {
+            body: { operation: "release_offline", claim_token: token },
+          });
+          if (error) throw error;
+          await invoke("identity_storage_remove", { key });
+          await clearNicknameClaim(claim.account_id);
+          void queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
+        } catch {
+          reconciledAccounts.current.delete(`release:${claim.account_id}`);
+        }
+      })();
+    }
+    for (const account of accounts.data.accounts) {
+      if (account.kind !== "offline" || reconciledAccounts.current.has(account.id)) continue;
+      reconciledAccounts.current.add(account.id);
+      void (async () => {
+        const key = `ml-nickname-${account.id}`;
+        try {
+          const storedToken = await invoke<string | null>("identity_storage_get", { key });
+          const { data, error } = await launcherAuth.functions.invoke("launcher-nickname", {
+            body: {
+              operation: "claim_offline",
+              nickname: account.username,
+              player_uuid: account.uuid,
+              ...(storedToken ? { claim_token: storedToken } : {}),
+            },
+          });
+          if (error) {
+            const status = (error as { context?: Response }).context?.status;
+            if (status === 409 || status === 400) {
+              setNicknameConflicts((current) => ({
+                ...current,
+                [account.id]: "Ник занят. Создайте аккаунт с другим ником.",
+              }));
+              await setNicknameClaimStatus(account.id, account.username, "conflict").catch(
+                () => undefined,
+              );
+            }
+            return;
+          }
+          await setNicknameClaimStatus(account.id, account.username, "reserved");
+          if (!storedToken && typeof data?.claim_token === "string") {
+            await invoke("identity_storage_set", { key, value: data.claim_token });
+          }
+          setNicknameConflicts((current) => {
+            const next = { ...current };
+            delete next[account.id];
+            return next;
+          });
+        } catch {
+          // Existing accounts stay playable if the network or registry is unavailable.
+        }
+      })();
+    }
+  }, [accounts.data, queryClient]);
 
   const instances = useQuery({
     queryKey: queryKeys.instances(),
@@ -115,8 +194,37 @@ export function HomeRoute() {
     },
   });
 
+  const deleteAccount = useMutation({
+    mutationFn: removeAccount,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.accounts() }),
+  });
+
   const addAccount = useMutation({
-    mutationFn: addOfflineAccount,
+    mutationFn: async (username: string) => {
+      if (!launcherAuth) throw new Error("Не настроен сервер MinLauncher.");
+      const identity = await offlineAccountIdentity(username);
+      const { data, error } = await launcherAuth.functions.invoke("launcher-nickname", {
+        body: { operation: "claim_offline", nickname: username, player_uuid: identity.uuid },
+      });
+      if (error) throw error;
+      if (typeof data?.claim_token !== "string")
+        throw new Error("Сервер не подтвердил резервирование ника.");
+      const key = `ml-nickname-${identity.id}`;
+      try {
+        await invoke("identity_storage_set", { key, value: data.claim_token });
+        return await addOfflineAccount(username, data.claim_token);
+      } catch (cause) {
+        const { error: releaseError } = await launcherAuth.functions.invoke("launcher-nickname", {
+          body: { operation: "release_offline", claim_token: data.claim_token },
+        });
+        if (releaseError) {
+          await queueNicknameRelease(identity.id, username).catch(() => undefined);
+        } else {
+          await invoke("identity_storage_remove", { key }).catch(() => undefined);
+        }
+        throw cause;
+      }
+    },
     onSuccess: () => {
       setNewAccount("");
       void queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
@@ -146,8 +254,8 @@ export function HomeRoute() {
     <div className="screen home-screen">
       <div className="screen__header home-screen__heading">
         <div>
-          <div className="home-screen__kicker">Minecraft · выбери версию</div>
-          <h1 className="screen__title">Игровой центр</h1>
+          <div className="home-screen__kicker">Minecraft Java Edition</div>
+          <h1 className="screen__title">Играть</h1>
           <p className="screen__subtitle">
             {installed.length > 0
               ? `${installed.length} ${plural(installed.length, "версия", "версии", "версий")} установлено`
@@ -157,21 +265,16 @@ export function HomeRoute() {
       </div>
 
       <section className="home-hero" aria-label="Запуск Minecraft">
-        <div className="home-hero__shade" />
         <div className="home-hero__content">
           <div className="home-hero__status">
             <span className="home-hero__status-dot" aria-hidden="true" />
             {heroStatus}
           </div>
-          <h2 className="home-hero__title">
-            Выбери
-            <br />
-            <span>версию.</span>
-          </h2>
+          <h2 className="home-hero__title">{chosenInstance?.name ?? "Minecraft"}</h2>
           <p className="home-hero__description">
             {selected
               ? `Привет, ${selected.username}. Выбери версию и запускай игру.`
-              : "Выбери версию, чтобы запустить игру."}
+              : "Добавь игровое имя и выбери версию."}
           </p>
 
           <div className="home-hero__controls">
@@ -208,7 +311,116 @@ export function HomeRoute() {
                 <strong>{chosenVersion || "Нет установленной версии"}</strong>
               )}
             </label>
-            {running ? (
+            <section className="home-game-account">
+              <div className="card__title">Игровой аккаунт</div>
+
+              {accounts.isPending ? (
+                <LoadingState label="Читаем аккаунты…" />
+              ) : accounts.isError ? (
+                <ErrorState error={accounts.error} />
+              ) : (accounts.data?.accounts.length ?? 0) === 0 ? (
+                <EmptyState
+                  title="Аккаунта нет"
+                  description="Добавьте оффлайн-аккаунт, чтобы играть без купленной Java на серверах, где разрешён вход без проверки лицензии."
+                  action={
+                    <Button onClick={() => nameInput.current?.focus()}>Добавить аккаунт</Button>
+                  }
+                />
+              ) : (
+                <ul className="accounts">
+                  {accounts.data?.accounts.map((account) => (
+                    <li key={account.id} className="accounts__item">
+                      <button
+                        type="button"
+                        className={
+                          account.id === accounts.data?.selected_id
+                            ? "accounts__button accounts__button--active"
+                            : "accounts__button"
+                        }
+                        onClick={() => chooseAccount.mutate(account.id)}
+                      >
+                        <span className="accounts__avatar" aria-hidden="true">
+                          {account.username.slice(0, 1).toUpperCase()}
+                        </span>
+                        <span className="accounts__name">{account.username}</span>
+                        <span className={`badge badge--account badge--account-${account.kind}`}>
+                          {ACCOUNT_KIND_LABELS[account.kind]}
+                        </span>
+                      </button>
+                      <Button variant="ghost" onClick={() => deleteAccount.mutate(account.id)}>
+                        Удалить
+                      </Button>
+                      {accounts.data?.nickname_claims.find(
+                        (claim) => claim.account_id === account.id,
+                      )?.status === "conflict" ? (
+                        <small className="field__error">
+                          Ник занят. Удалите профиль и создайте новый с другим ником.
+                        </small>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {Object.entries(nicknameConflicts).map(([accountId, message]) => (
+                <p key={accountId} className="field__error" role="status">
+                  {message}
+                </p>
+              ))}
+
+              <form
+                className="accounts__add"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (newAccount.trim()) {
+                    addAccount.mutate(newAccount.trim());
+                  }
+                }}
+              >
+                <input
+                  ref={nameInput}
+                  name="playerName"
+                  aria-label="Имя игрока"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input"
+                  placeholder="Например, Steve…"
+                  value={newAccount}
+                  onChange={(event) => setNewAccount(event.target.value)}
+                  maxLength={16}
+                />
+                <Button type="submit" busy={addAccount.isPending} disabled={!newAccount.trim()}>
+                  Добавить
+                </Button>
+              </form>
+              <p className="field__hint">
+                Новый ник резервируется в MinLauncher через интернет. Уже добавленные аккаунты
+                запускаются без сети. Серверы с проверкой Microsoft требуют лицензию Minecraft Java.
+              </p>
+
+              {addAccount.isError ? (
+                <p
+                  role="alert"
+                  aria-live="polite"
+                  className="field__error"
+                  style={{ marginTop: "var(--space-2)" }}
+                >
+                  {toCommandError(addAccount.error).message}
+                </p>
+              ) : null}
+            </section>
+            {installed.length === 0 ? (
+              <Button
+                variant="primary"
+                className="button--large home-hero__play"
+                busy={install.isPending}
+                disabled={!latestRelease}
+                onClick={() => install.mutate({ version_id: latestRelease })}
+              >
+                {latestRelease ? `Установить ${latestRelease}` : "Установить"}
+                <span aria-hidden="true">↓</span>
+              </Button>
+            ) : running ? (
               <Button
                 variant="danger"
                 className="button--large home-hero__play"
@@ -262,7 +474,19 @@ export function HomeRoute() {
             </p>
           ) : null}
         </div>
-        <div className="home-hero__caption">Профиль и запуск Minecraft</div>
+        <div className="home-hero__scene">
+          <div className="home-hero__scene-label">
+            <span>Верхний мир</span>
+          </div>
+          <Diorama
+            variant="island"
+            mode="launcher"
+            motion={running || starting ? "paused" : "active"}
+          />
+          <div className="home-hero__caption">
+            <span>Дом у реки</span>
+          </div>
+        </div>
       </section>
 
       {installed.length === 0 ? (
@@ -270,16 +494,6 @@ export function HomeRoute() {
           <EmptyState
             title="Установите версию"
             description="Лаунчер скачает игру, библиотеки и ассеты. После этого версию можно будет запустить."
-            action={
-              <Button
-                variant="primary"
-                busy={install.isPending}
-                disabled={!latestRelease}
-                onClick={() => install.mutate({ version_id: latestRelease })}
-              >
-                {latestRelease ? `Установить ${latestRelease}` : "Установить"}
-              </Button>
-            }
           />
         </section>
       ) : null}
@@ -297,83 +511,6 @@ export function HomeRoute() {
             : "home-screen__lower home-screen__lower--single"
         }
       >
-        <section className="card">
-          <div className="card__title">Аккаунт</div>
-
-          {accounts.isPending ? (
-            <LoadingState label="Читаем аккаунты…" />
-          ) : accounts.isError ? (
-            <ErrorState error={accounts.error} />
-          ) : (accounts.data?.accounts.length ?? 0) === 0 ? (
-            <EmptyState
-              title="Аккаунта нет"
-              description="Добавьте оффлайн-аккаунт, чтобы начать игру без входа в Microsoft."
-              action={<Button onClick={() => nameInput.current?.focus()}>Добавить аккаунт</Button>}
-            />
-          ) : (
-            <ul className="accounts">
-              {accounts.data?.accounts.map((account) => (
-                <li key={account.id} className="accounts__item">
-                  <button
-                    type="button"
-                    className={
-                      account.id === accounts.data?.selected_id
-                        ? "accounts__button accounts__button--active"
-                        : "accounts__button"
-                    }
-                    onClick={() => chooseAccount.mutate(account.id)}
-                  >
-                    <span className="accounts__avatar" aria-hidden="true">
-                      {account.username.slice(0, 1).toUpperCase()}
-                    </span>
-                    <span className="accounts__name">{account.username}</span>
-                    <span className={`badge badge--account badge--account-${account.kind}`}>
-                      {ACCOUNT_KIND_LABELS[account.kind]}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <form
-            className="accounts__add"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (newAccount.trim()) {
-                addAccount.mutate(newAccount.trim());
-              }
-            }}
-          >
-            <input
-              ref={nameInput}
-              name="playerName"
-              aria-label="Имя игрока"
-              autoComplete="off"
-              spellCheck={false}
-              className="input"
-              placeholder="Например, Steve…"
-              value={newAccount}
-              onChange={(event) => setNewAccount(event.target.value)}
-              maxLength={16}
-            />
-            <Button type="submit" busy={addAccount.isPending} disabled={!newAccount.trim()}>
-              Добавить
-            </Button>
-          </form>
-
-          {addAccount.isError ? (
-            <p
-              role="alert"
-              aria-live="polite"
-              className="field__error"
-              style={{ marginTop: "var(--space-2)" }}
-            >
-              {toCommandError(addAccount.error).message}
-            </p>
-          ) : null}
-        </section>
-
         {instances.data && instances.data.instances.length > 0 ? (
           <section className="card">
             <div className="card__title">Инстансы</div>
@@ -390,8 +527,6 @@ export function HomeRoute() {
           </section>
         ) : null}
       </div>
-
-      <MinLauncherAccount />
     </div>
   );
 }
@@ -400,5 +535,6 @@ const ACCOUNT_KIND_LABELS: Record<AccountType, string> = {
   microsoft: "Microsoft",
   mojang: "Mojang",
   offline: "Оффлайн",
+  minlauncher: "MinLauncher",
   third_party: "Другой",
 };

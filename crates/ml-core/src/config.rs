@@ -201,14 +201,14 @@ impl Default for RestartConfig {
     }
 }
 
-/// The graphics profile applied to a MinLauncher game directory.
+/// The graphics profile applied to a `MinLauncher` game directory.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GamePerformanceProfile {
     /// Preserve the game's current graphics settings.
+    #[default]
     Original,
     /// Prefer frame rate by reducing expensive graphics settings.
-    #[default]
     MaxFps,
 }
 
@@ -223,7 +223,7 @@ pub struct OptimizationConfig {
 impl Default for OptimizationConfig {
     fn default() -> Self {
         Self {
-            profile: GamePerformanceProfile::MaxFps,
+            profile: GamePerformanceProfile::Original,
         }
     }
 }
@@ -244,6 +244,13 @@ pub struct LauncherConfig {
     pub default_version: Option<String>,
     /// Default Java runtime component; `auto` derives it from the version.
     pub default_jre: String,
+    /// Root of the game files: versions, libraries, assets and runtimes.
+    ///
+    /// An empty string keeps the historical split layout under the data
+    /// and cache directories of the operating system. A non-empty path is
+    /// an absolute directory that carries the marker `.minlauncher.json`.
+    #[serde(default)]
+    pub install_dir: String,
     /// Whether to show the launcher's own console window.
     pub show_console: bool,
     /// Download engine tuning.
@@ -269,6 +276,7 @@ impl Default for LauncherConfig {
             autostart: false,
             default_version: None,
             default_jre: "auto".to_string(),
+            install_dir: String::new(),
             show_console: false,
             downloads: DownloadConfig::default(),
             jvm: JvmConfig::default(),
@@ -283,9 +291,20 @@ impl Default for LauncherConfig {
 impl LauncherConfig {
     /// Load settings from a JSON document, falling back to defaults when the
     /// document is missing or malformed.
+    ///
+    /// A document that *is there* but cannot be read is not the same thing
+    /// as a document that is missing: the launcher says so in its log,
+    /// because the settings the player chose are being replaced and the
+    /// next save will write the defaults over the broken file.
     #[must_use]
     pub fn from_json(raw: &str) -> Self {
-        serde_json::from_str(raw).unwrap_or_default()
+        match serde_json::from_str(raw) {
+            Ok(config) => config,
+            Err(error) => {
+                tracing::warn!("the settings cannot be read, the defaults take over: {error}");
+                Self::default()
+            }
+        }
     }
 
     /// Serialise the settings to pretty-printed JSON.
@@ -309,6 +328,7 @@ mod tests {
         let cfg = LauncherConfig::default();
         let json = cfg.to_json().unwrap();
         assert_eq!(LauncherConfig::from_json(&json), cfg);
+        assert_eq!(cfg.optimization.profile, GamePerformanceProfile::Original);
     }
 
     #[test]
@@ -323,6 +343,24 @@ mod tests {
         let cfg = LauncherConfig::from_json(r#"{"language":"en-US"}"#);
         assert_eq!(cfg.language, "en-US");
         assert_eq!(cfg.downloads.max_concurrent, 16);
+    }
+
+    #[test]
+    fn a_document_of_the_old_schema_has_no_install_directory() {
+        // The field was added after the first installations: a document
+        // written by an older launcher must keep the default layout.
+        let cfg = LauncherConfig::from_json(r#"{"schema_version":1,"language":"ru-RU"}"#);
+        assert_eq!(cfg.install_dir, "");
+    }
+
+    #[test]
+    fn the_install_directory_round_trips() {
+        let cfg = LauncherConfig {
+            install_dir: r"E:\MinLauncher".to_string(),
+            ..LauncherConfig::default()
+        };
+        let read = LauncherConfig::from_json(&cfg.to_json().unwrap());
+        assert_eq!(read.install_dir, r"E:\MinLauncher");
     }
 
     #[test]

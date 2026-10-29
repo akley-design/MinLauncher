@@ -19,7 +19,6 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AccountList,
   BenchmarkList,
-  Directories,
   DownloadEntry,
   InstallOptions,
   InstallResult,
@@ -29,6 +28,7 @@ import type {
   LaunchOptions,
   LaunchResult,
   ManifestSummary,
+  ModloaderCatalog,
   PerformanceModInstall,
   RuntimeResult,
   RuntimeView,
@@ -36,7 +36,6 @@ import type {
   TLauncherBaselineImport,
   UpdateView,
   VersionList,
-  VersionManifest,
 } from "./types";
 
 /**
@@ -107,11 +106,6 @@ export function listVersions(): Promise<VersionList> {
   return call<VersionList>("list_versions");
 }
 
-/** The manifest as the launcher last saw it. */
-export function readManifest(): Promise<VersionManifest | null> {
-  return call<VersionManifest | null>("read_manifest");
-}
-
 /** Fetch the manifest from Mojang and remember what it says. */
 export function refreshManifest(): Promise<ManifestSummary> {
   return call<ManifestSummary>("refresh_manifest");
@@ -163,19 +157,81 @@ export function listAccounts(): Promise<AccountList> {
   return call<AccountList>("list_accounts");
 }
 
-/** The account that is selected. */
-export function selectedAccount(): Promise<import("./types").Account | null> {
-  return call<import("./types").Account | null>("selected_account");
-}
-
 /** Select the account the game is started with. */
 export function selectAccount(accountId: string): Promise<AccountList> {
   return call<AccountList>("select_account", { accountId });
 }
 
-/** Add an offline account. */
-export function addOfflineAccount(username: string): Promise<AccountList> {
-  return call<AccountList>("add_offline_account", { username });
+/** Get the Minecraft offline identity for a nickname before reserving it online. */
+export function offlineAccountIdentity(
+  username: string,
+): Promise<import("./types").OfflineIdentity> {
+  return call<import("./types").OfflineIdentity>("offline_account_identity", { username });
+}
+
+/** Add an offline account after the nickname registry granted the claim. */
+export function addOfflineAccount(username: string, claimToken: string): Promise<AccountList> {
+  return call<AccountList>("add_offline_account", { username, claimToken });
+}
+
+/** Sync a registered MinLauncher profile to the local game account list. */
+export function upsertMinLauncherAccount(
+  nickname: string,
+  playerUuid: string,
+): Promise<AccountList> {
+  return call<AccountList>("upsert_minlauncher_account", { nickname, playerUuid });
+}
+
+/** Redeem and locally store a short-lived Minecraft account handoff. */
+export function redeemMinecraftHandoff(code: string): Promise<AccountList> {
+  const url = import.meta.env.VITE_SUPABASE_URL?.trim();
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+  if (!url || !anonKey)
+    return Promise.reject(new Error("Вход Microsoft не настроен в этой сборке."));
+  return call<AccountList>("redeem_minecraft_handoff", {
+    endpoint: `${url.replace(/\/$/, "")}/functions/v1/redeem-minecraft-handoff`,
+    anonKey,
+    code,
+  });
+}
+
+/** Restore a non-secret game account from encrypted cloud sync data. */
+export function upsertSyncedAccount(account: import("./types").Account): Promise<AccountList> {
+  return call<AccountList>("upsert_synced_account", { account });
+}
+
+/** Encrypt account metadata and credentials locally; only ciphertext leaves the app. */
+export function encryptAccountSyncPayload(accountId: string, password: string): Promise<number[]> {
+  return call<number[]>("encrypt_account_sync_payload", { accountId, password });
+}
+
+/** Decrypt a cloud account and restore credentials inside Rust without exposing tokens to UI code. */
+export function restoreAccountSyncPayload(
+  accountId: string,
+  payload: number[],
+  password: string,
+): Promise<import("./types").Account> {
+  return call<import("./types").Account>("restore_account_sync_payload", {
+    accountId,
+    payload,
+    password,
+  });
+}
+
+export function setNicknameClaimStatus(
+  accountId: string,
+  nickname: string,
+  status: "reserved" | "conflict",
+): Promise<void> {
+  return call<void>("set_nickname_claim_status", { accountId, nickname, status });
+}
+
+export function clearNicknameClaim(accountId: string): Promise<void> {
+  return call<void>("clear_nickname_claim", { accountId });
+}
+
+export function queueNicknameRelease(accountId: string, nickname: string): Promise<void> {
+  return call<void>("queue_nickname_release", { accountId, nickname });
 }
 
 /** Remove an account. */
@@ -193,6 +249,20 @@ export function listInstances(): Promise<InstanceList> {
 /** Create an instance. */
 export function createInstance(name: string, versionId: string): Promise<InstanceList> {
   return call<InstanceList>("create_instance", { name, versionId });
+}
+
+/** Stable Forge/Fabric choices and the newest stable Fabric API per game release. */
+export function listModloaderVersions(): Promise<ModloaderCatalog> {
+  return call<ModloaderCatalog>("list_modloader_versions");
+}
+
+/** Install the chosen modloader profile and create its isolated instance. */
+export function createModloaderInstance(options: {
+  name: string;
+  minecraft_version: string;
+  loader: "forge" | "fabric";
+}): Promise<InstanceList> {
+  return call<InstanceList>("create_modloader_instance", { options });
 }
 
 /** Copy the local Forge profile into a private MinLauncher instance. */
@@ -226,9 +296,9 @@ export function writeSettings(config: import("./types").LauncherConfig): Promise
   return call<SettingsView>("write_settings", { config });
 }
 
-/** The directories the launcher uses. */
-export function readDirectories(): Promise<Directories> {
-  return call<Directories>("read_directories");
+/** Ask for the directory that holds the game files. */
+export function pickInstallDirectory(): Promise<string | null> {
+  return call<string | null>("pick_install_directory");
 }
 
 // --- the updates of the launcher itself -------------------------------
@@ -258,11 +328,6 @@ export function installUpdate(rawJson: unknown): Promise<void> {
 /** The newest measurement of every metric. */
 export function latestBenchmarks(): Promise<BenchmarkList> {
   return call<BenchmarkList>("latest_benchmarks");
-}
-
-/** The stored measurements of a metric and a scenario. */
-export function listBenchmarks(metric: string, scenario: string): Promise<BenchmarkList> {
-  return call<BenchmarkList>("list_benchmarks", { metric, scenario });
 }
 
 /** The comparison of the game with the mod and without it. */

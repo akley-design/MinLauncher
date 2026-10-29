@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use ml_core::{VersionKind, VersionMeta};
+use ml_core::{AppPaths, VersionKind, VersionMeta};
 use ml_minecraft::manifest::{ManifestClient, VersionManifest};
 use ml_minecraft::{AssetIndex, DownloadProgress, MinecraftService};
 use serde::{Deserialize, Serialize};
@@ -176,12 +176,19 @@ pub async fn refresh_manifest(state: State<'_, SharedState>) -> IpcResult<Manife
 
     // The manifest is kept on disk so that the frontend can be shown the
     // list of versions while the network is still being asked.
-    let path = state.paths().cache_dir.join("version_manifest_v2.json");
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    if let Ok(bytes) = serde_json::to_vec_pretty(&manifest) {
-        let _ = std::fs::write(&path, bytes);
+    cache_manifest(&state.paths(), &manifest)?;
+
+    // The list of the versions is a list of *known* versions. A refresh
+    // is also the moment to notice the ones that are on the disk: the
+    // player may have copied them in, or installed them with another
+    // launcher.
+    match crate::reconcile::rescan_versions(storage, &state.paths()) {
+        Ok(report) if !report.failed.is_empty() => tracing::warn!(
+            "the scan of the installation found {} unreadable versions",
+            report.failed.len()
+        ),
+        Ok(_) => {}
+        Err(error) => tracing::warn!("cannot scan the installed versions: {error}"),
     }
 
     Ok(summary)
@@ -196,7 +203,10 @@ pub async fn refresh_manifest(state: State<'_, SharedState>) -> IpcResult<Manife
 ///
 /// # Errors
 /// Fails when the database refuses the versions.
-fn store_the_manifest(storage: &ml_storage::Storage, manifest: &VersionManifest) -> IpcResult<()> {
+pub fn store_the_manifest(
+    storage: &ml_storage::Storage,
+    manifest: &VersionManifest,
+) -> IpcResult<()> {
     let metas: Vec<VersionMeta> = manifest
         .versions
         .iter()
@@ -220,6 +230,31 @@ fn store_the_manifest(storage: &ml_storage::Storage, manifest: &VersionManifest)
         IpcError::with_detail(
             ErrorCode::Storage,
             "cannot store the versions of the manifest",
+            error.to_string(),
+        )
+    })
+}
+
+/// Keep the manifest on the disk for the next start.
+///
+/// # Errors
+/// Fails when the cache directory or the file cannot be written.
+pub fn cache_manifest(paths: &AppPaths, manifest: &VersionManifest) -> IpcResult<()> {
+    let path = paths.cache_dir.join("version_manifest_v2.json");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(IpcError::from)?;
+    }
+    let bytes = serde_json::to_vec_pretty(manifest).map_err(|error| {
+        IpcError::with_detail(
+            ErrorCode::Storage,
+            "cannot serialise the version manifest",
+            error.to_string(),
+        )
+    })?;
+    std::fs::write(&path, bytes).map_err(|error| {
+        IpcError::with_detail(
+            ErrorCode::Storage,
+            "cannot write the version manifest",
             error.to_string(),
         )
     })
@@ -338,10 +373,25 @@ pub async fn install_version(
     options: InstallOptions,
 ) -> IpcResult<InstallResult> {
     let version_id = options.version_id.clone();
+    let _activity = state.begin_activity()?;
 
     let mut service = state.service_clone();
+    let paths = state.paths();
 
-    let result = install(&mut service, &state, &options, &app).await;
+    // The frontend is told about the start of the work directly, and
+    // about the progress of the files no more than ten times a second.
+    let throttle = Arc::new(Throttle::new(INSTALL_EVENT, Duration::from_millis(100)));
+    let emitter = Arc::clone(&throttle);
+    let handle = app.clone();
+    let reporter: InstallReporter = Arc::new(move |event| match &event {
+        InstallEvent::Progress { .. } => emitter.report(&handle, event.clone()),
+        _ => {
+            let _ = handle.emit(INSTALL_EVENT, &event);
+        }
+    });
+
+    let result =
+        install_version_files(&mut service, state.storage(), &paths, &options, &reporter).await;
 
     match result {
         Ok(result) => {
@@ -365,30 +415,46 @@ pub async fn install_version(
     }
 }
 
-/// Do the work of an installation.
-async fn install(
+/// The receiver of the events of an installation.
+pub type InstallReporter = Arc<dyn Fn(InstallEvent) + Send + Sync>;
+
+/// Install one version into the current layout.
+///
+/// This is the work behind the command: it can be called without a
+/// Tauri application, which is what the verification harness does. The
+/// events are delivered to `report`; the command throttles them before
+/// they reach the frontend.
+///
+/// # Errors
+/// Fails when the version is unknown, when the network is unreachable,
+/// or when the files cannot be written.
+pub async fn install_version_files(
     service: &mut MinecraftService,
-    state: &SharedState,
+    storage: &ml_storage::Storage,
+    paths: &AppPaths,
     options: &InstallOptions,
-    app: &AppHandle,
+    report: &InstallReporter,
 ) -> IpcResult<InstallResult> {
     let started_at = Instant::now();
     let version_id = options.version_id.clone();
 
     // --- the version document -----------------------------------------
-    let (version, version_bytes) = fetch_version(service, state, &version_id, options).await?;
+    let phase_started = Instant::now();
+    let (version, version_bytes) = fetch_version(service, paths, &version_id, options).await?;
+    tracing::debug!(target: "minlaucher::performance", phase = "install_version_metadata", version = %version_id, elapsed_ms = phase_started.elapsed().as_millis());
 
     // The document is written before anything else: it is what the
     // launcher reads when the game is started, and a launcher that has
     // the document can start the game even if the download is cut short.
-    let version_path = write_version_document(state, &version_id, &version_bytes)?;
-    state
-        .storage()
+    let version_path = write_version_document(paths, &version_id, &version_bytes)?;
+    storage
         .versions()
         .set_json_path(&version_id, &version_path.to_string_lossy())?;
 
     // --- the asset index ----------------------------------------------
+    let phase_started = Instant::now();
     let asset_index = fetch_asset_index(service, &version).await?;
+    tracing::debug!(target: "minlaucher::performance", phase = "install_asset_index", version = %version_id, elapsed_ms = phase_started.elapsed().as_millis(), objects = asset_index.objects.len());
     let index_bytes = serde_json::to_vec_pretty(&asset_index).map_err(|error| {
         IpcError::with_detail(
             ErrorCode::Storage,
@@ -397,10 +463,7 @@ async fn install(
         )
     })?;
     write_file(
-        &state
-            .paths()
-            .version_dir(&version_id)
-            .join(ASSET_INDEX_FILE),
+        &paths.version_dir(&version_id).join(ASSET_INDEX_FILE),
         &index_bytes,
     )?;
 
@@ -414,10 +477,11 @@ async fn install(
         .map(|index| index.id.as_str())
         .filter(|id| !id.is_empty())
     {
-        write_file(&state.paths().asset_index(index_id), &index_bytes)?;
+        write_file(&paths.asset_index(index_id), &index_bytes)?;
     }
 
     // --- the plan ------------------------------------------------------
+    let phase_started = Instant::now();
     let plan = service.plan(&version, &asset_index).map_err(|error| {
         IpcError::with_detail(
             ErrorCode::Network,
@@ -425,38 +489,27 @@ async fn install(
             error.to_string(),
         )
     })?;
+    tracing::debug!(target: "minlaucher::performance", phase = "plan_install", version = %version_id, elapsed_ms = phase_started.elapsed().as_millis(), missing_files = plan.len(), missing_bytes = plan.total_size);
 
-    let _ = app.emit(
-        INSTALL_EVENT,
-        &InstallEvent::Started {
-            version_id: version_id.clone(),
-            total: plan.len(),
-            bytes: plan.total_size,
-        },
-    );
-
-    // --- the download ---------------------------------------------------
-    //
-    // The report of the download is thinned out before it reaches the
-    // frontend: an installation of a modern version fetches thousands of
-    // files, and an event per file would cost more than the download.
-    let throttle = Arc::new(Throttle::new(INSTALL_EVENT, Duration::from_millis(100)));
-    let emitter = Arc::clone(&throttle);
-    let progress_version = version_id.clone();
-    let handle = app.clone();
-
-    let callback: ml_minecraft::ProgressCallback = Arc::new(move |progress: DownloadProgress| {
-        emitter.report(
-            &handle,
-            InstallEvent::Progress {
-                version_id: progress_version.clone(),
-                completed: progress.completed,
-                total: progress.total,
-                bytes: progress.bytes,
-            },
-        );
+    report(InstallEvent::Started {
+        version_id: version_id.clone(),
+        total: plan.len(),
+        bytes: plan.total_size,
     });
 
+    // --- the download ---------------------------------------------------
+    let progress_version = version_id.clone();
+    let progress_report = Arc::clone(report);
+    let callback: ml_minecraft::ProgressCallback = Arc::new(move |progress: DownloadProgress| {
+        progress_report(InstallEvent::Progress {
+            version_id: progress_version.clone(),
+            completed: progress.completed,
+            total: progress.total,
+            bytes: progress.bytes,
+        });
+    });
+
+    let download_started_at = Instant::now();
     let result = service
         .install_with_progress(&plan, callback)
         .await
@@ -467,6 +520,7 @@ async fn install(
                 error.to_string(),
             )
         })?;
+    tracing::debug!(target: "minlaucher::performance", phase = "download_install_files", version = %version_id, elapsed_ms = download_started_at.elapsed().as_millis(), files = result.completed.len(), bytes = result.bytes);
 
     if !result.is_success() {
         let failed = result
@@ -491,14 +545,18 @@ async fn install(
     //
     // A failure here is not a failure of the installation: the files are
     // on the disk, and the game starts either way — it is only silent.
+    let phase_started = Instant::now();
     match service.expand_plain_tree(&version, &asset_index) {
         Ok(0) => {}
         Ok(files) => tracing::info!("the assets of {version_id} are a tree of {files} files"),
         Err(error) => tracing::warn!("cannot lay out the assets of {version_id}: {error}"),
     }
+    tracing::debug!(target: "minlaucher::performance", phase = "materialize_legacy_assets", version = %version_id, elapsed_ms = phase_started.elapsed().as_millis());
 
     // --- what is stored -------------------------------------------------
-    store_the_install(state, &version, &version_id, &plan, &asset_index)?;
+    let phase_started = Instant::now();
+    store_the_install(storage, &version, &version_id, &plan, &asset_index)?;
+    tracing::debug!(target: "minlaucher::performance", phase = "persist_install_metadata", version = %version_id, elapsed_ms = phase_started.elapsed().as_millis());
 
     let installed = InstallResult {
         version_id,
@@ -510,7 +568,7 @@ async fn install(
     // The length of the installation is the metric M4. The launcher is
     // the only one who knows it exactly: from the outside there is no
     // way to tell that the last file has landed.
-    store_install_measurement(state, &installed);
+    store_install_measurement(storage, paths, &installed);
 
     Ok(installed)
 }
@@ -520,7 +578,11 @@ async fn install(
 /// The measurement is stored under the version that was installed, so
 /// that the installations of different versions do not overwrite each
 /// other.
-fn store_install_measurement(state: &SharedState, result: &InstallResult) {
+fn store_install_measurement(
+    storage: &ml_storage::Storage,
+    paths: &AppPaths,
+    result: &InstallResult,
+) {
     let mut meta = ml_bench::Meta::of_this_machine();
     meta.game_version = Some(result.version_id.clone());
     meta.set("files", result.files.to_string());
@@ -529,7 +591,7 @@ fn store_install_measurement(state: &SharedState, result: &InstallResult) {
     let series = ml_bench::Series::from_samples(vec![result.elapsed_ms as f64]);
 
     let stored = ml_bench::store(
-        state.storage(),
+        storage,
         ml_bench::Metric::FreshInstall,
         &result.version_id,
         &series,
@@ -539,7 +601,7 @@ fn store_install_measurement(state: &SharedState, result: &InstallResult) {
     // The measurement is also written into the file of the scenario, so
     // that a measurer outside can pick it up.
     if let Err(error) = ml_bench::samples::append(
-        state.paths(),
+        paths,
         &result.version_id,
         ml_bench::Metric::FreshInstall,
         result.elapsed_ms as f64,
@@ -567,11 +629,11 @@ fn store_install_measurement(state: &SharedState, result: &InstallResult) {
 /// and the file on disk is not a valid document.
 async fn fetch_version(
     service: &mut MinecraftService,
-    state: &SharedState,
+    paths: &AppPaths,
     version_id: &str,
     options: &InstallOptions,
 ) -> IpcResult<(ml_minecraft::VersionJson, Vec<u8>)> {
-    let path = state.paths().version_dir(version_id).join(VERSION_FILE);
+    let path = paths.version_dir(version_id).join(VERSION_FILE);
 
     if !options.allow_network {
         let bytes = std::fs::read(&path).map_err(|error| {
@@ -587,7 +649,7 @@ async fn fetch_version(
 
     // The URL of the document is in the manifest, and the manifest is
     // what the launcher keeps on the disk.
-    let manifest = manifest_of(service, state).await?;
+    let manifest = manifest_of(service, paths).await?;
     let entry = manifest
         .find(version_id)
         .ok_or_else(|| IpcError::not_found(format!("there is no version `{version_id}`")))?;
@@ -608,9 +670,9 @@ async fn fetch_version(
 /// otherwise.
 async fn manifest_of(
     service: &mut MinecraftService,
-    state: &SharedState,
+    paths: &AppPaths,
 ) -> IpcResult<VersionManifest> {
-    let path = state.paths().cache_dir.join("version_manifest_v2.json");
+    let path = paths.cache_dir.join("version_manifest_v2.json");
     if path.is_file()
         && let Ok(bytes) = std::fs::read(&path)
         && let Ok(manifest) = ml_minecraft::manifest::parse_manifest(&bytes)
@@ -642,12 +704,8 @@ async fn fetch_asset_index(
 }
 
 /// Write the version document where the launcher expects to find it.
-fn write_version_document(
-    state: &SharedState,
-    version_id: &str,
-    bytes: &[u8],
-) -> IpcResult<PathBuf> {
-    let path = state.paths().version_dir(version_id).join(VERSION_FILE);
+fn write_version_document(paths: &AppPaths, version_id: &str, bytes: &[u8]) -> IpcResult<PathBuf> {
+    let path = paths.version_dir(version_id).join(VERSION_FILE);
     write_file(&path, bytes)?;
     Ok(path)
 }
@@ -679,14 +737,12 @@ fn write_file(path: &PathBuf, bytes: &[u8]) -> IpcResult<()> {
 /// that was installed but not remembered does not exist as far as the
 /// interface is concerned.
 fn store_the_install(
-    state: &SharedState,
+    storage: &ml_storage::Storage,
     version: &ml_minecraft::VersionJson,
     version_id: &str,
     plan: &ml_minecraft::InstallPlan,
     asset_index: &AssetIndex,
 ) -> IpcResult<()> {
-    let storage = state.storage();
-
     // The libraries, so that the launcher does not have to resolve the
     // rules of Mojang on every launch.
     ml_minecraft::install::store_libraries(storage, version_id, &plan.libraries).map_err(
@@ -727,7 +783,6 @@ fn store_the_install(
             )
         })?;
 
-    // The version itself.
     let meta = VersionMeta {
         id: version_id.to_string(),
         kind: VersionKind::from_manifest(&version.kind),
@@ -892,7 +947,7 @@ mod tests {
     #[test]
     fn the_file_of_a_version_is_written_where_the_launcher_looks_for_it() {
         let (_dir, state) = state();
-        let path = write_version_document(&state, "26.3", VERSION.as_bytes()).unwrap();
+        let path = write_version_document(&state.paths(), "26.3", VERSION.as_bytes()).unwrap();
 
         assert!(path.is_file());
         assert!(path.ends_with("26.3/version.json"));
@@ -921,7 +976,7 @@ mod tests {
             total_size: 0,
         };
 
-        store_the_install(&state, &version, "26.3", &plan, &index).unwrap();
+        store_the_install(state.storage(), &version, "26.3", &plan, &index).unwrap();
 
         let storage = state.storage();
         assert!(storage.versions().is_installed("26.3").unwrap());
@@ -946,7 +1001,7 @@ mod tests {
         let index = ml_minecraft::AssetIndex::parse(ASSETS.as_bytes()).unwrap();
         let plan = ml_minecraft::InstallPlan::default();
 
-        store_the_install(&state, &version, "26.3", &plan, &index).unwrap();
+        store_the_install(state.storage(), &version, "26.3", &plan, &index).unwrap();
 
         let stored = state.storage().assets().index("26.3").unwrap().unwrap();
         assert_eq!(stored.index_id, "34");
@@ -972,7 +1027,7 @@ mod tests {
         let index = ml_minecraft::AssetIndex::parse(ASSETS.as_bytes()).unwrap();
         let plan = ml_minecraft::InstallPlan::default();
 
-        store_the_install(&state, &version, "1.5.2", &plan, &index).unwrap();
+        store_the_install(state.storage(), &version, "1.5.2", &plan, &index).unwrap();
 
         let meta = state.storage().versions().get("1.5.2").unwrap().unwrap();
         assert_eq!(meta.asset_index_id.as_deref(), Some("pre-1.6"));
@@ -988,7 +1043,7 @@ mod tests {
         let index = ml_minecraft::AssetIndex::parse(ASSETS.as_bytes()).unwrap();
         let plan = ml_minecraft::InstallPlan::default();
 
-        store_the_install(&state, &version, "26.3", &plan, &index).unwrap();
+        store_the_install(state.storage(), &version, "26.3", &plan, &index).unwrap();
 
         let installed = state.storage().versions().list_installed().unwrap();
         assert_eq!(installed.len(), 1);

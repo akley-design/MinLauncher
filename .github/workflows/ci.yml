@@ -148,6 +148,11 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          cache: true
+
       - name: Install the dependencies
         run: npm ci
 
@@ -162,6 +167,24 @@ jobs:
 
       - name: Test
         run: npm run test:run
+
+      - name: Build the launcher interface
+        run: npm run build
+
+      - name: Build the website
+        run: npm run site:build
+
+      - name: Test the website
+        run: npm run site:test
+
+      - name: Test shared visuals
+        run: npm run test:visuals
+
+      - name: Check Supabase functions
+        run: deno check supabase/functions/create-handoff/index.ts supabase/functions/redeem-handoff/index.ts
+
+      - name: Test handoff redemption
+        run: npm run test:supabase
 
       - name: Test the scripts of the release
         run: npm run test:scripts

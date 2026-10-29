@@ -1,10 +1,4 @@
-/**
- * The way a number is written for a person to read.
- *
- * The helpers here are pure — they take a value and return a string —
- * and they live apart from the screens, so that the screens can hold
- * nothing but components.
- */
+/** Formatting helpers shared by the screens. */
 
 function formatNumber(value: number, digits: number): string {
   return new Intl.NumberFormat("ru-RU", {
@@ -14,13 +8,7 @@ function formatNumber(value: number, digits: number): string {
   }).format(value);
 }
 
-/**
- * The time of a release, in the format a player reads.
- *
- * The value that comes from the backend is ISO-8601 in UTC. It is
- * turned into the local time of the machine, because a release date is
- * only meaningful in the time zone of the reader.
- */
+/** ISO-8601 from the backend, shown in the reader's time zone. */
 export function formatTime(value: string | undefined): string {
   if (!value) {
     return "—";
@@ -38,13 +26,7 @@ export function formatTime(value: string | undefined): string {
   });
 }
 
-/**
- * A number with its unit.
- *
- * The unit of a measurement is the one the harness recorded: `ms`, `fps`,
- * `mb` or `ratio`. The number is shortened, because a table of numbers
- * with twelve digits in each of them cannot be read at a glance.
- */
+/** A measurement with the unit the harness recorded. */
 export function formatValue(value: number, unit: string): string {
   if (unit === "ms") {
     return value >= 1000 ? `${formatNumber(value / 1000, 2)} с` : `${formatNumber(value, 1)} мс`;
@@ -61,14 +43,7 @@ export function formatValue(value: number, unit: string): string {
   return `${formatNumber(value, 2)} ${unit}`;
 }
 
-/**
- * The change a comparison brought, in percent.
- *
- * A positive number means the game got better, and it is written with
- * a plus sign: a reader should not have to remember which way the sign
- * goes. A number that is not there is written as a dash — there was
- * nothing to compare.
- */
+/** Improvement in percent; positive is better and always carries a sign. */
 export function formatImprovement(percent: number | null): string {
   if (percent === null || !Number.isFinite(percent)) {
     return "—";
@@ -78,14 +53,7 @@ export function formatImprovement(percent: number | null): string {
   return `${sign}${formatNumber(Math.abs(percent), 1)} %`;
 }
 
-/**
- * A number of bytes, in the unit a person reads.
- *
- * An installation of a modern version of the game moves a few hundred
- * megabytes, so the number is shown in the unit that keeps it short.
- * The units are the ones a Russian reader expects: килобайты, мегабайты
- * and гигабайты.
- */
+/** Bytes in the largest unit that keeps the number short. */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) {
     return "0 Б";
@@ -100,8 +68,6 @@ export function formatBytes(bytes: number): string {
     unit += 1;
   }
 
-  // A whole number of bytes is written as it is; everything else gets
-  // one digit, because the second one is noise.
   const text = formatNumber(value, unit === 0 ? 0 : 1);
   return `${text} ${units[unit]}`;
 }

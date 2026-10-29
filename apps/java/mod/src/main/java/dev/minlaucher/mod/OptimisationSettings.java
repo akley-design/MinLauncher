@@ -228,7 +228,7 @@ public final class OptimisationSettings {
         // The balanced preset: the look of the game stays, and the
         // work that nothing can be seen of goes away.
         enabled = true;
-        clouds = false;
+        clouds = true;
         weather = true;
         particles = true;
         entityShadows = true;

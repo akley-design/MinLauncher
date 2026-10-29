@@ -18,10 +18,22 @@ function bundle() {
   const root = mkdtempSync(join(tmpdir(), "minlaucher-bundle-"));
   mkdirSync(join(root, "nsis"));
   mkdirSync(join(root, "msi"));
-  writeFileSync(join(root, "nsis", "MinLauncher_0.1.0_x64-setup.exe"), "installer");
-  writeFileSync(join(root, "nsis", "MinLauncher_0.1.0_x64-setup.exe.sig"), "nsis-signature");
-  writeFileSync(join(root, "msi", "MinLauncher_0.1.0_x64_en-US.msi"), "installer");
-  writeFileSync(join(root, "msi", "MinLauncher_0.1.0_x64_en-US.msi.sig"), "msi-signature");
+  writeFileSync(
+    join(root, "nsis", "MinLauncher_0.1.0_x64-setup.exe"),
+    "installer",
+  );
+  writeFileSync(
+    join(root, "nsis", "MinLauncher_0.1.0_x64-setup.exe.sig"),
+    "nsis-signature",
+  );
+  writeFileSync(
+    join(root, "msi", "MinLauncher_0.1.0_x64_en-US.msi"),
+    "installer",
+  );
+  writeFileSync(
+    join(root, "msi", "MinLauncher_0.1.0_x64_en-US.msi.sig"),
+    "msi-signature",
+  );
   return root;
 }
 
@@ -47,7 +59,10 @@ test("the manifest names the installer of every kind with its signature", () => 
     url: "https://example.invalid/releases/v0.1.0/MinLauncher_0.1.0_x64_en-US.msi",
   });
   // The fallback of the clients that know nothing about installer kinds.
-  assert.deepEqual(manifest.platforms["windows-x86_64"], manifest.platforms["windows-x86_64-nsis"]);
+  assert.deepEqual(
+    manifest.platforms["windows-x86_64"],
+    manifest.platforms["windows-x86_64-nsis"],
+  );
 });
 
 test("an installer without a signature breaks the release", () => {

@@ -174,7 +174,7 @@ pub fn compare_in_game(state: State<'_, SharedState>) -> InGameComparisons {
     compare_in_game_of(state.inner())
 }
 
-/// The result of importing the TLauncher side of an in-game comparison.
+/// The result of importing the `TLauncher` side of an in-game comparison.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TLauncherBaselineImport {
     /// The canonical scenario used for future comparisons.
@@ -183,7 +183,7 @@ pub struct TLauncherBaselineImport {
     pub runs_per_metric: usize,
 }
 
-/// Import the TLauncher FPS file produced by `scripts/measure-tlauncher-fps.ps1`.
+/// Import the `TLauncher` FPS file produced by `scripts/measure-tlauncher-fps.ps1`.
 ///
 /// The file is validated for the same Minecraft version and machine, then
 /// stored under a launcher-owned scenario. The source `.minecraft` directory
@@ -255,14 +255,15 @@ pub fn import_tlauncher_baseline(
     });
     let scenario = ml_bench::scenario_of("tlauncher");
     file.scenario = Some(scenario.clone());
-    std::fs::create_dir_all(&state.paths().benchmarks_dir).map_err(|error| {
+    let paths = state.paths();
+    std::fs::create_dir_all(&paths.benchmarks_dir).map_err(|error| {
         IpcError::with_detail(
             ErrorCode::Storage,
             "cannot prepare the benchmark directory",
             error.to_string(),
         )
     })?;
-    let path = ml_bench::samples::scenario_file(state.paths(), &scenario);
+    let path = ml_bench::samples::scenario_file(&paths, &scenario);
     file.write(&path).map_err(IpcError::from)?;
 
     let stored = file.import(state.storage());
@@ -346,7 +347,8 @@ fn series_from_samples(
     metric: Metric,
     scenario: &str,
 ) -> Option<ml_bench::Series> {
-    let path = ml_bench::samples::scenario_file(state.paths(), scenario);
+    let paths = state.paths();
+    let path = ml_bench::samples::scenario_file(&paths, scenario);
     ml_bench::SampleFile::read(&path).ok()?.series_of(metric)
 }
 
@@ -407,7 +409,7 @@ mod tests {
     fn store_run_values(state: &SharedState, metric: Metric, scenario: &str, values: Vec<f64>) {
         let meta = ml_bench::Meta::of_this_machine();
         for value in &values {
-            ml_bench::samples::append(state.paths(), scenario, metric, *value, &meta).unwrap();
+            ml_bench::samples::append(&state.paths(), scenario, metric, *value, &meta).unwrap();
         }
         ml_bench::store(
             state.storage(),

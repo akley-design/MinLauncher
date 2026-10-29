@@ -348,25 +348,6 @@ pub fn unpack_runtime(plan: &RuntimePlan) -> Result<()> {
     Ok(())
 }
 
-/// The path of the `java` executable inside an unpacked runtime.
-#[must_use]
-pub fn java_executable(runtime_dir: &Path) -> PathBuf {
-    runtime_dir
-        .join("bin")
-        .join(if cfg!(windows) { "java.exe" } else { "java" })
-}
-
-/// The path of the `javaw` executable inside an unpacked runtime.
-///
-/// On Windows the game is started with `javaw.exe` so that no console
-/// window appears.
-#[must_use]
-pub fn javaw_executable(runtime_dir: &Path) -> PathBuf {
-    runtime_dir
-        .join("bin")
-        .join(if cfg!(windows) { "javaw.exe" } else { "java" })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -460,15 +441,6 @@ mod tests {
         assert!(key.contains('-'));
         #[cfg(target_os = "windows")]
         assert!(key.starts_with("windows-"));
-    }
-
-    #[test]
-    fn java_executable_uses_the_bin_directory() {
-        let dir = Path::new("/tmp/runtime");
-        assert!(
-            java_executable(dir).ends_with("java.exe") || java_executable(dir).ends_with("java")
-        );
-        assert!(java_executable(dir).parent().unwrap().ends_with("bin"));
     }
 
     /// A manifest whose paths try to leave the runtime directory.

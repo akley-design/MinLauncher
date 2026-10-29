@@ -8,7 +8,7 @@
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
-use ml_core::{Error, Result};
+use ml_core::Result;
 
 use crate::db::{PooledConnection, SqlitePool, now_iso8601};
 use crate::repo::storage_error;
@@ -112,9 +112,7 @@ impl DownloadRepo {
     }
 
     fn conn(&self) -> Result<PooledConnection> {
-        self.pool
-            .get()
-            .map_err(|e| Error::Storage(format!("cannot acquire connection: {e}")))
+        crate::db::connection(&self.pool)
     }
 
     /// Add an entry to the queue, or refresh the metadata of an existing one.
@@ -238,17 +236,6 @@ impl DownloadRepo {
         Ok(())
     }
 
-    /// Record how many bytes have been transferred.
-    pub fn update_progress(&self, url: &str, bytes_done: i64) -> Result<()> {
-        let conn = self.conn()?;
-        conn.execute(
-            "UPDATE downloads SET bytes_done = ?2, updated_at = ?3 WHERE url = ?1",
-            params![url, bytes_done, now_iso8601()],
-        )
-        .map_err(|e| storage_error("cannot update download progress", &e))?;
-        Ok(())
-    }
-
     /// Move an entry into a new state.
     ///
     /// The bytes and the attempts are left alone.
@@ -260,17 +247,6 @@ impl DownloadRepo {
             bytes_done: None,
             attempts: None,
         }])
-    }
-
-    /// Increment the attempt counter of an entry.
-    pub fn increment_attempts(&self, url: &str) -> Result<()> {
-        let conn = self.conn()?;
-        conn.execute(
-            "UPDATE downloads SET attempts = attempts + 1, updated_at = ?2 WHERE url = ?1",
-            params![url, now_iso8601()],
-        )
-        .map_err(|e| storage_error("cannot update download attempts", &e))?;
-        Ok(())
     }
 
     /// Fetch a single entry.
@@ -379,21 +355,6 @@ mod tests {
         let read = repo.get("a.jar").unwrap().unwrap();
         assert_eq!(read.state, DownloadState::Queued);
         assert_eq!(read.sha1.as_deref(), Some("abc"));
-    }
-
-    #[test]
-    fn progress_and_state_transitions() {
-        let (_db, repo) = repo();
-        repo.enqueue(&entry("a.jar")).unwrap();
-        repo.update_progress("a.jar", 42).unwrap();
-        repo.increment_attempts("a.jar").unwrap();
-        repo.set_state("a.jar", DownloadState::Completed, None)
-            .unwrap();
-
-        let read = repo.get("a.jar").unwrap().unwrap();
-        assert_eq!(read.bytes_done, 42);
-        assert_eq!(read.attempts, 1);
-        assert_eq!(read.state, DownloadState::Completed);
     }
 
     #[test]

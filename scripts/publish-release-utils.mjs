@@ -2,9 +2,13 @@
 
 export function nextPatchVersion(version) {
   const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version);
-  if (!match) throw new Error(`Expected a release version in X.Y.Z form, got: ${version}`);
+  if (!match)
+    throw new Error(
+      `Expected a release version in X.Y.Z form, got: ${version}`,
+    );
   const patch = Number(match[3]);
-  if (!Number.isSafeInteger(patch + 1)) throw new Error(`Patch version is too large: ${version}`);
+  if (!Number.isSafeInteger(patch + 1))
+    throw new Error(`Patch version is too large: ${version}`);
   return `${match[1]}.${match[2]}.${patch + 1}`;
 }
 

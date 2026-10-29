@@ -241,7 +241,7 @@ mod tests {
     fn a_report_of_met_targets_is_a_success() {
         let mut report = Report::new();
         report.push(comparison(Metric::ClickToWindow, 800.0, 1000.0));
-        report.push(comparison(Metric::InGameFps, 120.0, 100.0));
+        report.push(comparison(Metric::InGameFps, 140.0, 100.0));
 
         assert!(report.is_success());
         assert_eq!(report.failures().len(), 0);

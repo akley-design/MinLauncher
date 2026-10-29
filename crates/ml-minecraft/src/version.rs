@@ -449,7 +449,8 @@ impl VersionJson {
         platform: Platform,
         version: Option<&str>,
     ) -> Vec<ResolvedLibrary> {
-        self.libraries
+        let mut libraries: Vec<ResolvedLibrary> = self
+            .libraries
             .iter()
             .filter_map(|library| {
                 let outcome =
@@ -461,7 +462,26 @@ impl VersionJson {
                     RuleOutcome::Disallowed | RuleOutcome::Unmatched => None,
                 }
             })
-            .collect()
+            .collect();
+
+        // Some documents of the old versions name the same library twice,
+        // sometimes once with natives and once without. Two identical
+        // entries would download the same jar twice, fight over its
+        // partial file, and violate the key of the library table. The
+        // entries are merged by their full coordinate; the natives of
+        // both survive.
+        let mut positions: BTreeMap<(String, String), usize> = BTreeMap::new();
+        let mut merged: Vec<ResolvedLibrary> = Vec::with_capacity(libraries.len());
+        for library in libraries.drain(..) {
+            let key = (library.name.clone(), library.coordinate.classifier.clone());
+            if let Some(&index) = positions.get(&key) {
+                merge_library(&mut merged[index], library);
+            } else {
+                positions.insert(key, merged.len());
+                merged.push(library);
+            }
+        }
+        merged
     }
 
     /// The Java runtime the version requires.
@@ -481,6 +501,11 @@ impl VersionJson {
     pub fn to_meta(&self, json_sha1: Option<String>) -> VersionMeta {
         let java = self.java_runtime();
         let asset_index = self.asset_index.as_ref();
+        // The id of the index is named by `assetIndex` of the modern
+        // documents and by `assets` of the old ones. The metadata stores
+        // the same id the launcher reads back with, so an old version
+        // keeps the name of the tree its game actually reads.
+        let asset_index_id = self.asset_index_id().map(str::to_owned);
 
         VersionMeta {
             id: self.id.clone(),
@@ -489,13 +514,29 @@ impl VersionJson {
             java_component: Some(java.component),
             java_major: Some(java.major_version),
             main_class: self.main_class.clone(),
-            asset_index_id: asset_index.map(|index| index.id.clone()),
+            asset_index_id,
             asset_index_sha1: asset_index.map(|index| index.sha1.clone()),
             asset_index_size: asset_index.map(|index| index.size),
             client_sha1: self.downloads.client.as_ref().map(|file| file.sha1.clone()),
             client_size: self.downloads.client.as_ref().map(|file| file.size),
             json_sha1,
         }
+    }
+}
+
+/// Add the parts of a duplicate library that the first entry lacks.
+fn merge_library(base: &mut ResolvedLibrary, other: ResolvedLibrary) {
+    if base.artifact.is_none() {
+        base.artifact = other.artifact;
+    }
+    for (classifier, download) in other.natives {
+        if !base.natives.iter().any(|(name, _)| name == &classifier) {
+            base.natives.push((classifier, download));
+        }
+    }
+    base.is_native |= other.is_native;
+    if base.rules_json.is_none() {
+        base.rules_json = other.rules_json;
     }
 }
 
@@ -865,5 +906,32 @@ mod tests {
             resolved[0].artifact_path().as_deref(),
             Some("net/minecraftforge/forge/1.20.1-47.4.20/forge-1.20.1-47.4.20.jar")
         );
+    }
+
+    #[test]
+    fn duplicate_library_entries_are_merged() {
+        let version = VersionJson::parse(
+            br#"{
+                "id": "1.12.2",
+                "type": "release",
+                "libraries": [
+                    {"name": "com.mojang:text2speech:1.10.3"},
+                    {"name": "com.mojang:text2speech:1.10.3",
+                     "downloads": {"classifiers": {
+                        "natives-windows": {
+                            "path": "com/mojang/text2speech/1.10.3/text2speech-1.10.3-natives-windows.jar",
+                            "sha1": "abc", "size": 1, "url": "https://example/text2speech.jar"
+                        }
+                     }}}
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let libraries = version.resolve_libraries(platform(), Some("1.12.2"));
+
+        assert_eq!(libraries.len(), 1, "the duplicate was not merged");
+        assert_eq!(libraries[0].natives.len(), 1);
+        assert!(libraries[0].native_jar(platform()).is_some());
     }
 }

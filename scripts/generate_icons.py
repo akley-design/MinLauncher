@@ -2,7 +2,7 @@
 """Generate the MinLauncher application icons.
 
 The icon is resized from ``crates/ml-desktop/icons/icon-source.png``
-(the neon emerald cube with the letter M), so rerunning this script
+(the block-built M mark), so rerunning this script
 reproduces every derived file.
 
 Usage:

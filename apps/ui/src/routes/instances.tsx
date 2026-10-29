@@ -8,16 +8,19 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { scenePosters } from "@minlauncher/visuals";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../components/Button";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import {
   createInstance,
+  createModloaderInstance,
   importForgeInstance,
   installPerformanceMods,
   installVersion,
   listInstances,
+  listModloaderVersions,
   listVersions,
   removeInstance,
   toCommandError,
@@ -29,6 +32,9 @@ export function InstancesRoute() {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [versionId, setVersionId] = useState("");
+  const [modloaderName, setModloaderName] = useState("");
+  const [modloader, setModloader] = useState<"forge" | "fabric">("fabric");
+  const [modloaderGameVersion, setModloaderGameVersion] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
   const removalDialog = useRef<HTMLDialogElement>(null);
 
@@ -42,11 +48,31 @@ export function InstancesRoute() {
     queryFn: listVersions,
   });
 
+  const modloaderCatalog = useQuery({
+    queryKey: queryKeys.modloaders(),
+    queryFn: listModloaderVersions,
+    staleTime: 6 * 60 * 60 * 1000,
+  });
+
   const create = useMutation({
     mutationFn: () => createInstance(name.trim(), versionId),
     onSuccess: () => {
       setName("");
       void queryClient.invalidateQueries({ queryKey: queryKeys.instances() });
+    },
+  });
+
+  const createModded = useMutation({
+    mutationFn: () =>
+      createModloaderInstance({
+        name: modloaderName.trim(),
+        minecraft_version: selectedModloaderVersion,
+        loader: modloader,
+      }),
+    onSuccess: () => {
+      setModloaderName("");
+      void queryClient.invalidateQueries({ queryKey: queryKeys.instances() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.versions() });
     },
   });
 
@@ -71,6 +97,17 @@ export function InstancesRoute() {
   const installFpsBundle = useMutation({ mutationFn: installPerformanceMods });
 
   const installed = (versions.data?.versions ?? []).filter((version) => version.installed);
+  const availableModloaderVersions = (modloaderCatalog.data?.versions ?? []).filter((entry) =>
+    modloader === "forge" ? entry.forge_version !== null : entry.fabric_loader !== null,
+  );
+  const selectedModloaderVersion = availableModloaderVersions.some(
+    (entry) => entry.minecraft_version === modloaderGameVersion,
+  )
+    ? modloaderGameVersion
+    : (availableModloaderVersions[0]?.minecraft_version ?? "");
+  const selectedModloader = availableModloaderVersions.find(
+    (entry) => entry.minecraft_version === selectedModloaderVersion,
+  );
   const removing = instances.data?.instances.find((instance) => instance.id === removingId);
 
   useEffect(() => {
@@ -164,6 +201,99 @@ export function InstancesRoute() {
           ) : null}
         </section>
 
+        <section className="card">
+          <div className="card__title">Установить Forge или Fabric</div>
+          <p className="instances-tools__description">
+            Выбери стабильный релиз Minecraft. Лаунчер установит только этот профиль и создаст для
+            него отдельную папку.
+          </p>
+          <form
+            className="form-row"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (modloaderName.trim() && selectedModloaderVersion) createModded.mutate();
+            }}
+          >
+            <div className="field" style={{ flex: 1 }}>
+              <label className="field__label" htmlFor="modloader-instance-name">
+                Название инстанса
+              </label>
+              <input
+                id="modloader-instance-name"
+                className="input"
+                autoComplete="off"
+                placeholder="Например, Fabric с модами"
+                value={modloaderName}
+                onChange={(event) => setModloaderName(event.target.value)}
+              />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label className="field__label" htmlFor="modloader-kind">
+                Загрузчик
+              </label>
+              <select
+                id="modloader-kind"
+                className="input"
+                value={modloader}
+                onChange={(event) => {
+                  setModloader(event.target.value as "forge" | "fabric");
+                  setModloaderGameVersion("");
+                }}
+              >
+                <option value="fabric">Fabric</option>
+                <option value="forge">Forge</option>
+              </select>
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label className="field__label" htmlFor="modloader-game-version">
+                Minecraft
+              </label>
+              <select
+                id="modloader-game-version"
+                className="input"
+                value={selectedModloaderVersion}
+                onChange={(event) => setModloaderGameVersion(event.target.value)}
+                disabled={modloaderCatalog.isPending || availableModloaderVersions.length === 0}
+              >
+                {availableModloaderVersions.map((entry) => (
+                  <option key={entry.minecraft_version} value={entry.minecraft_version}>
+                    {entry.minecraft_version}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button
+              type="submit"
+              variant="primary"
+              busy={createModded.isPending}
+              disabled={
+                !modloaderName.trim() || !selectedModloaderVersion || modloaderCatalog.isPending
+              }
+            >
+              {createModded.isPending ? "Установка…" : "Установить"}
+            </Button>
+          </form>
+          <p className="field__hint" style={{ marginTop: "var(--space-3)" }}>
+            {modloaderCatalog.isPending
+              ? "Проверяем доступные версии…"
+              : selectedModloader
+                ? modloader === "fabric"
+                  ? `Fabric Loader ${selectedModloader.fabric_loader} · Fabric API ${selectedModloader.fabric_api_version}`
+                  : `Forge ${selectedModloader.forge_version}`
+                : "Для этого загрузчика нет совместимых стабильных релизов."}
+          </p>
+          {modloaderCatalog.isError ? (
+            <p role="alert" aria-live="polite" className="field__error">
+              Не удалось загрузить каталог версий: {toCommandError(modloaderCatalog.error).message}
+            </p>
+          ) : null}
+          {createModded.isError ? (
+            <p role="alert" aria-live="polite" className="field__error">
+              {toCommandError(createModded.error).message}
+            </p>
+          ) : null}
+        </section>
+
         <section className="card instances-tools__import">
           <div className="card__title">Перенести Forge 1.20.1</div>
           <p className="instances-tools__description">
@@ -196,49 +326,50 @@ export function InstancesRoute() {
           description="Создайте инстанс, чтобы у каждой версии была своя папка."
         />
       ) : (
-        <div className="card table-panel">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Название</th>
-                <th>Версия</th>
-                <th>Папка</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {instances.data.instances.map((instance) => (
-                <tr key={instance.id}>
-                  <td>{instance.name}</td>
-                  <td className="mono">{instance.version_id}</td>
-                  <td className="mono selectable">{instance.game_dir}</td>
-                  <td>
-                    <div className="table__actions">
-                      {instance.version_id.startsWith("1.20.1-forge-") ? (
-                        <Button
-                          variant="ghost"
-                          busy={
-                            installFpsBundle.isPending && installFpsBundle.variables === instance.id
-                          }
-                          onClick={() => installFpsBundle.mutate(instance.id)}
-                          title="Установить Embeddium и совместимые клиентские оптимизации в копию"
-                        >
-                          FPS‑моды
-                        </Button>
-                      ) : null}
-                      <Button
-                        variant="danger"
-                        onClick={() => setRemovingId(instance.id)}
-                        title="Убрать из лаунчера, папка останется"
-                      >
-                        Убрать
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="instance-grid">
+          {instances.data.instances.map((instance, index) => (
+            <article className="instance-card" key={instance.id}>
+              <div
+                className={`instance-card__art instance-card__art--${index % 3}`}
+                aria-hidden="true"
+              >
+                <img
+                  src={[scenePosters.island, scenePosters.cave, scenePosters.portal][index % 3]}
+                  alt=""
+                />
+                <small>{instance.version_id.includes("forge") ? "FORGE" : "MINECRAFT"}</small>
+              </div>
+              <div className="instance-card__body">
+                <span className="badge">{instance.version_id}</span>
+                <h2>{instance.name}</h2>
+                <p className="instance-card__path selectable" title={instance.game_dir}>
+                  {instance.game_dir}
+                </p>
+                <div className="instance-card__actions">
+                  {instance.version_id.startsWith("1.20.1-forge-") ? (
+                    <Button
+                      busy={
+                        installFpsBundle.isPending && installFpsBundle.variables === instance.id
+                      }
+                      onClick={() => installFpsBundle.mutate(instance.id)}
+                      title="Установить Embeddium и совместимые клиентские оптимизации в копию"
+                    >
+                      FPS‑моды
+                    </Button>
+                  ) : (
+                    <span className="field__hint">Отдельная папка игры</span>
+                  )}
+                  <Button
+                    variant="ghost"
+                    onClick={() => setRemovingId(instance.id)}
+                    title="Убрать из лаунчера, папка останется"
+                  >
+                    Убрать
+                  </Button>
+                </div>
+              </div>
+            </article>
+          ))}
         </div>
       )}
 

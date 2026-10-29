@@ -25,9 +25,7 @@ impl AccountRepo {
     }
 
     fn conn(&self) -> Result<PooledConnection> {
-        self.pool
-            .get()
-            .map_err(|e| Error::Storage(format!("cannot acquire connection: {e}")))
+        crate::db::connection(&self.pool)
     }
 
     /// Insert or update an account.
@@ -54,6 +52,30 @@ impl AccountRepo {
             ],
         )
         .map_err(|e| storage_error("cannot upsert account", &e))?;
+        Ok(())
+    }
+
+    /// Atomically persist an offline account and its granted nickname claim.
+    pub fn upsert_reserved_offline(&self, account: &Account) -> Result<()> {
+        let mut conn = self.conn()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| storage_error("cannot start transaction", &e))?;
+        tx.execute(
+            "INSERT INTO accounts (id, uuid, username, kind, uuid_prefix, selected, created_at, last_used)
+             VALUES (?1, ?2, ?3, 'offline', ?4, ?5, ?6, NULL)
+             ON CONFLICT(id) DO UPDATE SET uuid = excluded.uuid, username = excluded.username,
+               kind = excluded.kind, uuid_prefix = excluded.uuid_prefix, last_used = excluded.last_used",
+            params![account.id, account.uuid, account.username, account.uuid_prefix, i64::from(account.selected),
+                if account.created_at.is_empty() { now_iso8601() } else { account.created_at.clone() }],
+        ).map_err(|e| storage_error("cannot upsert reserved account", &e))?;
+        tx.execute(
+            "INSERT INTO nickname_claims (account_id, nickname, status, updated_at) VALUES (?1, ?2, 'reserved', ?3)
+             ON CONFLICT(account_id) DO UPDATE SET nickname = excluded.nickname, status = 'reserved', updated_at = excluded.updated_at",
+            params![account.id, account.username, now_iso8601()],
+        ).map_err(|e| storage_error("cannot save reserved nickname", &e))?;
+        tx.commit()
+            .map_err(|e| storage_error("cannot commit reserved account", &e))?;
         Ok(())
     }
 
@@ -126,17 +148,6 @@ impl AccountRepo {
         Ok(())
     }
 
-    /// Record that an account was just used.
-    pub fn touch_last_used(&self, id: &str) -> Result<()> {
-        let conn = self.conn()?;
-        conn.execute(
-            "UPDATE accounts SET last_used = ?2 WHERE id = ?1",
-            params![id, now_iso8601()],
-        )
-        .map_err(|e| storage_error("cannot update last used", &e))?;
-        Ok(())
-    }
-
     /// Delete an account.
     pub fn delete(&self, id: &str) -> Result<bool> {
         let conn = self.conn()?;
@@ -159,6 +170,7 @@ fn kind_to_db(kind: AccountType) -> &'static str {
         AccountType::Microsoft => "microsoft",
         AccountType::Mojang => "mojang",
         AccountType::Offline => "offline",
+        AccountType::MinLauncher => "minlauncher",
         AccountType::ThirdParty => "third_party",
     }
 }
@@ -168,6 +180,7 @@ fn kind_from_db(raw: &str) -> AccountType {
         "microsoft" => AccountType::Microsoft,
         "mojang" => AccountType::Mojang,
         "third_party" => AccountType::ThirdParty,
+        "minlauncher" => AccountType::MinLauncher,
         // "offline" and anything the launcher does not know.
         _ => AccountType::Offline,
     }

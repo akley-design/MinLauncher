@@ -10,12 +10,14 @@
  */
 
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Suspense, type ReactNode, useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-import iconUrl from "../assets/icon.png";
+import { BrandMark } from "@minlauncher/visuals";
+import { MinLauncherAccount } from "./MinLauncherAccount";
 import { LauncherUpdateNotice } from "./LauncherUpdateNotice";
+import { LoadingState } from "./States";
 import { watchGame } from "../stores/game";
 import { useGameStore } from "../stores/game";
 import { useInstallStore } from "../stores/install";
@@ -108,85 +110,77 @@ export function AppShell() {
 
   useEffect(() => {
     if (!isTauri()) return;
-    const window = getCurrentWindow();
-    let unlisten: (() => void) | undefined;
-    void window
+    const currentWindow = getCurrentWindow();
+    let unlistenResize: (() => void) | undefined;
+    let unlistenFocus: (() => void) | undefined;
+    let checkingFocus = false;
+    const syncWindowFocus = async () => {
+      if (checkingFocus) return;
+      checkingFocus = true;
+      try {
+        const [focused, minimized] = await Promise.all([
+          currentWindow.isFocused(),
+          currentWindow.isMinimized(),
+        ]);
+        globalThis.dispatchEvent(
+          new CustomEvent("minlauncher:window-focus", {
+            detail: focused && !minimized,
+          }),
+        );
+      } catch {
+        // The window can disappear while the native query is in flight.
+      } finally {
+        checkingFocus = false;
+      }
+    };
+    const syncTimer = window.setInterval(() => void syncWindowFocus(), 250);
+    void currentWindow
       .isMaximized()
       .then(setMaximized)
       .catch(() => undefined);
-    void window
+    void syncWindowFocus();
+    void currentWindow
       .onResized(() => {
-        void window
+        void currentWindow
           .isMaximized()
           .then(setMaximized)
           .catch(() => undefined);
       })
       .then((stop) => {
-        unlisten = stop;
+        unlistenResize = stop;
       })
       .catch(() => undefined);
-    return () => unlisten?.();
-  }, []);
-
-  // The events of the game are listened to once, for the whole life of
-  // the window. The listener is removed when the shell is unmounted.
-  useEffect(() => {
-    if (!isTauri()) return;
-    let unlisten: (() => void) | undefined;
-    let cancelled = false;
-
-    void watchGame().then((stop) => {
-      if (cancelled) {
-        stop();
-        return;
-      }
-      unlisten = stop;
-    });
-
+    void currentWindow
+      .onFocusChanged(({ payload }) => {
+        globalThis.dispatchEvent(new CustomEvent("minlauncher:window-focus", { detail: payload }));
+      })
+      .then((stop) => {
+        unlistenFocus = stop;
+      })
+      .catch(() => undefined);
     return () => {
-      cancelled = true;
-      unlisten?.();
+      unlistenResize?.();
+      unlistenFocus?.();
+      window.clearInterval(syncTimer);
     };
   }, []);
 
-  // The events of an installation are listened to in the same way.
+  // Three channels, one lifetime: the window.
   useEffect(() => {
     if (!isTauri()) return;
-    let unlisten: (() => void) | undefined;
     let cancelled = false;
+    const stops: Array<() => void> = [];
 
-    void watchInstall().then((stop) => {
-      if (cancelled) {
-        stop();
-        return;
-      }
-      unlisten = stop;
-    });
+    for (const watch of [watchGame, watchInstall, watchRuntime]) {
+      void watch().then((stop) => {
+        if (cancelled) stop();
+        else stops.push(stop);
+      });
+    }
 
     return () => {
       cancelled = true;
-      unlisten?.();
-    };
-  }, []);
-
-  // The events of a download of a Java runtime are listened to in the
-  // same way.
-  useEffect(() => {
-    if (!isTauri()) return;
-    let unlisten: (() => void) | undefined;
-    let cancelled = false;
-
-    void watchRuntime().then((stop) => {
-      if (cancelled) {
-        stop();
-        return;
-      }
-      unlisten = stop;
-    });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
+      stops.forEach((stop) => stop());
     };
   }, []);
 
@@ -206,7 +200,7 @@ export function AppShell() {
       </a>
       <header className="shell__windowbar">
         <div className="shell__windowbar-drag" data-tauri-drag-region>
-          <img className="shell__window-logo" src={iconUrl} alt="" />
+          <BrandMark className="shell__window-logo" />
           <span className="shell__window-name">MINLAUNCHER</span>
           <span className="shell__window-divider" />
           <span className="shell__window-route">{PAGE_TITLES[pathname] ?? "ИГРОВАЯ СРЕДА"}</span>
@@ -216,7 +210,7 @@ export function AppShell() {
             <span className="shell__live-dot" aria-hidden="true" />
             {running ? "Игра запущена" : "Готов к работе"}
           </span>
-          <span className="shell__topbar-version">V 0.1.0</span>
+          <span className="shell__topbar-version">V 0.1.1-beta</span>
           <div className="window-controls">
             <button
               className="window-controls__button"
@@ -256,7 +250,13 @@ export function AppShell() {
         </div>
       </header>
       <aside className="shell__sidebar">
-        <div className="shell__nav-label">Игра</div>
+        <div className="shell__brand">
+          <BrandMark />
+          <div>
+            MinLauncher<span>Minecraft Java</span>
+          </div>
+        </div>
+        <div className="shell__nav-label">Твоя библиотека</div>
         <nav className="shell__nav" aria-label="Основная навигация">
           {NAV_ITEMS.slice(0, 1).map((item) => (
             <Link
@@ -296,6 +296,16 @@ export function AppShell() {
         </nav>
 
         <div className="shell__footer">
+          <details className="shell__identity">
+            <summary>
+              <span className="shell__identity-avatar">M</span>
+              <span>
+                Твой MinLauncher<small>Аккаунт и вход</small>
+              </span>
+              <span aria-hidden="true">⌃</span>
+            </summary>
+            <MinLauncherAccount />
+          </details>
           {installing ? (
             <div className="shell__status shell__status--running" role="status" aria-live="polite">
               <span className="shell__dot" aria-hidden="true" />
@@ -333,8 +343,10 @@ export function AppShell() {
 
       <main id="main-content" className="shell__main" data-path={pathname} tabIndex={-1}>
         <div ref={viewportRef} className="shell__viewport">
-          {pathname === "/settings" ? null : <LauncherUpdateNotice />}
-          <Outlet />
+          {import.meta.env.VITE_STORE_BUILD !== "true" && <LauncherUpdateNotice />}
+          <Suspense fallback={<LoadingState label="Загружаем экран…" />}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
     </div>

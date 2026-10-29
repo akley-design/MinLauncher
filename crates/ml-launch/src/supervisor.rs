@@ -12,7 +12,6 @@
 
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::Arc;
 use std::time::Duration;
 
 use ml_core::{Error, Result};
@@ -169,6 +168,12 @@ impl Supervisor {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
+        // The environment is cleared so that the launcher's variables do
+        // not leak into the game. A completely empty environment is not
+        // a good one either: the JVM and Windows need the locations of
+        // the system and of the user's temporary files.
+        preserve_environment(&mut command);
+
         for (key, value) in &self.command.environment {
             command.env(key, value);
         }
@@ -290,6 +295,42 @@ impl Supervisor {
     }
 }
 
+/// Restore the variables the operating system and the JVM need.
+///
+/// The environment of the game is cleared first so that nothing of the
+/// launcher leaks into it, but a child with no `SystemRoot`, `TEMP` or
+/// `HOME` is a child that can fail in ways that look like a broken game.
+fn preserve_environment(command: &mut Command) {
+    #[cfg(windows)]
+    const ESSENTIAL: &[&str] = &[
+        "SYSTEMROOT",
+        "WINDIR",
+        "SYSTEMDRIVE",
+        "PATH",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "PUBLIC",
+        "PROGRAMDATA",
+        "COMSPEC",
+        "PATHEXT",
+        "NUMBER_OF_PROCESSORS",
+        "PROCESSOR_ARCHITECTURE",
+    ];
+    #[cfg(not(windows))]
+    const ESSENTIAL: &[&str] = &["HOME", "PATH", "TMPDIR", "LANG", "LC_ALL"];
+
+    for key in ESSENTIAL {
+        if let Some(value) = std::env::var_os(key) {
+            command.env(key, value);
+        }
+    }
+}
+
 /// Read a stream to the end and write it to the log.
 fn spawn_drain<R>(reader: R, log_path: Option<PathBuf>, is_error: bool)
 where
@@ -323,9 +364,6 @@ where
         }
     });
 }
-
-/// A shared handle to the supervisor, for the state of the desktop shell.
-pub type SharedSupervisor = Arc<Supervisor>;
 
 /// The signal that killed a process, on POSIX systems.
 ///
@@ -362,6 +400,26 @@ mod tests {
                 directories: BTreeMap::new(),
             },
         }
+    }
+
+    #[test]
+    fn the_environment_keeps_what_the_system_needs() {
+        let mut command = Command::new("java");
+        command.env_clear();
+        preserve_environment(&mut command);
+
+        let keys: Vec<String> = command
+            .as_std()
+            .get_envs()
+            .map(|(key, _)| key.to_string_lossy().to_lowercase())
+            .collect();
+
+        #[cfg(windows)]
+        assert!(keys.contains(&"systemroot".to_string()), "{keys:?}");
+        #[cfg(windows)]
+        assert!(keys.contains(&"temp".to_string()), "{keys:?}");
+        #[cfg(not(windows))]
+        assert!(keys.contains(&"home".to_string()), "{keys:?}");
     }
 
     #[test]

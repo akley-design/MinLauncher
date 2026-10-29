@@ -1,2 +1,20 @@
 [functions.redeem-handoff]
 verify_jwt = false
+
+[functions.launcher-nickname]
+verify_jwt = false
+
+[functions.minecraft-oauth-start]
+verify_jwt = false
+
+[functions.minecraft-oauth-complete]
+verify_jwt = false
+
+[functions.minecraft-account-status]
+verify_jwt = false
+
+[functions.minecraft-account-unlink]
+verify_jwt = false
+
+[functions.redeem-minecraft-handoff]
+verify_jwt = false

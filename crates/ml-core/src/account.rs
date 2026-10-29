@@ -12,6 +12,8 @@ pub enum AccountType {
     Mojang,
     /// An offline ("cracked") account with no authentication.
     Offline,
+    /// A `MinLauncher` web profile, launched as an offline game identity.
+    MinLauncher,
     /// A third-party Yggdrasil server, reached through authlib-injector.
     ThirdParty,
 }
@@ -21,7 +23,7 @@ impl AccountType {
     /// trip to Mojang.
     #[must_use]
     pub fn is_offline_capable(self) -> bool {
-        matches!(self, Self::Offline)
+        matches!(self, Self::Offline | Self::MinLauncher)
     }
 
     /// The value the game expects in `--userType`.
@@ -39,7 +41,7 @@ impl AccountType {
     pub fn user_type(self) -> &'static str {
         match self {
             Self::Mojang => "legacy",
-            Self::Microsoft | Self::Offline | Self::ThirdParty => "msa",
+            Self::Microsoft | Self::Offline | Self::MinLauncher | Self::ThirdParty => "msa",
         }
     }
 }
@@ -148,6 +150,15 @@ pub struct AccountSecrets {
     /// Yggdrasil session server, for third-party accounts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_server: Option<String>,
+    /// Xbox user identifier used by modern Minecraft clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xuid: Option<String>,
+    /// Microsoft application identifier used for Minecraft authentication.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// Unix time after which the player must sign in to Microsoft again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
 }
 
 #[cfg(test)]

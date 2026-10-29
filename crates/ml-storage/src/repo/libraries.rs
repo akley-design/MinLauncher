@@ -6,7 +6,7 @@
 use rusqlite::{Row, params};
 use serde::{Deserialize, Serialize};
 
-use ml_core::{Error, Result};
+use ml_core::Result;
 
 use crate::db::{PooledConnection, SqlitePool};
 use crate::repo::{storage_error, to_bool};
@@ -48,9 +48,7 @@ impl LibraryRepo {
     }
 
     fn conn(&self) -> Result<PooledConnection> {
-        self.pool
-            .get()
-            .map_err(|e| Error::Storage(format!("cannot acquire connection: {e}")))
+        crate::db::connection(&self.pool)
     }
 
     /// Replace the library set of a version with the given entries.

@@ -3,7 +3,7 @@
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
-use ml_core::{Error, Result};
+use ml_core::Result;
 
 use crate::db::{PooledConnection, SqlitePool, now_iso8601};
 use crate::repo::{storage_error, to_bool};
@@ -56,9 +56,7 @@ impl InstanceRepo {
     }
 
     fn conn(&self) -> Result<PooledConnection> {
-        self.pool
-            .get()
-            .map_err(|e| Error::Storage(format!("cannot acquire connection: {e}")))
+        crate::db::connection(&self.pool)
     }
 
     /// Insert or update an instance.

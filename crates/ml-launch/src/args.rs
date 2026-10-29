@@ -248,14 +248,6 @@ pub fn split_classpath(classpath: &str) -> Vec<&str> {
         .collect()
 }
 
-/// The `-D` argument that points a system property at a directory.
-///
-/// The launcher uses it to describe the native layout to the game.
-#[must_use]
-pub fn system_property(name: &str, value: &Path) -> String {
-    format!("-D{name}={}", path_to_string(value))
-}
-
 /// Extract the value of a `-D` system property from a list of arguments.
 ///
 /// Returns `None` when the property is not present.
@@ -323,19 +315,6 @@ pub const AGENT_OUTPUT_PROPERTY: &str = "minlaucher.agent.output";
 #[must_use]
 pub fn agent_output_property(report: &Path) -> String {
     format!("-D{AGENT_OUTPUT_PROPERTY}={}", path_to_string(report))
-}
-
-/// The classpath entry of a jar, as the JVM expects it.
-#[must_use]
-pub fn classpath_entry(jar: &Path) -> String {
-    path_to_string(jar)
-}
-
-/// Whether a path looks like a Java archive.
-#[must_use]
-pub fn is_jar(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("jar"))
 }
 
 /// Build the environment of a launch session.

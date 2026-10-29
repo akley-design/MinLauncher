@@ -10,7 +10,7 @@ const MAX_VALUE_BYTES: usize = 64_000;
 
 fn valid_storage_key(key: &str) -> bool {
     key.len() <= 80
-        && key.starts_with("sb-")
+        && (key.starts_with("sb-") || key.starts_with("ml-nickname-"))
         && key
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
@@ -18,7 +18,7 @@ fn valid_storage_key(key: &str) -> bool {
 
 fn entry(key: &str) -> Result<Entry, String> {
     if key.len() > 120
-        || !key.starts_with("sb-")
+        || !(key.starts_with("sb-") || key.starts_with("ml-nickname-"))
         || !key
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
@@ -164,9 +164,13 @@ mod tests {
     fn storage_keys_are_limited_to_supabase_auth_names() {
         assert!(valid_storage_key("sb-project-auth-token"));
         assert!(valid_storage_key("sb-project-auth-token-code-verifier"));
+        assert!(valid_storage_key(
+            "ml-nickname-offline-b50ad385-829d-3141-a216-7e7d7539ba7f"
+        ));
         assert!(!valid_storage_key("other-project-auth-token"));
         assert!(!valid_storage_key("sb-project-auth-token/../other"));
+        assert!(!valid_storage_key("ml-nickname-../../other"));
         assert!(!valid_storage_key(&format!("sb-{}", "x".repeat(80))));
-        assert!(CHUNK_BYTES < 2560);
+        const { assert!(CHUNK_BYTES < 2560) };
     }
 }

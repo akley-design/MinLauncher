@@ -220,14 +220,6 @@ impl AssetStore {
         self.object_path(hash).is_file()
     }
 
-    /// The number of bytes the object occupies, if it exists.
-    #[must_use]
-    pub fn size_on_disk(&self, hash: &str) -> Option<u64> {
-        std::fs::metadata(self.object_path(hash))
-            .ok()
-            .map(|metadata| metadata.len())
-    }
-
     /// Materialise the plain tree of a version.
     ///
     /// The store is content-addressed and the games before 1.7 read an

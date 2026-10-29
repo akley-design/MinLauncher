@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::assets::{ASSET_HOST, AssetIndex, asset_url};
 use crate::download::{DownloadTask, hash_file, matches_hash};
-use crate::library::{ResolvedLibrary, natives_directory_name};
+use crate::library::ResolvedLibrary;
 use crate::version::VersionJson;
 
 /// A file that has to be present for a version to start.
@@ -131,14 +131,6 @@ impl InstallLayout {
         self.paths.libraries_dir.join(relative)
     }
 
-    /// The directory the natives of a version are extracted into.
-    #[must_use]
-    pub fn natives_dir(&self, version_id: &str) -> PathBuf {
-        self.version_dir(version_id)
-            .join("natives")
-            .join(natives_directory_name(self.platform))
-    }
-
     /// The path of an asset object.
     #[must_use]
     pub fn asset_path(&self, hash: &str) -> PathBuf {
@@ -162,7 +154,6 @@ pub fn plan_install(
     let mut files = Vec::new();
     let mut libraries = version.resolve_libraries(layout.platform, Some(&version.id));
 
-    // The client jar.
     if let Some(client) = &version.downloads.client {
         let target = layout.client_jar(&version.id);
         push_if_missing(
@@ -247,6 +238,10 @@ fn push_if_missing(files: &mut Vec<PlannedFile>, file: PlannedFile) {
     if let Ok(metadata) = std::fs::metadata(&file.target)
         && let Some(size) = file.size
         && metadata.len() == size.cast_unsigned()
+        && file
+            .sha1
+            .as_deref()
+            .is_none_or(|expected| matches_hash(&file.target, expected))
     {
         return;
     }
@@ -433,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn existing_files_are_left_out_of_the_plan() {
+    fn same_size_files_with_a_bad_hash_are_kept_in_the_plan() {
         let dir = tempfile::tempdir().unwrap();
         let layout = layout(&dir);
         let version = VersionJson::parse(VERSION.as_bytes()).unwrap();
@@ -453,8 +448,46 @@ mod tests {
         std::fs::write(&client, vec![0u8; 41_483_720]).unwrap();
 
         let plan = plan_install(&version, &layout, &index).unwrap();
-        assert_eq!(plan.len(), 3);
-        assert!(!plan.files.iter().any(|file| file.kind == FileKind::Client));
+        assert_eq!(plan.len(), 4);
+        assert!(plan.files.iter().any(|file| file.kind == FileKind::Client));
+    }
+
+    #[test]
+    fn same_size_files_with_the_expected_hash_are_left_out_of_the_plan() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("client.jar");
+        std::fs::write(&target, b"hello").unwrap();
+        let file = PlannedFile {
+            url: String::new(),
+            target,
+            sha1: Some("aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d".into()),
+            size: Some(5),
+            kind: FileKind::Client,
+        };
+        let mut plan = Vec::new();
+
+        push_if_missing(&mut plan, file);
+
+        assert_eq!(plan, []);
+    }
+
+    #[test]
+    fn a_same_size_file_with_a_wrong_hash_is_queued_for_repair() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("client.jar");
+        std::fs::write(&target, b"jello").unwrap();
+        let file = PlannedFile {
+            url: String::new(),
+            target,
+            sha1: Some("aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d".into()),
+            size: Some(5),
+            kind: FileKind::Client,
+        };
+        let mut plan = Vec::new();
+
+        push_if_missing(&mut plan, file);
+
+        assert_eq!(plan.len(), 1);
     }
 
     #[test]

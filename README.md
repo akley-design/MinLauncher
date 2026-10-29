@@ -33,7 +33,7 @@ apps/
 
 The public website lives in `apps/site`; the Tauri launcher UI remains in
 `apps/ui`. The site has responsive pages and editorial posts. Supabase handles
-Google and Discord sign-in, and the download button uses the signed Windows
+email and nickname sign-in, and the download button uses the signed Windows
 installer URL from the latest release manifest.
 
 ```bash
@@ -43,19 +43,18 @@ npm run site:test
 npm run site:start
 ```
 
-For local OAuth, create `apps/site/.env.local` from
-`apps/site/.env.example` and set `VITE_SUPABASE_URL` and
-`VITE_SUPABASE_ANON_KEY`. In Supabase, allow new user signups, enable Google
-and Discord providers, and set the site's public URL. Add
-`<site-origin>/auth/callback` to the allowed redirect URLs. In Google and
-Discord, set `https://<project-ref>.supabase.co/auth/v1/callback` as the
-callback URL. The publishable/anon key is intended for browser use. Keep
-provider secrets in Supabase's dashboard.
+For local auth, create `apps/site/.env.local` from `apps/site/.env.example`
+and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. In Supabase, allow
+new user signups and set the site's public URL. Add
+`<site-origin>/auth/callback` to the allowed redirect URLs. The publishable
+anon key is intended for browser use; keep service keys in the dashboard.
+See [`docs/account-auth.md`](docs/account-auth.md) for the nickname and
+password rules.
 
 To deploy on Wispbyte, build with `npm run site:build` and set
 `npm run site:start` as the startup command. Set the Supabase variables at
 build time and expose the configured `PORT`. Add the public HTTPS origin to
-Supabase before enabling OAuth.
+Supabase before enabling sign-in.
 
 The launcher is written in Rust, the interface in TypeScript, and the part
 that touches the game is Java: one piece is a Java agent that measures, the
@@ -257,12 +256,13 @@ path both lines can go away.
 
 | Part | Tests |
 |------|-------|
-| Rust | 561 |
+| Rust | 610 |
 | Java agent | 24 |
 | Java mod | 18 |
-| Interface | 87 |
-| Release scripts | 2 |
-| **Total** | **692** |
+| Interface | 136 |
+| Supabase functions | 16 |
+| Release scripts | 5 |
+| **Total** | **809** |
 
 The Rust number is what `cargo test --workspace --all-targets` runs — the
 same command the CI runs. The others are the reports of the test runners

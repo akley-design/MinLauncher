@@ -10,7 +10,7 @@
 //!   the target it has to reach;
 //! * [`stats`] turns a series of measurements into the summary that gets
 //!   compared and stored;
-//! * [`scenario`] runs a measurement the same way N times;
+//! * [`scenario`] fixes how many samples a series needs;
 //! * [`compare`] decides whether the target was reached;
 //! * [`record`] stores the result next to the metadata that makes it
 //!   reproducible;
@@ -61,5 +61,5 @@ pub use metric::{Direction, Metric, Verdict};
 pub use record::{Meta, load, load_meta, store, to_record};
 pub use report::Report;
 pub use samples::{DEFAULT_SCENARIO, SampleFile, Side, side_of_storage};
-pub use scenario::{DEFAULT_SAMPLES, DEFAULT_WARMUP, Run, Scenario, measure, measure_ms};
+pub use scenario::DEFAULT_SAMPLES;
 pub use stats::{Series, Summary, is_stable, spread, variation};

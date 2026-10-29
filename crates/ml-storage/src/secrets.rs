@@ -12,11 +12,21 @@
 
 use std::collections::HashMap;
 
+use aes_gcm::{
+    Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
+};
 use serde::{Deserialize, Serialize};
 
 use ml_core::{AccountSecrets, Error, Result};
 
 use crate::json_store::JsonStore;
+
+const ENVELOPE_VERSION: u8 = 1;
+const SALT_LEN: usize = 16;
+const NONCE_LEN: usize = 12;
+const TAG_LEN: usize = 16;
+const PBKDF2_ITERATIONS: u32 = 600_000;
 
 /// On-disk container for every account's secrets.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,10 +115,11 @@ impl SecretsStore {
 
 /// Encrypt a plaintext payload with a key.
 ///
-/// The launcher uses this to protect `secrets.json` at rest. The scheme is
-/// deliberately simple and swappable: the key is derived from a passphrase
-/// with a salted, iterated hash, and the payload is encrypted with a
-/// standard AEAD.
+/// Encrypt a payload using a passphrase-derived AES-256-GCM key.
+///
+/// The returned envelope is versioned and contains a random salt and nonce.
+/// PBKDF2-HMAC-SHA256 is used to derive the key so the passphrase never needs
+/// to leave this process.
 ///
 /// # Errors
 /// Fails if the key is empty or the payload cannot be encrypted.
@@ -118,10 +129,26 @@ pub fn encrypt(plaintext: &[u8], key: &[u8]) -> Result<Vec<u8>> {
             "encryption key must not be empty".into(),
         ));
     }
-    if plaintext.is_empty() {
-        return Ok(Vec::new());
-    }
-    Ok(plaintext.to_vec())
+    let mut salt = [0u8; SALT_LEN];
+    let mut nonce_bytes = [0u8; NONCE_LEN];
+    getrandom::fill(&mut salt)
+        .map_err(|error| Error::Storage(format!("could not generate encryption salt: {error}")))?;
+    getrandom::fill(&mut nonce_bytes)
+        .map_err(|error| Error::Storage(format!("could not generate encryption nonce: {error}")))?;
+    let mut derived = [0u8; 32];
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(key, &salt, PBKDF2_ITERATIONS, &mut derived);
+    let cipher = Aes256Gcm::new_from_slice(&derived)
+        .map_err(|_| Error::Storage("could not initialize encryption".into()))?;
+    derived.fill(0);
+    let ciphertext = cipher
+        .encrypt(Nonce::from_slice(&nonce_bytes), plaintext)
+        .map_err(|_| Error::Storage("could not encrypt payload".into()))?;
+    let mut envelope = Vec::with_capacity(1 + SALT_LEN + NONCE_LEN + ciphertext.len());
+    envelope.push(ENVELOPE_VERSION);
+    envelope.extend_from_slice(&salt);
+    envelope.extend_from_slice(&nonce_bytes);
+    envelope.extend_from_slice(&ciphertext);
+    Ok(envelope)
 }
 
 /// Decrypt a payload produced by [`encrypt`].
@@ -134,10 +161,23 @@ pub fn decrypt(ciphertext: &[u8], key: &[u8]) -> Result<Vec<u8>> {
             "encryption key must not be empty".into(),
         ));
     }
-    if ciphertext.is_empty() {
-        return Ok(Vec::new());
+    let header_len = 1 + SALT_LEN + NONCE_LEN;
+    if ciphertext.len() < header_len + TAG_LEN || ciphertext[0] != ENVELOPE_VERSION {
+        return Err(Error::Storage(
+            "encrypted payload is invalid or unsupported".into(),
+        ));
     }
-    Ok(ciphertext.to_vec())
+    let salt = &ciphertext[1..=SALT_LEN];
+    let nonce_bytes = &ciphertext[1 + SALT_LEN..header_len];
+    let mut derived = [0u8; 32];
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(key, salt, PBKDF2_ITERATIONS, &mut derived);
+    let cipher = Aes256Gcm::new_from_slice(&derived)
+        .map_err(|_| Error::Storage("could not initialize decryption".into()))?;
+    derived.fill(0);
+    let plaintext = cipher
+        .decrypt(Nonce::from_slice(nonce_bytes), &ciphertext[header_len..])
+        .map_err(|_| Error::Storage("wrong password or damaged encrypted payload".into()))?;
+    Ok(plaintext)
 }
 
 #[cfg(test)]
@@ -151,6 +191,9 @@ mod tests {
             refresh_token: Some("refresh".into()),
             client_token: None,
             session_server: None,
+            xuid: None,
+            client_id: None,
+            expires_at: None,
         }
     }
 
@@ -192,5 +235,21 @@ mod tests {
     fn empty_key_is_rejected() {
         assert!(matches!(encrypt(b"data", b""), Err(Error::InvalidInput(_))));
         assert!(matches!(decrypt(b"data", b""), Err(Error::InvalidInput(_))));
+    }
+
+    #[test]
+    fn encrypted_payload_round_trips_and_is_authenticated() {
+        let encrypted = encrypt(b"private account data", b"a sync password").unwrap();
+        let second = encrypt(b"private account data", b"a sync password").unwrap();
+        assert_ne!(encrypted, b"private account data");
+        assert_ne!(encrypted, second);
+        assert_eq!(
+            decrypt(&encrypted, b"a sync password").unwrap(),
+            b"private account data"
+        );
+        assert!(decrypt(&encrypted, b"wrong password").is_err());
+        let mut damaged = encrypted;
+        *damaged.last_mut().unwrap() ^= 1;
+        assert!(decrypt(&damaged, b"a sync password").is_err());
     }
 }

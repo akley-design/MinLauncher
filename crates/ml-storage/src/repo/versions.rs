@@ -24,9 +24,7 @@ impl VersionRepo {
     }
 
     fn conn(&self) -> Result<PooledConnection> {
-        self.pool
-            .get()
-            .map_err(|e| Error::Storage(format!("cannot acquire connection: {e}")))
+        crate::db::connection(&self.pool)
     }
 
     /// Insert or update the metadata of a version.

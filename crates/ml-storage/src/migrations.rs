@@ -186,6 +186,18 @@ pub const MIGRATIONS: &[Migration] = &[
     ALTER TABLE downloads ADD COLUMN task TEXT;
     ",
     },
+    Migration {
+        version: 3,
+        name: "launcher_nickname_claims",
+        sql: r"
+    CREATE TABLE nickname_claims (
+        account_id TEXT PRIMARY KEY,
+        nickname TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('reserved', 'conflict', 'release_pending')),
+        updated_at TEXT NOT NULL
+    );
+    ",
+    },
 ];
 
 /// The schema version a freshly created database ends up at.

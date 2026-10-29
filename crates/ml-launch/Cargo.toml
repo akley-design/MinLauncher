@@ -14,17 +14,10 @@ workspace = true
 [dependencies]
 ml-core.workspace = true
 ml-minecraft.workspace = true
-ml-storage.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
 tracing.workspace = true
-once_cell.workspace = true
-parking_lot.workspace = true
-chrono.workspace = true
-regex.workspace = true
-dirs.workspace = true
 zip.workspace = true
 
 [target.'cfg(windows)'.dependencies]

@@ -16,6 +16,13 @@ pub struct AppPaths {
     pub data_dir: PathBuf,
     /// Root for regenerable data (downloaded jars, assets, runtimes).
     pub cache_dir: PathBuf,
+    /// The directory the player chose for the game files, when any.
+    ///
+    /// `None` means the historical split layout: versions under
+    /// [`AppPaths::data_dir`] and libraries, assets and runtimes under
+    /// [`AppPaths::cache_dir`]. `Some` means all four live under that
+    /// directory, in a `.minecraft`-style tree.
+    pub install_dir: Option<PathBuf>,
     /// Installed game versions, one directory per version id.
     pub versions_dir: PathBuf,
     /// Content-addressed asset store.
@@ -57,6 +64,7 @@ impl AppPaths {
         let data_dir = data_dir.into();
         let cache_dir = cache_dir.into();
         Self {
+            install_dir: None,
             versions_dir: data_dir.join("versions"),
             assets_dir: cache_dir.join("assets"),
             libraries_dir: cache_dir.join("libraries"),
@@ -93,6 +101,31 @@ impl AppPaths {
             .ok_or_else(|| crate::Error::InvalidInput("no OS cache directory available".into()))?
             .join(APP_DIR_NAME);
         Ok(Self::new(data_dir, cache_dir))
+    }
+
+    /// Build the layout with the game files rooted at a chosen directory.
+    ///
+    /// Only the four game directories move: the database, the settings,
+    /// the logs, the benchmarks, the agent, the mods and the instances
+    /// stay where they were, so switching the root never moves the
+    /// player's worlds or the launcher's own state.
+    ///
+    /// Passing `None` returns the historical split layout of these same
+    /// data and cache roots, which makes switching back a plain rebuild.
+    #[must_use]
+    pub fn rebase_install_root(&self, root: Option<&Path>) -> Self {
+        let mut paths = Self::new(self.data_dir.clone(), self.cache_dir.clone());
+        paths.home_dir.clone_from(&self.home_dir);
+
+        if let Some(root) = root {
+            paths.install_dir = Some(root.to_path_buf());
+            paths.versions_dir = root.join("versions");
+            paths.assets_dir = root.join("assets");
+            paths.libraries_dir = root.join("libraries");
+            paths.jre_dir = root.join("runtimes");
+        }
+
+        paths
     }
 
     /// All directories that must exist before the launcher can operate.
@@ -174,6 +207,13 @@ impl AppPaths {
     #[must_use]
     pub fn asset_object(&self, hash: &str) -> PathBuf {
         let hash = hash.to_ascii_lowercase();
+        // The hash is remote data: an index that does not hold hex digits
+        // must not be able to steer the path out of the store. Such a hash
+        // lands in a bucket of its own, where it can only fail — the same
+        // 404 the asset server answers for it.
+        if hash.is_empty() || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return self.assets_dir.join("objects").join("invalid");
+        }
         let (prefix, _) = hash.split_at(hash.len().min(2));
         self.assets_dir.join("objects").join(prefix).join(hash)
     }
@@ -237,19 +277,6 @@ impl AppPaths {
     #[must_use]
     pub fn mod_jar(&self) -> PathBuf {
         self.mods_dir.join("minlaucher-optimisations.jar")
-    }
-
-    /// Directory the loader reads the mods from.
-    ///
-    /// The loader reads the mods of the instance it runs in, so the
-    /// directory is inside the instance and not in the data directory of
-    /// the launcher.
-    #[must_use]
-    pub fn instance_mods_dir(&self, instance_id: Option<&str>) -> PathBuf {
-        match instance_id {
-            Some(id) => self.instance_dir(id).join("mods"),
-            None => self.mods_dir.clone(),
-        }
     }
 
     /// Path of the report the agent writes.
@@ -387,7 +414,11 @@ pub fn sanitize_component(input: &str) -> String {
         return "default".to_string();
     }
 
-    if RESERVED.iter().any(|r| trimmed.eq_ignore_ascii_case(r)) {
+    // A device name is reserved for the whole name, whatever the
+    // extension: `nul.txt` cannot be created either. The stem is what
+    // gets compared, not the whole name.
+    let (stem, _) = trimmed.split_once('.').unwrap_or((&trimmed, ""));
+    if RESERVED.iter().any(|r| stem.eq_ignore_ascii_case(r)) {
         return format!("{trimmed}_");
     }
     trimmed
@@ -403,6 +434,36 @@ mod tests {
         assert_eq!(p.database_path, PathBuf::from("/data/minlaucher.db"));
         assert_eq!(p.assets_dir, PathBuf::from("/cache/assets"));
         assert_eq!(p.libraries_dir, PathBuf::from("/cache/libraries"));
+    }
+
+    #[test]
+    fn a_chosen_root_moves_only_the_game_files() {
+        let p = AppPaths::new("/data", "/cache");
+        let game = PathBuf::from("/game");
+        let moved = p.rebase_install_root(Some(&game));
+
+        assert_eq!(moved.versions_dir, game.join("versions"));
+        assert_eq!(moved.assets_dir, game.join("assets"));
+        assert_eq!(moved.libraries_dir, game.join("libraries"));
+        assert_eq!(moved.jre_dir, game.join("runtimes"));
+
+        // The launcher's own state and the player's worlds do not move.
+        assert_eq!(moved.data_dir, p.data_dir);
+        assert_eq!(moved.cache_dir, p.cache_dir);
+        assert_eq!(moved.instances_dir, p.instances_dir);
+        assert_eq!(moved.database_path, p.database_path);
+        assert_eq!(moved.settings_path, p.settings_path);
+        assert_eq!(moved.install_dir.as_deref(), Some(game.as_path()));
+    }
+
+    #[test]
+    fn switching_back_restores_the_split_layout() {
+        let p = AppPaths::new("/data", "/cache");
+        let moved = p.rebase_install_root(Some(Path::new("/game")));
+        let back = moved.rebase_install_root(None);
+
+        assert_eq!(back, p);
+        assert!(back.install_dir.is_none());
     }
 
     #[test]
@@ -426,6 +487,22 @@ mod tests {
 
         assert_eq!(path.file_name().unwrap(), hash);
         assert_eq!(path.parent().unwrap().file_name().unwrap(), "b6");
+    }
+
+    #[test]
+    fn a_hash_that_is_not_hex_cannot_leave_the_store() {
+        // The hash of an asset comes from a remote index. A hash that
+        // carries separators or a `..` sequence must not be able to walk
+        // out of the store — such a hash is kept in a bucket of its own.
+        let p = AppPaths::new("/data", "/cache");
+        for hostile in ["../../evil", "a/b", "C:x", "", "ab..cd"] {
+            let path = p.asset_object(hostile);
+            assert!(
+                path.starts_with(p.assets_dir.join("objects")),
+                "{hostile} -> {path:?}"
+            );
+            assert!(!path.to_string_lossy().contains(".."), "{hostile}");
+        }
     }
 
     #[test]
@@ -463,7 +540,10 @@ mod tests {
     fn windows_device_names_are_escaped() {
         assert_eq!(sanitize_component("CON"), "CON_");
         assert_eq!(sanitize_component("con"), "con_");
-        assert_eq!(sanitize_component("nul.txt"), "nul.txt");
+        // The reservation covers any extension: `nul.txt` cannot be
+        // created on Windows either, so the stem is what gets compared.
+        assert_eq!(sanitize_component("nul.txt"), "nul.txt_");
+        assert_eq!(sanitize_component("aux.json"), "aux.json_");
     }
 
     #[test]

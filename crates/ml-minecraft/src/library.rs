@@ -13,7 +13,7 @@
 //! with a `natives-<platform>` classifier. Those jars have to be unpacked
 //! before the game can load the shared libraries from them.
 
-use ml_core::{Error, Platform, Result};
+use ml_core::{Error, OsArch, Platform, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::version::{FileDownload, Library};
@@ -157,10 +157,12 @@ impl ClassifierOs {
 /// * `<os>-<arch>` name a plain jar of one system, e.g.
 ///   `linux-x86_64`.
 ///
-/// The architecture is optional, and the rules of a version usually only
-/// look at the system: a version that ships `natives-windows` and
-/// `natives-windows-arm64` lets both through on Windows, because the two
-/// jars hold the binaries of different architectures side by side.
+/// The architecture is optional, and both jars are handed to a Windows
+/// machine when neither the rules nor the classifier name one. A
+/// classifier that *does* name an architecture only matches that one: a
+/// 32-bit DLL next to a 64-bit one is not a second copy of it, and the
+/// virtual machine of one bitness refuses to load the other (“Can't
+/// load IA 32-bit .dll on a AMD 64-bit platform”).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Classifier {
     /// The system the classifier names, if any.
@@ -208,9 +210,27 @@ impl Classifier {
     #[must_use]
     pub fn matches(&self, platform: Platform) -> bool {
         match self.os {
-            Some(os) => os.is(platform.os.as_str()),
+            Some(os) if !os.is(platform.os.as_str()) => return false,
+            _ => {}
+        }
+        match self.arch.as_deref() {
+            Some(arch) => arch_matches(arch, platform.arch),
             None => true,
         }
+    }
+}
+
+/// Whether an architecture named by a classifier is the one of the machine.
+///
+/// A word the launcher does not know is not a reason to throw a jar away:
+/// the classifier still names the system, and the version's rules have
+/// already decided that the library belongs here.
+fn arch_matches(named: &str, arch: OsArch) -> bool {
+    match named.to_ascii_lowercase().as_str() {
+        "32" | "x86" | "i386" | "i686" => arch == OsArch::X86,
+        "64" | "x86_64" | "amd64" | "x64" => arch == OsArch::X86_64,
+        "arm64" | "aarch64" => arch == OsArch::Arm64,
+        _ => true,
     }
 }
 
@@ -374,6 +394,34 @@ impl ResolvedLibrary {
             .find(|(name, _)| Classifier::parse(name).matches(platform))
             .map(|(_, file)| file)
     }
+
+    /// The path of the native jar for a platform, relative to the store.
+    ///
+    /// The path of the native jar is not always the path of the main
+    /// artifact: the oldest documents carry the natives under
+    /// `downloads.classifiers`, and the main artifact of such a library
+    /// may not exist at all. The caller needs the path that was really
+    /// downloaded, not the one the coordinate would spell.
+    #[must_use]
+    pub fn native_path_for_platform(&self, platform: Platform) -> Option<String> {
+        let coordinate_classifier = Classifier::parse(&self.coordinate.classifier);
+        if coordinate_classifier.natives {
+            if !coordinate_classifier.matches(platform) {
+                return None;
+            }
+            // In the coordinate form the artifact itself is the native
+            // jar; the path comes from the document when it has one.
+            return self
+                .artifact_path()
+                .or_else(|| Some(self.coordinate.artifact_path()));
+        }
+
+        let (classifier, _) = self
+            .natives
+            .iter()
+            .find(|(name, _)| Classifier::parse(name).matches(platform))?;
+        self.native_path(classifier)
+    }
 }
 
 /// The family a native library belongs to.
@@ -485,6 +533,21 @@ mod tests {
         let coordinate = Coordinate::parse("com.mojang:jtracy:1.14.38:natives-linux").unwrap();
         assert_eq!(coordinate.classifier, "natives-linux");
         assert!(coordinate.is_native());
+    }
+
+    #[test]
+    fn a_classifier_of_another_architecture_does_not_match() {
+        // 13w47a ships the Twitch natives of both bitnesses under two
+        // classifiers; a 64-bit virtual machine cannot load the 32-bit
+        // DLL, and the game dies before its window.
+        assert!(!Classifier::parse("natives-windows-32").matches(platform()));
+        assert!(Classifier::parse("natives-windows-64").matches(platform()));
+        assert!(Classifier::parse("natives-windows").matches(platform()));
+        assert!(!Classifier::parse("natives-windows-arm64").matches(platform()));
+        assert!(
+            Classifier::parse("natives-windows-arm64")
+                .matches(Platform::new(OsName::Windows, OsArch::Arm64))
+        );
     }
 
     #[test]
@@ -760,8 +823,13 @@ mod tests {
         assert!(!Classifier::parse("natives-windows").matches(linux));
         assert!(Classifier::parse("natives-linux").matches(linux));
         assert!(!Classifier::parse("natives-linux").matches(platform()));
-        // The architecture of a variant does not change the system.
-        assert!(Classifier::parse("natives-windows-arm64").matches(platform()));
+        // The architecture of a variant does not change the system, but it
+        // does decide whether the jar belongs to this machine at all.
+        assert!(!Classifier::parse("natives-windows-arm64").matches(platform()));
+        assert!(
+            Classifier::parse("natives-windows-arm64")
+                .matches(Platform::new(OsName::Windows, OsArch::Arm64))
+        );
     }
 
     #[test]
@@ -785,11 +853,55 @@ mod tests {
 
         let resolved = ResolvedLibrary::from_library(&library, platform(), Some("26.3"));
 
-        assert!(resolved.is_native);
-        assert!(resolved.native_jar(platform()).is_some());
+        // The jar names the architecture of another machine: it is not the
+        // natives of this one, and unpacking it would put libraries in the
+        // directory that this virtual machine must not load.
+        assert!(!resolved.is_native);
+        assert!(resolved.native_jar(platform()).is_none());
         assert_eq!(
             resolved.coordinate.artifact_path(),
             "org/lwjgl/lwjgl/3.4.3/lwjgl-3.4.3-natives-windows-arm64.jar"
+        );
+
+        let arm = Platform::new(OsName::Windows, OsArch::Arm64);
+        let resolved = ResolvedLibrary::from_library(&library, arm, Some("26.3"));
+        assert!(resolved.is_native);
+        assert!(resolved.native_jar(arm).is_some());
+    }
+
+    #[test]
+    fn the_path_of_a_legacy_native_is_the_classifier_jar() {
+        // The documents before 1.13 put the natives under
+        // `downloads.classifiers`, and the main artifact of such a
+        // library may not exist at all. The extractor has to read the
+        // jar that was really downloaded, not the one the coordinate
+        // would spell.
+        let library = Library {
+            name: "org.lwjgl.lwjgl:lwjgl-platform:2.9.1".into(),
+            downloads: LibraryDownloads {
+                artifact: None,
+                classifiers: BTreeMap::from([(
+                    "natives-windows".to_string(),
+                    FileDownload {
+                        path:
+                            "org/lwjgl/lwjgl/lwjgl-platform/2.9.1/lwjgl-platform-2.9.1-natives-windows.jar"
+                                .into(),
+                        sha1: "abc".into(),
+                        size: 1,
+                        url: "https://example/natives.jar".into(),
+                    },
+                )]),
+            },
+            artifact: None,
+            rules: Vec::new(),
+        };
+
+        let resolved = ResolvedLibrary::from_library(&library, platform(), Some("1.7.10"));
+
+        assert!(resolved.native_jar(platform()).is_some());
+        assert_eq!(
+            resolved.native_path_for_platform(platform()).as_deref(),
+            Some("org/lwjgl/lwjgl/lwjgl-platform/2.9.1/lwjgl-platform-2.9.1-natives-windows.jar")
         );
     }
 

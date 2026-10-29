@@ -15,6 +15,7 @@ pub mod account;
 pub mod autostart;
 pub mod config;
 pub mod error;
+pub mod install_root;
 pub mod jvmflags;
 pub mod paths;
 pub mod rules;
@@ -27,6 +28,10 @@ pub use config::{
     OptimizationConfig, RestartConfig,
 };
 pub use error::{Error, Result};
+pub use install_root::{
+    InstallRootMarker, MARKER_FILE, MARKER_SCHEMA, ensure_disjoint, is_install_root,
+    is_same_or_inside, marker_path, prepare_install_root, read_marker,
+};
 pub use jvmflags::{CollectorMeasurement, FlagDecision, FlagsProfile};
 pub use paths::{APP_DIR_NAME, AppPaths, plain_object, safe_relative_path};
 pub use rules::{

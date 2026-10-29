@@ -30,6 +30,8 @@
 
 pub mod commands;
 pub mod error;
+pub mod install_location;
+pub mod reconcile;
 pub mod state;
 
 use std::sync::Arc;
@@ -49,6 +51,7 @@ const TRAY_ID: &str = "minlaucher-tray";
 /// # Panics
 /// Panics if the Tauri runtime cannot be created, which happens when the
 /// event loop cannot be initialised.
+#[allow(clippy::too_many_lines)] // Tauri builder wiring reads top to bottom.
 pub fn run() {
     let platform = current_platform();
 
@@ -89,7 +92,7 @@ pub fn run() {
 
             // The log of the launcher is written only when it is asked
             // for, and it is asked for before anything else happens.
-            install_log(shared.paths());
+            install_log(&shared.paths());
 
             // The autostart of the machine is brought in line with the
             // settings every time the launcher starts: a record that
@@ -120,7 +123,16 @@ pub fn run() {
             commands::accounts::list_accounts,
             commands::accounts::selected_account,
             commands::accounts::select_account,
+            commands::accounts::offline_account_identity,
             commands::accounts::add_offline_account,
+            commands::accounts::upsert_minlauncher_account,
+            commands::accounts::redeem_minecraft_handoff,
+            commands::accounts::upsert_synced_account,
+            commands::accounts::encrypt_account_sync_payload,
+            commands::accounts::restore_account_sync_payload,
+            commands::accounts::set_nickname_claim_status,
+            commands::accounts::clear_nickname_claim,
+            commands::accounts::queue_nickname_release,
             commands::accounts::remove_account,
             commands::identity::identity_storage_get,
             commands::identity::identity_storage_set,
@@ -128,6 +140,8 @@ pub fn run() {
             commands::instances::list_instances,
             commands::instances::create_instance,
             commands::instances::import_forge_instance,
+            commands::modloaders::list_modloader_versions,
+            commands::modloaders::create_modloader_instance,
             commands::instances::install_performance_mods,
             commands::instances::remove_instance,
             commands::launch::launch_game,
@@ -135,6 +149,8 @@ pub fn run() {
             commands::settings::read_settings,
             commands::settings::write_settings,
             commands::settings::read_directories,
+            commands::settings::pick_install_directory,
+            commands::settings::rescan_versions,
             commands::updater::check_for_update,
             commands::updater::install_update,
             commands::benchmarks::latest_benchmarks,

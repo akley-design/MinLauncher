@@ -1,36 +1,27 @@
 # MinLauncher cargo configuration.
 #
-# The toolchain (including the host triple) is pinned in `rust-toolchain.toml`;
+# The toolchain (including the host triple) is pinned in rust-toolchain.toml;
 # the target triple follows the host, so it is not repeated here.
 
 [build]
-# The build directory is deliberately kept on an ASCII-only path.
+# The build directory stays on an ASCII-only path.
 #
-# The resource compiler of Windows (`rc.exe` of the SDK, `windres` of MinGW)
-# writes the paths of the files it embeds — the icon, the manifest — into a
-# file of its own, and reads *that* file through the Windows ANSI code page,
-# not through UTF-8. When the project lives under a path that contains
-# non-ASCII characters — the home directory of this machine contains Cyrillic
-# — the path is lost on the way and the compiler fails.
+# The Windows resource compiler reads the .rc file through the ANSI code page,
+# not UTF-8. This machine's home directory contains Cyrillic characters, so a
+# path under it is lost before rc.exe reaches the icon or the manifest. Moving
+# only the build directory is enough: ml-desktop stages both inside OUT_DIR.
 #
-# The Rust compiler itself is unaffected (it is UTF-8 clean), and so is the
-# linker of MSVC, so relocating the *build* directory is enough: the build
-# script of `ml-desktop` stages the icon and the manifest inside it, and
-# everything the resource compiler is told about is then on an ASCII path.
-# Override this with the `CARGO_TARGET_DIR` environment variable.
+# Under the GNU toolchain the Windows import library also had to be copied out
+# of the Cargo registry; that copy is made only for windows-gnu. The MSVC
+# linker finds the library by itself.
 #
-# Under the GNU toolchain one more path had to be relocated — the Windows
-# import library that the `windows` crate pulls in lives inside the Cargo
-# registry, below `$CARGO_HOME`. The build script copies it into the build
-# directory, so it is reached through an ASCII-only path as well. That copy
-# is made only for a `windows-gnu` target; the linker of MSVC finds the
-# library by itself.
+# Override this with CARGO_TARGET_DIR.
 target-dir = "C:/Users/Public/minlaucher-target"
 
 [term]
 color = "always"
 
 [profile.dev]
-# Keep debug builds fast to link: debug info is what makes link times
-# explode, and the launcher is not the place where we profile.
+# Debug info is what makes link times explode, and the launcher is not the
+# place where we profile.
 debug = 1

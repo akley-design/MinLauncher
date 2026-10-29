@@ -8,11 +8,9 @@
 // Nothing in this build is allowed to fail quietly: a build that breaks
 // without saying why is worse than no build at all.
 //
-// The build directory is relocated when `org.gradle.project.buildDir`
-// is set, which is done in `gradle.properties`. The reason is in that
-// file: the JVM reads the class path of the test runner through the
-// Windows ANSI code page, and a path with non-ASCII characters in it
-// makes the test runner lose every class it was given.
+// The build directory moves to an ASCII path for Windows projects under
+// non-ASCII paths. The JVM test runner can otherwise lose class names
+// when it reads the class path through the Windows ANSI code page.
 
 plugins {
     java
@@ -22,10 +20,17 @@ allprojects {
     group = "dev.minlaucher"
     version = property("modVersion") as String
 
-    // The build directory of the project, when it was moved. Every
-    // project keeps its own directory under the moved root, so that the
-    // two modules do not write into the same place.
-    val relocated = findProperty("org.gradle.project.buildDir") as String?
+    // Keep Windows builds outside a non-ASCII path, where the JVM test
+    // runner can lose class names. Other platforms use standard paths,
+    // which are also where CI checks for the jars.
+    val configuredBuildDir = findProperty("org.gradle.project.buildDir") as String?
+    val needsAsciiPath = System.getProperty("os.name").startsWith("Windows") &&
+        rootProject.projectDir.path.any { it.code > 127 }
+    val relocated = configuredBuildDir ?: if (needsAsciiPath) {
+        "C:/Users/Public/minlaucher-java-build"
+    } else {
+        null
+    }
     if (relocated != null) {
         val suffix = if (this == rootProject) "" else "/${name}"
         layout.buildDirectory.set(file(relocated + suffix))

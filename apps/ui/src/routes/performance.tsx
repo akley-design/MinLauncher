@@ -1,14 +1,4 @@
-/**
- * The screen of the performance.
- *
- * This screen shows what was **measured**, not what somebody typed in.
- * The numbers come from the same database the benchmark harness writes
- * into, so the table cannot disagree with the harness.
- *
- * The verdict of the comparison is what matters: the number of a single
- * run says nothing, the comparison against the other launcher says
- * whether the launcher got faster.
- */
+/** Measurements from the benchmark database, not hand-entered numbers. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
@@ -21,7 +11,6 @@ import { formatImprovement, formatValue } from "../lib/format";
 import { LAUNCH_BUDGET_MS, summarizeLaunches } from "../lib/launches";
 import { useGameStore } from "../stores/game";
 
-/** The screen of the performance. */
 export function PerformanceRoute() {
   const queryClient = useQueryClient();
   const baselineFile = useRef<HTMLInputElement>(null);
@@ -63,7 +52,7 @@ export function PerformanceRoute() {
   }
 
   return (
-    <div className="screen">
+    <div className="screen performance-screen">
       <div className="screen__header">
         <div>
           <div className="screen__eyebrow">Аналитика и тесты</div>

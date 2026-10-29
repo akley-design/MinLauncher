@@ -36,8 +36,7 @@ pub use jvm::{JavaInstallation, JavaOrigin, find_runtime, probe_version};
 pub use natives::{ExtractionReport, NativeJar, NativeLayout, extract_all, extract_jar};
 pub use supervisor::{ExitStatus, GameProcess, RestartPolicy, Supervisor};
 
-use ml_core::{Error, FeatureSet, Platform, Result};
-use ml_minecraft::version::VersionJson;
+use ml_core::{FeatureSet, Platform, Result};
 
 /// A complete, ready to run launch.
 ///
@@ -71,79 +70,22 @@ pub fn prepare(
     features: &FeatureSet,
     version_type: &str,
 ) -> Result<PreparedLaunch> {
+    let phase_started = std::time::Instant::now();
     let command = build_command(request, platform, features, version_type)?;
+    tracing::debug!(target: "minlaucher::performance", phase = "build_game_command", version = %request.version.id, elapsed_us = phase_started.elapsed().as_micros());
 
+    let phase_started = std::time::Instant::now();
     crate::args::ensure_game_directory(&request.session)?;
+    tracing::debug!(target: "minlaucher::performance", phase = "ensure_game_directory", version = %request.version.id, elapsed_us = phase_started.elapsed().as_micros());
 
     // The natives are unpacked into the directories the version asks for.
     let jars = request.native_jars(platform);
+    let phase_started = std::time::Instant::now();
     let extraction = crate::natives::extract_all(&jars, &command.natives_layout)?;
+    tracing::debug!(target: "minlaucher::performance", phase = "prepare_natives", version = %request.version.id, elapsed_us = phase_started.elapsed().as_micros(), cache_hit = extraction.skipped, native_files = extraction.files.len());
 
     Ok(PreparedLaunch {
         command,
         extraction,
     })
-}
-
-/// The classpath a request would use, without building the whole command.
-#[must_use]
-pub fn classpath_of(request: &LaunchRequest) -> String {
-    crate::command::request_classpath(request)
-}
-
-/// The version a request launches, for diagnostics.
-#[must_use]
-pub fn version_id(version: &VersionJson) -> &str {
-    &version.id
-}
-
-/// The error the launcher reports when a version cannot be started.
-#[must_use]
-pub fn describe_failure(error: &Error) -> String {
-    error.to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-
-    #[test]
-    fn the_version_id_is_reported() {
-        let version =
-            VersionJson::parse(br#"{"id":"26.3","type":"release","mainClass":"Main"}"#).unwrap();
-        assert_eq!(version_id(&version), "26.3");
-    }
-
-    #[test]
-    fn a_failure_is_described() {
-        let error = Error::NoJavaRuntime(25);
-        assert!(describe_failure(&error).contains("25"));
-    }
-
-    #[test]
-    fn the_classpath_is_available_without_a_command() {
-        let request = LaunchRequest {
-            version: VersionJson::parse(br#"{"id":"26.3","type":"release","mainClass":"Main"}"#)
-                .unwrap(),
-            libraries: Vec::new(),
-            java: JavaInstallation {
-                executable: PathBuf::from("java"),
-                windowless_executable: None,
-                major_version: 25,
-                version: "25.0.1".into(),
-                origin: JavaOrigin::System,
-            },
-            session: Session::default(),
-            client_jar: PathBuf::from("C:/v/client.jar"),
-            library_directory: PathBuf::from("C:/l"),
-            extra_jvm_args: Vec::new(),
-            agent_jar: None,
-            agent_report: None,
-            loader: None,
-            mod_jars: Vec::new(),
-        };
-
-        assert!(classpath_of(&request).starts_with("C:/v/client.jar"));
-    }
 }

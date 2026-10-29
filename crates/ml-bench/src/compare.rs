@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn a_faster_frame_rate_is_an_improvement() {
-        let ours = quiet(120.0);
+        let ours = quiet(140.0);
         let theirs = quiet(100.0);
 
         let comparison = compare(Metric::InGameFps, &ours, &theirs).unwrap();

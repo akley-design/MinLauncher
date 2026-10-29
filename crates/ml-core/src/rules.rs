@@ -187,15 +187,6 @@ impl OsCondition {
             ..Self::default()
         }
     }
-
-    /// A condition that names an architecture.
-    #[must_use]
-    pub fn of_arch(name: impl Into<String>) -> Self {
-        Self {
-            arch: Some(name.into()),
-            ..Self::default()
-        }
-    }
 }
 
 /// A rule: an action plus the conditions under which it applies.
@@ -282,8 +273,13 @@ impl VersionRange {
             }
             b'>' => {
                 let rest = raw.strip_prefix(">=").or_else(|| raw.strip_prefix('>'))?;
+                // A range with no bound after the sign matches every
+                // version — a rule the document never wrote. An empty
+                // bound is a range that cannot be parsed, and an
+                // unparsable range must not match anything.
+                let lower = VersionBound::parse(rest)?;
                 Some(Self {
-                    lower: VersionBound::parse(rest),
+                    lower: Some(lower),
                     upper: None,
                     lower_inclusive: raw.starts_with(">="),
                     upper_inclusive: true,
@@ -291,9 +287,10 @@ impl VersionRange {
             }
             b'<' => {
                 let rest = raw.strip_prefix("<=").or_else(|| raw.strip_prefix('<'))?;
+                let upper = VersionBound::parse(rest)?;
                 Some(Self {
                     lower: None,
-                    upper: VersionBound::parse(rest),
+                    upper: Some(upper),
                     lower_inclusive: true,
                     upper_inclusive: raw.starts_with("<="),
                 })
@@ -628,6 +625,16 @@ mod tests {
         let r = VersionRange::parse(">=1.17").unwrap();
         assert!(r.matches("1.20.1"));
         assert!(!r.matches("1.16.5"));
+    }
+
+    #[test]
+    fn a_sign_with_no_bound_matches_nothing() {
+        // `>` without a version after it is not a rule that matches every
+        // version: it is a range that cannot be parsed, and an unparsable
+        // range must not match anything.
+        for raw in [">", ">=", "<", "<="] {
+            assert!(VersionRange::parse(raw).is_none(), "{raw}");
+        }
     }
 
     #[test]

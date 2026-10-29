@@ -87,7 +87,7 @@ export function VersionsRoute() {
   }
 
   return (
-    <div className="screen">
+    <div className="screen versions-screen">
       <div className="screen__header">
         <div>
           <div className="screen__eyebrow">Библиотека игры</div>

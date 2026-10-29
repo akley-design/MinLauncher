@@ -1,28 +1,17 @@
 /**
- * The section of the settings that updates the launcher itself.
- *
- * The launcher asks a server what the newest release is, shows what it
- * found, and puts it in place when the player says so. The manifest of
- * the release travels back to the backend with the request to install
- * it, so that the version that is put in place is the one that was
- * shown.
- *
- * A launcher that has no server of the updates to ask says so. That is
- * a state of the launcher, not a failure of it, and it is shown as
- * such: the button stays, the check can be repeated later.
+ * Launcher updates. The manifest shown is the manifest installed, and
+ * an unconfigured update server is a state, not an error.
  */
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { Button } from "../components/Button";
 import { checkForUpdate, installUpdate, toCommandError } from "../ipc/client";
+import { queryKeys } from "../ipc/queries";
 
-const UPDATE_QUERY_KEY = ["launcher", "update"] as const;
-
-/** The section of the settings that updates the launcher itself. */
 export function Updates() {
   const check = useQuery({
-    queryKey: UPDATE_QUERY_KEY,
+    queryKey: queryKeys.launcherUpdate(),
     queryFn: checkForUpdate,
     staleTime: 60_000,
   });

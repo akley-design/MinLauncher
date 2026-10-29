@@ -128,13 +128,14 @@ impl LaunchRequest {
             .iter()
             .filter_map(|library| {
                 // A library only contributes a native jar when the
-                // platform's classifier is the one it ships.
+                // platform's classifier is the one it ships. The path is
+                // the one the document downloaded: for the old documents
+                // it is the classifier jar, not the main artifact.
                 library.native_jar(platform)?;
+                let path = library.native_path_for_platform(platform)?;
                 let family = NativeFamily::of_group(&library.coordinate.group);
                 Some(NativeJar {
-                    path: self
-                        .library_directory
-                        .join(library.coordinate.artifact_path()),
+                    path: self.library_directory.join(path),
                     family,
                 })
             })
@@ -158,11 +159,30 @@ pub struct LaunchCommand {
 }
 
 impl LaunchCommand {
-    /// The whole command line, for logging.
+    /// The command line safe to show in logs and the user interface.
     #[must_use]
     pub fn display(&self) -> String {
         let mut parts = vec![self.executable.to_string_lossy().into_owned()];
-        parts.extend(self.arguments.iter().cloned());
+        let mut redact_next = false;
+        for argument in &self.arguments {
+            if redact_next {
+                parts.push("<redacted>".to_string());
+                redact_next = false;
+                continue;
+            }
+            if matches!(argument.as_str(), "--accessToken" | "--session") {
+                parts.push(argument.clone());
+                redact_next = true;
+                continue;
+            }
+            if let Some((name, _)) = argument.split_once('=')
+                && matches!(name, "--accessToken" | "--session")
+            {
+                parts.push(format!("{name}=<redacted>"));
+                continue;
+            }
+            parts.push(argument.clone());
+        }
         parts.join(" ")
     }
 }
@@ -213,96 +233,9 @@ pub fn build_command(
     );
     let classpath = values.get("classpath").map_or("", String::as_str);
 
-    // The JVM arguments, in the order the version prescribes.
     let version_id = Some(request.version.id.as_str());
-    let mut version_arguments = substitute_all(
-        &request
-            .version
-            .arguments
-            .resolve_default_user_jvm(platform, version_id, features),
-        &values,
-    );
-
-    // The player may have named a collector of their own. The version
-    // names one too, and the JVM refuses to start when two collectors
-    // are named at once — so the choice of the player replaces the one
-    // of the version.
-    if request
-        .extra_jvm_args
-        .iter()
-        .any(|argument| ml_core::config::is_collector_flag(argument))
-    {
-        version_arguments.retain(|argument| !ml_core::config::is_collector_flag(argument));
-    }
-
-    let mut jvm_arguments: Vec<String> = Vec::new();
-    jvm_arguments.extend(version_arguments);
-
-    // The arguments of the player come after the arguments of the
-    // version: the version asks for a heap of four gigabytes, and a
-    // player who asked for eight gigabytes means eight gigabytes.
-    jvm_arguments.extend(request.extra_jvm_args.iter().cloned());
-
-    // The JVM arguments the document prescribes.
-    let version_jvm_arguments = request
-        .version
-        .arguments
-        .resolve_jvm(platform, version_id, features);
-    jvm_arguments.extend(substitute_all(&version_jvm_arguments, &values));
-
-    // What the document leaves out, the launcher supplies.
-    jvm_arguments.extend(launcher_jvm_arguments(
-        &version_jvm_arguments,
-        &session,
-        classpath,
-    ));
-
-    // The arguments of the loader come after the arguments of the game,
-    // so that the arguments of the game win where both of them say
-    // something about the same thing.
-    if let Some(loader) = &request.loader {
-        jvm_arguments.extend(loader.jvm_arguments.iter().cloned());
-
-        // The loader looks for the jar of the game. It finds the one on
-        // the classpath on its own, but it is told where the jar is
-        // anyway: the jar of the game is on the classpath under a name
-        // of the launcher, and the loader should not have to guess.
-        jvm_arguments.push(format!(
-            "-Dfabric.gameJarPath.client={}",
-            request.client_jar.display()
-        ));
-
-        // The mods are not put on the classpath: the loader loads them
-        // itself, from the directory of the mods, so that it can
-        // transform them before the game sees them.
-        if !request.mod_jars.is_empty() {
-            let separator = crate::args::classpath_separator();
-            let paths: Vec<String> = request
-                .mod_jars
-                .iter()
-                .map(|jar| jar.display().to_string())
-                .collect();
-            jvm_arguments.push(format!(
-                "-Dfabric.addMods={}",
-                paths.join(&separator.to_string())
-            ));
-        }
-    }
-
-    if let Some(agent) = &request.agent_jar
-        && let Some(argument) = crate::args::java_agent(agent)
-    {
-        // The property that says where the report goes comes first, so
-        // that it is set before the agent reads it. The agent reads it
-        // in `premain`, which runs before the game starts, so the order
-        // of the two arguments does not matter to the agent — but the
-        // JVM sets the properties as it reads them, and this way the
-        // property is already in place when the agent is loaded.
-        if let Some(report) = &request.agent_report {
-            jvm_arguments.push(crate::args::agent_output_property(report));
-        }
-        jvm_arguments.push(argument);
-    }
+    let jvm_arguments =
+        build_jvm_arguments(request, platform, features, &session, &values, classpath);
 
     // The game arguments.
     //
@@ -342,6 +275,106 @@ pub fn build_command(
     })
 }
 
+fn build_jvm_arguments(
+    request: &LaunchRequest,
+    platform: Platform,
+    features: &FeatureSet,
+    session: &Session,
+    values: &BTreeMap<&str, String>,
+    classpath: &str,
+) -> Vec<String> {
+    let version_id = Some(request.version.id.as_str());
+    let mut version_arguments = substitute_all(
+        &request
+            .version
+            .arguments
+            .resolve_default_user_jvm(platform, version_id, features),
+        values,
+    );
+
+    // The JVM refuses two collectors, so a player choice replaces the
+    // collector that came from the version document.
+    if request
+        .extra_jvm_args
+        .iter()
+        .any(|argument| ml_core::config::is_collector_flag(argument))
+    {
+        version_arguments.retain(|argument| !ml_core::config::is_collector_flag(argument));
+    }
+
+    // A player who names a heap size owns both of them. Only one half of
+    // the pair of the version would be replaced, and a virtual machine
+    // refuses to start when the initial heap outgrows the maximum
+    // ("Initial heap size set to a larger value than the maximum heap
+    // size"), which is what a 2G player setting met by the 4G of a
+    // snapshot would have meant.
+    let player_names_heap = request
+        .extra_jvm_args
+        .iter()
+        .any(|argument| is_heap_flag(argument));
+    if player_names_heap {
+        version_arguments.retain(|argument| !is_heap_flag(argument));
+    }
+
+    let mut jvm_arguments = version_arguments;
+    // Player arguments come after the version defaults, so their values win.
+    jvm_arguments.extend(request.extra_jvm_args.iter().cloned());
+
+    let mut version_jvm_arguments = request
+        .version
+        .arguments
+        .resolve_jvm(platform, version_id, features);
+    if player_names_heap {
+        version_jvm_arguments.retain(|argument| !is_heap_flag(argument));
+    }
+    jvm_arguments.extend(substitute_all(&version_jvm_arguments, values));
+    jvm_arguments.extend(launcher_jvm_arguments(
+        &version_jvm_arguments,
+        session,
+        classpath,
+    ));
+
+    // Loader arguments follow the game arguments so the game's values win.
+    if let Some(loader) = &request.loader {
+        jvm_arguments.extend(loader.jvm_arguments.iter().cloned());
+        // Tell the loader which client jar the launcher put on the classpath.
+        jvm_arguments.push(format!(
+            "-Dfabric.gameJarPath.client={}",
+            request.client_jar.display()
+        ));
+        // The loader reads mods from its own directory and transforms them.
+        if !request.mod_jars.is_empty() {
+            let separator = crate::args::classpath_separator();
+            let paths: Vec<String> = request
+                .mod_jars
+                .iter()
+                .map(|jar| jar.display().to_string())
+                .collect();
+            jvm_arguments.push(format!(
+                "-Dfabric.addMods={}",
+                paths.join(&separator.to_string())
+            ));
+        }
+    }
+
+    if let Some(agent) = &request.agent_jar
+        && let Some(argument) = crate::args::java_agent(agent)
+    {
+        // Set the report location before premain reads it.
+        if let Some(report) = &request.agent_report {
+            jvm_arguments.push(crate::args::agent_output_property(report));
+        }
+        jvm_arguments.push(argument);
+    }
+
+    jvm_arguments
+}
+
+/// The argument names a heap size: `-Xmx4G` or `-Xms1G`.
+fn is_heap_flag(argument: &str) -> bool {
+    argument.starts_with("-Xmx") || argument.starts_with("-Xms")
+}
+
 /// The JVM arguments the launcher supplies for the versions that
 /// prescribe none.
 ///
@@ -370,58 +403,41 @@ fn launcher_jvm_arguments(
         arguments.push(classpath.to_string());
     }
 
-    // The directories of the natives, unless the version names them.
-    // They are the very directories the launcher unpacks the natives
-    // into, so that the game looks for them where they are.
-    for (family, property) in [
-        (NativeFamily::System, "java.library.path"),
-        (NativeFamily::Jna, "jna.tmpdir"),
-        (
-            NativeFamily::Lwjgl,
-            "org.lwjgl.system.SharedLibraryExtractPath",
-        ),
-        (NativeFamily::Netty, "io.netty.native.workdir"),
-    ] {
-        let prefix = format!("-D{property}=");
-        if version_jvm_arguments
-            .iter()
-            .any(|argument| argument.starts_with(&prefix))
-        {
-            continue;
+    // The directories of the natives, and only for a version that names
+    // no directory of its own. The LWJGL of 1.14 to 1.19 is handed
+    // `java.library.path` alone and searches nothing else: a launcher that
+    // adds its own extract paths next to it unpacks the libraries into
+    // directories the game never looks at, and the game answers with
+    // “Failed to locate library: lwjgl.dll”. Such a version keeps its own
+    // model, and the natives follow it (see `NativeLayout::directory_for`).
+    if !version_jvm_arguments
+        .iter()
+        .any(|argument| argument.starts_with("-Djava.library.path="))
+    {
+        for (family, property) in [
+            (NativeFamily::System, "java.library.path"),
+            (NativeFamily::Jna, "jna.tmpdir"),
+            (
+                NativeFamily::Lwjgl,
+                "org.lwjgl.system.SharedLibraryExtractPath",
+            ),
+            (NativeFamily::Netty, "io.netty.native.workdir"),
+        ] {
+            let prefix = format!("-D{property}=");
+            if version_jvm_arguments
+                .iter()
+                .any(|argument| argument.starts_with(&prefix))
+            {
+                continue;
+            }
+            arguments.push(format!(
+                "{prefix}{}",
+                crate::args::path_to_string(&session.natives_directory.join(family.directory()))
+            ));
         }
-        arguments.push(format!(
-            "{prefix}{}",
-            crate::args::path_to_string(&session.natives_directory.join(family.directory()))
-        ));
     }
 
     arguments
-}
-
-/// The classpath the command uses, for diagnostics.
-///
-/// The classpath is either the argument after a standalone `-cp` or the
-/// value of a `-cp=…` argument.
-#[must_use]
-pub fn classpath_of(command: &LaunchCommand) -> Vec<String> {
-    let mut arguments = command.arguments.iter();
-    while let Some(argument) = arguments.next() {
-        if argument == "-cp"
-            && let Some(value) = arguments.next()
-        {
-            return crate::args::split_classpath(value)
-                .iter()
-                .map(|entry| (*entry).to_string())
-                .collect();
-        }
-        if let Some(value) = argument.strip_prefix("-cp=") {
-            return crate::args::split_classpath(value)
-                .iter()
-                .map(|entry| (*entry).to_string())
-                .collect();
-        }
-    }
-    Vec::new()
 }
 
 /// The classpath of a request, without building the whole command.
@@ -523,6 +539,24 @@ mod tests {
     }
 
     #[test]
+    fn displayed_command_never_exposes_minecraft_session_tokens() {
+        let mut command =
+            build_command(&request(), platform(), &FeatureSet::none(), "release").unwrap();
+        command.arguments.extend([
+            "--session".into(),
+            "token:legacy-secret:player-id:Steve".into(),
+            "--accessToken=inline-secret".into(),
+        ]);
+
+        let displayed = command.display();
+        assert!(!displayed.contains("legacy-secret"));
+        assert!(!displayed.contains("inline-secret"));
+        assert!(!displayed.contains("token"));
+        assert!(displayed.contains("--session <redacted>"));
+        assert!(displayed.contains("--accessToken <redacted>"));
+    }
+
+    #[test]
     fn the_command_has_the_expected_shape() {
         let command =
             build_command(&request(), platform(), &FeatureSet::none(), "release").unwrap();
@@ -564,19 +598,68 @@ mod tests {
         request.extra_jvm_args = vec!["-Xmx8G".to_string()];
         let command = build_command(&request, platform(), &FeatureSet::none(), "release").unwrap();
 
-        let player = command
+        // A player who names one half of the pair owns both halves: the
+        // initial heap of the version would outgrow the maximum the player
+        // chose, and the virtual machine refuses such a combination.
+        let heaps: Vec<&str> = command
             .arguments
             .iter()
-            .position(|argument| argument == "-Xmx8G")
-            .expect("the heap of the player is in the command");
-        let version = command
-            .arguments
-            .iter()
-            .position(|argument| argument == "-Xmx4G")
-            .expect("the heap of the version is in the command");
+            .map(String::as_str)
+            .filter(|argument| argument.starts_with("-Xm"))
+            .collect();
+        assert_eq!(heaps, vec!["-Xmx8G"]);
+    }
 
-        // The last one wins in the JVM.
-        assert!(player > version, "{player} is not after {version}");
+    #[test]
+    fn the_heap_of_the_version_survives_when_the_player_names_none() {
+        let mut request = request();
+        request.extra_jvm_args = vec!["-XX:+UseG1GC".to_string()];
+        let command = build_command(&request, platform(), &FeatureSet::none(), "release").unwrap();
+
+        let heaps: Vec<&str> = command
+            .arguments
+            .iter()
+            .map(String::as_str)
+            .filter(|argument| argument.starts_with("-Xm"))
+            .collect();
+        assert_eq!(heaps, vec!["-Xms2G", "-Xmx4G"]);
+    }
+
+    #[test]
+    fn a_version_that_names_its_own_library_path_gets_no_other_directory() {
+        // The document of 1.14 to 1.19 names one directory for the natives
+        // and no extract path: the game searches `java.library.path` and
+        // nothing else. A launcher that adds its own directories unpacks
+        // the libraries where the game will never look for them.
+        let old = r#"{
+            "id": "1.18.2", "type": "release",
+            "mainClass": "net.minecraft.client.main.Main", "assets": "8",
+            "arguments": {
+                "jvm": [ "-Djava.library.path=${natives_directory}", "-cp", "${classpath}" ],
+                "game": [ "--username", "${auth_player_name}" ]
+            }
+        }"#;
+        let mut request = request();
+        request.version = VersionJson::parse(old.as_bytes()).unwrap();
+        let command = build_command(&request, platform(), &FeatureSet::none(), "release").unwrap();
+
+        let directories: Vec<&str> = command
+            .arguments
+            .iter()
+            .map(String::as_str)
+            .filter(|argument| {
+                argument.starts_with("-D")
+                    && (argument.contains("library.path")
+                        || argument.contains("ExtractPath")
+                        || argument.contains("tmpdir")
+                        || argument.contains("workdir"))
+            })
+            .collect();
+        assert_eq!(directories.len(), 1, "{directories:?}");
+        assert!(
+            directories[0].starts_with("-Djava.library.path="),
+            "{directories:?}"
+        );
     }
 
     #[test]

@@ -20,10 +20,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use ml_core::{AppPaths, Error, Result};
-use ml_minecraft::fabric::{FabricLaunch, FabricLoaderList, FabricProfile};
+use ml_minecraft::fabric::{FabricLoaderList, FabricProfile};
 use ml_minecraft::install::InstallLayout;
-
-use crate::error::{ErrorCode, IpcError};
 
 /// The name of the file the settings of the mod are written to.
 ///
@@ -33,15 +31,6 @@ pub const MOD_SETTINGS_FILE: &str = "minlaucher-optimisations.json";
 
 /// The name of the jar of the mod of the launcher.
 pub const MOD_JAR_NAME: &str = "minlaucher-optimisations.jar";
-
-/// What the launcher prepared for the loader.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FabricPreparation {
-    /// The launch part of the loader.
-    pub launch: FabricLaunch,
-    /// The jars of the mods, in the order they are loaded.
-    pub mod_jars: Vec<PathBuf>,
-}
 
 /// How long an answer of the network is kept on the disk.
 ///
@@ -492,15 +481,6 @@ pub fn install_mod_jar(source: &Path, mods_directory: &Path) -> Result<PathBuf> 
     std::fs::rename(&temporary, &target).map_err(|e| Error::io(&target, e))?;
 
     Ok(target)
-}
-
-/// Turn an error of the core into the error of the commands.
-pub fn to_ipc(error: Error) -> IpcError {
-    IpcError::with_detail(
-        ErrorCode::Network,
-        "the loader of the mods",
-        error.to_string(),
-    )
 }
 
 #[cfg(test)]

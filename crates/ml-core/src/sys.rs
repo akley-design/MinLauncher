@@ -14,8 +14,6 @@
 
 use std::sync::OnceLock;
 
-use crate::rules::OsName;
-
 /// The cached operating system version.
 static OS_VERSION: OnceLock<Option<&'static str>> = OnceLock::new();
 
@@ -124,15 +122,6 @@ fn windows_version_from(
         }
     };
     Some(format!("{major}.{minor}.{build}"))
-}
-
-/// The name of the operating system the launcher runs on.
-///
-/// This mirrors [`crate::rules::OsName`]; it exists so that callers that
-/// only need the name do not have to import the rules module.
-#[must_use]
-pub fn os_name() -> OsName {
-    crate::rules::Platform::current().os
 }
 
 /// The number of usable CPU cores.

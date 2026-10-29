@@ -230,9 +230,7 @@ fn every_version_gets_the_game_arguments_its_document_prescribes() {
             .unwrap_or_else(|| panic!("{} starts no class", entry.census.id));
         let game = &command.arguments[main + 1..];
 
-        // The number the document prescribes is the number the command
-        // carries. For the 349 versions before 1.13 this used to be
-        // zero against eighteen.
+        // The command carries the number of arguments the document prescribes.
         let prescribed =
             document.prescribed_game_arguments(platform, Some(&document.id), &features());
         assert_eq!(

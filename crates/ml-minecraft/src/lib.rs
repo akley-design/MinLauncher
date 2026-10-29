@@ -163,10 +163,13 @@ impl MinecraftService {
         &self.downloader
     }
 
-    /// The manifest client.
-    #[must_use]
-    pub fn manifest_client(&self) -> &ManifestClient {
-        &self.manifest
+    /// Set the maximum number of simultaneous file downloads.
+    ///
+    /// The value is bounded by [`download::MAX_CONCURRENCY`]. Cloned
+    /// services share this setting, so changing it takes effect for the
+    /// next batch without rebuilding the HTTP client.
+    pub fn set_download_concurrency(&self, concurrency: usize) {
+        self.downloader.set_concurrency(concurrency);
     }
 
     /// Fetch the version manifest.

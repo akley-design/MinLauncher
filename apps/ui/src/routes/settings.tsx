@@ -8,18 +8,21 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type MouseEvent, useState } from "react";
+import { type MouseEvent, useEffect, useState } from "react";
 
 import { Button } from "../components/Button";
 import { JavaRuntimes } from "../components/JavaRuntimes";
 import { ErrorState, LoadingState } from "../components/States";
 import { Updates } from "../components/Updates";
-import { readSettings, toCommandError, writeSettings } from "../ipc/client";
+import { pickInstallDirectory, readSettings, toCommandError, writeSettings } from "../ipc/client";
+import { onInstallRootEvent } from "../ipc/events";
 import { queryKeys } from "../ipc/queries";
+import { formatBytes } from "../lib/format";
 import type {
   CollectorMeasurement,
   Directories,
   FlagsProfile,
+  InstallRootEvent,
   LauncherConfig,
   ProfileFlags,
 } from "../ipc/types";
@@ -27,6 +30,7 @@ import type {
 /** The screen of the settings. */
 export function SettingsRoute() {
   const queryClient = useQueryClient();
+  const [rootEvent, setRootEvent] = useState<InstallRootEvent | null>(null);
 
   const settings = useQuery({
     queryKey: queryKeys.settings(),
@@ -38,7 +42,33 @@ export function SettingsRoute() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.settings() });
     },
+    onSettled: () => setRootEvent(null),
   });
+
+  // A copy of a large installation can take minutes. The backend tells
+  // how far it is; the save bar shows it instead of an indefinite
+  // "saving" that looks like a hang.
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+
+    void onInstallRootEvent((event) => setRootEvent(event))
+      .then((unlisten) => {
+        if (cancelled) {
+          unlisten();
+        } else {
+          stop = unlisten;
+        }
+      })
+      .catch(() => {
+        // A browser preview has no backend to listen to.
+      });
+
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
 
   if (settings.isPending) {
     return <LoadingState label="Читаем настройки…" />;
@@ -54,7 +84,7 @@ export function SettingsRoute() {
         <div>
           <div className="screen__eyebrow">Конфигурация лаунчера</div>
           <h1 className="screen__title">Настройки</h1>
-          <p className="screen__subtitle">Сохраняются в файле рядом с базой</p>
+          <p className="screen__subtitle">Сделай лаунчер удобным для себя</p>
         </div>
       </div>
 
@@ -74,6 +104,8 @@ export function SettingsRoute() {
         autostartSupported={settings.data.autostart_supported}
         jvmFlags={settings.data.jvm_flags}
         jvmCollectors={settings.data.jvm_collectors ?? []}
+        installDirError={settings.data.install_dir_error ?? null}
+        rootEvent={rootEvent}
         busy={save.isPending}
         saved={save.isSuccess}
         saveError={save.isError ? toCommandError(save.error).message : null}
@@ -94,6 +126,10 @@ interface SettingsFormProps {
   jvmFlags: ProfileFlags[];
   /** What the measurement said about the collectors of the garbage. */
   jvmCollectors: CollectorMeasurement[];
+  /** Why the configured installation directory is not in use. */
+  installDirError: string | null;
+  /** What the backend is doing with the installation folder right now. */
+  rootEvent: InstallRootEvent | null;
   /** Whether a save is under way. */
   busy: boolean;
   /** Whether the last save completed. */
@@ -111,16 +147,31 @@ function SettingsForm({
   autostartSupported,
   jvmFlags,
   jvmCollectors,
+  installDirError,
+  rootEvent,
   busy,
   saved,
   saveError,
   onSave,
 }: SettingsFormProps) {
   const [draft, setDraft] = useState<LauncherConfig>(config);
+  const [pickError, setPickError] = useState<string | null>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(config);
 
   const patch = (change: Partial<LauncherConfig>) => {
     setDraft({ ...draft, ...change });
+  };
+
+  const chooseInstallDir = async () => {
+    setPickError(null);
+    try {
+      const path = await pickInstallDirectory();
+      if (path) {
+        patch({ install_dir: path });
+      }
+    } catch (error) {
+      setPickError(toCommandError(error).message);
+    }
   };
 
   // The list under the choice follows the choice: the player sees what
@@ -601,7 +652,76 @@ function SettingsForm({
 
       <section className="card settings-section" id="folders">
         <div className="card__title">Папки</div>
+
+        {installDirError ? (
+          <p className="field__error" role="alert">
+            Настройка указывает на папку, которую не удалось открыть: {installDirError}
+          </p>
+        ) : null}
+
+        <div className="form-row">
+          <div className="field" style={{ flex: 1 }}>
+            <label className="field__label" htmlFor="install-dir">
+              Папка установки
+            </label>
+            <input
+              id="install-dir"
+              name="installDir"
+              autoComplete="off"
+              spellCheck={false}
+              className="input mono"
+              value={draft.install_dir}
+              onChange={(event) => patch({ install_dir: event.target.value })}
+              placeholder="По умолчанию — папка данных лаунчера"
+            />
+            <span className="field__hint">
+              Версии, библиотеки, ресурсы и Java. Миры и инстансы остаются в папке данных лаунчера.
+            </span>
+          </div>
+        </div>
+
+        <div className="form-row" style={{ marginTop: "var(--space-3)" }}>
+          <Button onClick={() => void chooseInstallDir()}>Выбрать…</Button>
+          <Button onClick={() => patch({ install_dir: "" })} disabled={draft.install_dir === ""}>
+            Сбросить
+          </Button>
+        </div>
+
+        {pickError ? (
+          <p role="alert" aria-live="polite" className="field__error">
+            {pickError}
+          </p>
+        ) : null}
+
+        <p className="field__hint">
+          При смене папки файлы игры копируются в новую; в старой папке они остаются. Маркер
+          <span className="mono"> .minlauncher.json </span>
+          говорит лаунчеру, что папка его.
+        </p>
+
+        {rootEvent ? <InstallRootProgressView event={rootEvent} /> : null}
+
         <dl className="paths">
+          <div className="paths__row">
+            <dt>Установка</dt>
+            <dd className="mono selectable">{directories.install || "По умолчанию — пути ниже"}</dd>
+          </div>
+          <div className="paths__row">
+            <dt>Версии</dt>
+            <dd className="mono selectable">{directories.versions}</dd>
+          </div>
+          <div className="paths__row">
+            <dt>Библиотеки</dt>
+            <dd className="mono selectable">{directories.libraries}</dd>
+          </div>
+          <div className="paths__row">
+            <dt>Ресурсы</dt>
+            <dd className="mono selectable">{directories.assets}</dd>
+          </div>
+          <div className="paths__row">
+            <dt>Java</dt>
+            <dd className="mono selectable">{directories.runtimes}</dd>
+          </div>
           <div className="paths__row">
             <dt>Данные</dt>
             <dd className="mono selectable">{directories.data}</dd>
@@ -643,6 +763,50 @@ function SettingsForm({
         </Button>
       </div>
     </>
+  );
+}
+
+function InstallRootProgressView({ event }: { event: InstallRootEvent }) {
+  if (event.kind === "copying") {
+    const percent =
+      event.total_bytes === 0
+        ? 100
+        : Math.min(100, Math.round((event.copied_bytes / event.total_bytes) * 100));
+    return (
+      <div className="progress" role="status">
+        <div className="progress__head">
+          <span className="progress__title">Копируем файлы игры</span>
+          <span className="progress__value">
+            {formatBytes(event.copied_bytes)} из {formatBytes(event.total_bytes)} · {percent}%
+          </span>
+        </div>
+        <div
+          className="progress__track"
+          role="progressbar"
+          aria-label="Копирование файлов игры"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+        >
+          <div className="progress__fill" style={{ width: `${percent}%` }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (event.kind === "scanning") {
+    return (
+      <p className="field__hint" role="status">
+        Сканируем новую папку…
+      </p>
+    );
+  }
+
+  return (
+    <p className="field__hint" role="status">
+      Папка изменена: установлено {event.installed}
+      {event.failed > 0 ? `, не прочитано ${event.failed}` : ""}.
+    </p>
   );
 }
 

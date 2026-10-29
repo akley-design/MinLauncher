@@ -42,7 +42,7 @@
 //! the jars are not opened at all. The marker is written after the
 //! unpacking, so a failed unpacking is done again next time.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -125,14 +125,25 @@ impl NativeLayout {
     /// The directory a family is unpacked into.
     ///
     /// The property of the family is looked up first; when the version
-    /// does not set it, the family falls back to the base directory.
+    /// does not set it, the family falls back to the directory the
+    /// version does name for the loader, and only then to the family
+    /// directory of the base.
     #[must_use]
     pub fn directory_for(&self, family: NativeFamily) -> PathBuf {
         let property = property_for(family);
-        match self.directories.get(property) {
-            Some(value) => PathBuf::from(value),
-            None => self.natives_directory.join(family.directory()),
+        if let Some(value) = self.directories.get(property) {
+            return PathBuf::from(value);
         }
+        // A version that names only `java.library.path` — everything from
+        // 1.13 to 1.20 — gives the loader no other place to look. Left in
+        // a family directory of its own the library is never found and
+        // LWJGL dies with “Failed to locate library: lwjgl.dll”.
+        if family != NativeFamily::System
+            && let Some(root) = self.directories.get(property_for(NativeFamily::System))
+        {
+            return PathBuf::from(root);
+        }
+        self.natives_directory.join(family.directory())
     }
 }
 
@@ -161,7 +172,7 @@ pub fn property_for(family: NativeFamily) -> &'static str {
 pub fn extract_all(jars: &[NativeJar], layout: &NativeLayout) -> Result<ExtractionReport> {
     let mut report = ExtractionReport::default();
     let marker = layout.natives_directory.join(MARKER_NAME);
-    let source = source_of(jars);
+    let source = source_of(jars, layout);
 
     // The natives are already on the disk: nothing to unpack, and no
     // jar to open.
@@ -209,7 +220,8 @@ struct Mark {
     files: Vec<(PathBuf, u64)>,
 }
 
-/// The fingerprint of the jars the natives come from.
+/// The fingerprint of the natives: the jars they come from and the
+/// directories they are unpacked into.
 ///
 /// The path, the size and the time of the last change of every jar.
 /// The time matters: a jar that was replaced by another one of the same
@@ -217,7 +229,7 @@ struct Mark {
 ///
 /// `None` when a jar cannot be read — the natives have to be unpacked
 /// again then, and the unpacking fails with a proper error.
-fn source_of(jars: &[NativeJar]) -> Option<String> {
+fn source_of(jars: &[NativeJar], layout: &NativeLayout) -> Option<String> {
     let mut sorted: Vec<&NativeJar> = jars.iter().collect();
     sorted.sort_by(|left, right| left.path.cmp(&right.path));
 
@@ -233,6 +245,17 @@ fn source_of(jars: &[NativeJar]) -> Option<String> {
             stamp.as_nanos()
         ));
     }
+    // The directories belong to the fingerprint as much as the jars do:
+    // a launcher that changed where a family is unpacked has to unpack
+    // it again, or the game looks for a library that was never put there.
+    let directories: BTreeSet<PathBuf> = jars
+        .iter()
+        .map(|jar| layout.directory_for(jar.family))
+        .collect();
+    for directory in directories {
+        lines.push(format!("into {}", directory.to_string_lossy()));
+    }
+
     Some(lines.join("\n"))
 }
 
@@ -514,10 +537,52 @@ mod tests {
             layout.directory_for(NativeFamily::Lwjgl),
             PathBuf::from("C:/natives/lwjgl")
         );
-        // A family the version does not mention falls back to the base.
+        // A family the version does not mention goes where the version
+        // tells the loader to look.
         assert_eq!(
             layout.directory_for(NativeFamily::Jna),
-            PathBuf::from("C:/natives/jna")
+            PathBuf::from("C:/natives/java")
+        );
+    }
+
+    #[test]
+    fn a_version_that_names_only_the_library_path_gets_every_family_there() {
+        let layout = NativeLayout {
+            natives_directory: PathBuf::from("C:/natives"),
+            directories: BTreeMap::from([(
+                "java.library.path".to_string(),
+                "C:/natives".to_string(),
+            )]),
+        };
+
+        // The documents of 1.13 to 1.20 name the library path and nothing
+        // else, so a library of another family has to lie in that path.
+        for family in [
+            NativeFamily::System,
+            NativeFamily::Jna,
+            NativeFamily::Lwjgl,
+            NativeFamily::Netty,
+        ] {
+            assert_eq!(layout.directory_for(family), PathBuf::from("C:/natives"));
+        }
+    }
+
+    #[test]
+    fn a_version_that_names_no_property_keeps_the_family_directories() {
+        let layout = NativeLayout {
+            natives_directory: PathBuf::from("C:/natives"),
+            directories: BTreeMap::new(),
+        };
+
+        // The versions before 1.13 have no arguments at all: the launcher
+        // names the family directories itself, in its own arguments.
+        assert_eq!(
+            layout.directory_for(NativeFamily::Lwjgl),
+            PathBuf::from("C:/natives/lwjgl")
+        );
+        assert_eq!(
+            layout.directory_for(NativeFamily::System),
+            PathBuf::from("C:/natives/java")
         );
     }
 

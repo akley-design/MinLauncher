@@ -36,12 +36,13 @@ pub mod secrets;
 
 use ml_core::{AppPaths, Error, LauncherConfig, Result};
 use rusqlite::OptionalExtension;
+use serde::{Deserialize, Serialize};
 
 pub use db::{Database, SqlitePool, now_iso8601};
 pub use json_store::JsonStore;
 pub use migrations::{MIGRATION_TABLE, MIGRATIONS, Migration, latest_version};
 pub use repo::accounts::AccountRepo;
-pub use repo::assets::{AssetIndex, AssetObject, AssetRepo};
+pub use repo::assets::{AssetIndex, AssetRepo};
 pub use repo::benchmarks::{BenchmarkRecord, BenchmarkRepo};
 pub use repo::downloads::{DownloadEntry, DownloadRepo, DownloadState, DownloadUpdate};
 pub use repo::instances::{Instance, InstanceMod, InstanceRepo};
@@ -68,6 +69,17 @@ pub struct Storage {
     benchmarks: BenchmarkRepo,
     settings: JsonStore<LauncherConfig>,
     secrets: SecretsStore,
+}
+
+/// Local state for a globally reserved offline nickname.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NicknameClaim {
+    /// Local account identifier used to find its keyring token.
+    pub account_id: String,
+    /// Nickname shown to the player.
+    pub nickname: String,
+    /// `reserved`, `conflict`, or `release_pending`.
+    pub status: String,
 }
 
 impl Storage {
@@ -201,6 +213,40 @@ impl Storage {
         self.settings.save(config)
     }
 
+    /// Forget everything that points into the game installation directory.
+    ///
+    /// The database stores absolute paths of the files of the game. When
+    /// the player moves the installation to another folder, those paths
+    /// describe files that are no longer a part of the launcher's world:
+    /// the new folder is scanned after this call and the versions that
+    /// are found there are written down again.
+    ///
+    /// The rows that only describe *metadata* — the known versions, the
+    /// accounts, the instances — are left alone.
+    ///
+    /// # Errors
+    /// Fails when the transaction cannot be executed.
+    pub fn forget_local_paths(&self) -> Result<()> {
+        let mut conn = self.database.connection()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| Error::Storage(format!("cannot start transaction: {e}")))?;
+
+        for table in ["downloads", "libraries", "asset_objects", "jres"] {
+            tx.execute(&format!("DELETE FROM {table}"), [])
+                .map_err(|e| Error::Storage(format!("cannot clear {table}: {e}")))?;
+        }
+
+        tx.execute(
+            "UPDATE versions SET installed = 0, json_path = NULL, updated_at = ?1",
+            [now_iso8601()],
+        )
+        .map_err(|e| Error::Storage(format!("cannot reset the installed versions: {e}")))?;
+
+        tx.commit()
+            .map_err(|e| Error::Storage(format!("cannot commit the reset: {e}")))
+    }
+
     /// Read a value from the generic key/value table.
     pub fn meta_get(&self, key: &str) -> Result<Option<String>> {
         let conn = self.database.connection()?;
@@ -220,6 +266,60 @@ impl Storage {
             rusqlite::params![key, value],
         )
         .map_err(|e| Error::Storage(format!("cannot write meta value: {e}")))?;
+        Ok(())
+    }
+
+    /// Save the local state of an offline nickname reservation.
+    pub fn nickname_claim_set(&self, account_id: &str, nickname: &str, status: &str) -> Result<()> {
+        if !matches!(status, "reserved" | "conflict" | "release_pending") {
+            return Err(Error::Storage("invalid nickname claim status".into()));
+        }
+        let conn = self.database.connection()?;
+        conn.execute(
+            "INSERT INTO nickname_claims (account_id, nickname, status, updated_at) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(account_id) DO UPDATE SET nickname = excluded.nickname, status = excluded.status, updated_at = excluded.updated_at",
+            rusqlite::params![account_id, nickname, status, now_iso8601()],
+        ).map_err(|e| Error::Storage(format!("cannot save nickname claim: {e}")))?;
+        Ok(())
+    }
+
+    /// Read local nickname claims, including queued releases for deleted accounts.
+    pub fn nickname_claims(&self) -> Result<Vec<NicknameClaim>> {
+        let conn = self.database.connection()?;
+        let mut statement = conn
+            .prepare("SELECT account_id, nickname, status FROM nickname_claims ORDER BY account_id")
+            .map_err(|e| Error::Storage(format!("cannot read nickname claims: {e}")))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok(NicknameClaim {
+                    account_id: row.get(0)?,
+                    nickname: row.get(1)?,
+                    status: row.get(2)?,
+                })
+            })
+            .map_err(|e| Error::Storage(format!("cannot read nickname claims: {e}")))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| Error::Storage(format!("cannot read nickname claims: {e}")))
+    }
+
+    /// Queue release of a claim while preserving its keyring token.
+    pub fn nickname_claim_queue_release(&self, account_id: &str) -> Result<bool> {
+        let conn = self.database.connection()?;
+        let changed = conn.execute(
+            "UPDATE nickname_claims SET status = 'release_pending', updated_at = ?2 WHERE account_id = ?1",
+            rusqlite::params![account_id, now_iso8601()],
+        ).map_err(|e| Error::Storage(format!("cannot queue nickname release: {e}")))?;
+        Ok(changed > 0)
+    }
+
+    /// Forget a local claim after the server confirms release.
+    pub fn nickname_claim_remove(&self, account_id: &str) -> Result<()> {
+        let conn = self.database.connection()?;
+        conn.execute(
+            "DELETE FROM nickname_claims WHERE account_id = ?1",
+            [account_id],
+        )
+        .map_err(|e| Error::Storage(format!("cannot remove nickname claim: {e}")))?;
         Ok(())
     }
 }
@@ -279,6 +379,19 @@ mod tests {
     }
 
     #[test]
+    fn nickname_release_survives_account_deletion_until_confirmed() {
+        let (_dir, storage) = storage();
+        storage
+            .nickname_claim_set("offline-u1", "Steve", "reserved")
+            .unwrap();
+        assert!(storage.nickname_claim_queue_release("offline-u1").unwrap());
+        let claims = storage.nickname_claims().unwrap();
+        assert_eq!(claims[0].status, "release_pending");
+        storage.nickname_claim_remove("offline-u1").unwrap();
+        assert_eq!(storage.nickname_claims().unwrap(), []);
+    }
+
+    #[test]
     fn schema_is_at_the_latest_version() {
         let (_dir, storage) = storage();
         assert_eq!(
@@ -300,5 +413,82 @@ mod tests {
                 .database_path
                 .ends_with(PathBuf::from("minlaucher.db"))
         );
+    }
+
+    #[test]
+    fn forgetting_the_local_paths_keeps_the_metadata() {
+        let (_dir, storage) = storage();
+        let mut meta = ml_core::VersionMeta {
+            id: "26.3".to_string(),
+            kind: ml_core::VersionKind::Release,
+            release_time: Some("2026-01-01T00:00:00+00:00".to_string()),
+            java_component: Some("java-runtime-epsilon".to_string()),
+            java_major: Some(25),
+            main_class: Some("net.minecraft.client.main.Main".to_string()),
+            asset_index_id: Some("34".to_string()),
+            asset_index_sha1: Some("abc".to_string()),
+            asset_index_size: Some(1),
+            client_sha1: Some("def".to_string()),
+            client_size: Some(1),
+            json_sha1: None,
+        };
+        storage.versions().upsert(&meta).unwrap();
+        storage
+            .versions()
+            .set_json_path("26.3", "C:/old/versions/26.3/version.json")
+            .unwrap();
+        storage.versions().set_installed("26.3", true).unwrap();
+        meta.id = "1.0".to_string();
+        storage.versions().upsert(&meta).unwrap();
+        storage.versions().set_installed("1.0", true).unwrap();
+
+        let conn = storage.database().connection().unwrap();
+        conn.execute(
+            "INSERT INTO downloads (url, state, target_path, bytes_done, attempts, updated_at)
+             VALUES ('https://example/a', 'completed', 'C:/old/a', 1, 1, 'now')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO asset_objects (version_id, hash, size, local_path, verified_at)
+             VALUES ('26.3', 'abc', 1, 'C:/old/a', 'now')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO libraries (version_id, name, artifact_path)
+             VALUES ('26.3', 'g:a:1', 'g/a/1/a.jar')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO jres (component, platform, version, path, status, updated_at)
+             VALUES ('jre-legacy', 'windows-x64', '8', 'C:/old/jre', 'ready', 'now')",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+
+        storage.forget_local_paths().unwrap();
+
+        let conn = storage.database().connection().unwrap();
+        for table in ["downloads", "asset_objects", "libraries", "jres"] {
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(count, 0, "{table} was not cleared");
+        }
+        let (installed, json_path): (i64, Option<String>) = conn
+            .query_row(
+                "SELECT installed, json_path FROM versions WHERE id = '26.3'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(installed, 0);
+        assert!(json_path.is_none());
+        assert_eq!(storage.versions().count().unwrap(), 2);
     }
 }

@@ -3,7 +3,7 @@
 use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
-use ml_core::{Error, Result};
+use ml_core::Result;
 
 use crate::db::{PooledConnection, SqlitePool, now_iso8601};
 use crate::repo::storage_error;
@@ -79,9 +79,7 @@ impl JreRepo {
     }
 
     fn conn(&self) -> Result<PooledConnection> {
-        self.pool
-            .get()
-            .map_err(|e| Error::Storage(format!("cannot acquire connection: {e}")))
+        crate::db::connection(&self.pool)
     }
 
     /// Insert or update a runtime record.
@@ -139,15 +137,6 @@ impl JreRepo {
             .map_err(|e| storage_error("cannot query java runtimes", &e))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(|e| storage_error("cannot read java runtimes", &e))
-    }
-
-    /// List the runtimes that are ready to be used.
-    pub fn list_ready(&self) -> Result<Vec<JreEntry>> {
-        Ok(self
-            .list()?
-            .into_iter()
-            .filter(|entry| entry.status == JreStatus::Ready)
-            .collect())
     }
 
     /// Forget a runtime record.
@@ -225,18 +214,5 @@ mod tests {
             .unwrap();
         assert_eq!(read.status, JreStatus::Failed);
         assert_eq!(repo.list().unwrap().len(), 1);
-    }
-
-    #[test]
-    fn ready_listing_filters_by_status() {
-        let (_db, repo) = repo();
-        repo.upsert(&entry()).unwrap();
-        let mut pending = entry();
-        pending.component = "java-runtime-delta".to_string();
-        pending.status = JreStatus::Pending;
-        repo.upsert(&pending).unwrap();
-
-        assert_eq!(repo.list().unwrap().len(), 2);
-        assert_eq!(repo.list_ready().unwrap().len(), 1);
     }
 }

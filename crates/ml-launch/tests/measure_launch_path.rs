@@ -113,8 +113,7 @@ fn the_launch_path_is_measured() {
         second.extraction.skipped
     );
 
-    // The engine of the downloads builds an HTTP client, and the launcher
-    // used to build one on every launch.
+    // The launcher builds the download engine once, not on every launch.
     let started = Instant::now();
     let _ = ml_minecraft::Downloader::new().unwrap();
     println!(
@@ -122,13 +121,11 @@ fn the_launch_path_is_measured() {
         started.elapsed().as_micros()
     );
 
-    // The Java of the runtime: the launcher used to start it, to ask it
-    // for its version.
+    // Reading the version from the `release` file is the fast path.
     let home = paths.jre_dir_for(RUNTIME);
     let executable = home.join("bin").join("java.exe");
     if executable.is_file() {
-        // The way the launcher finds the version now: the file first, the
-        // process only when the file says nothing.
+        // The file first; the process only when the file says nothing.
         for round in 1..=5 {
             let started = Instant::now();
             let _ = ml_launch::jvm::version_of(&home, &executable).unwrap();
@@ -138,8 +135,7 @@ fn the_launch_path_is_measured() {
             );
         }
 
-        // What it costs when the file is not there and the Java has to be
-        // started: this is the price the launcher no longer pays.
+        // The fallback: start Java and ask.
         for round in 1..=5 {
             let started = Instant::now();
             let _ = ml_launch::jvm::probe_version(&executable).unwrap();

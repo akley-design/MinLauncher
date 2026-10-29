@@ -17,7 +17,13 @@
 //   node scripts/latest-json.mjs --bundle-dir <dir> --version <version> \
 //     --base-url <url> [--notes <text>] [--out <file>]
 
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, join } from "node:path";
 
 const TARGET = "windows-x86_64";

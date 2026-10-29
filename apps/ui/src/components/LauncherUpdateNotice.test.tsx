@@ -52,10 +52,9 @@ describe("launcher update notice", () => {
 
     renderNotice();
 
-    expect(await screen.findByText("Доступно обновление MinLauncher 0.2.0"))
-      .toBeInTheDocument();
+    expect(await screen.findByText("Обновление MinLauncher 0.2.0")).toBeInTheDocument();
     expect(checkForUpdate).toHaveBeenCalledTimes(1);
-    await userEvent.click(screen.getByRole("button", { name: "Обновить сейчас" }));
+    await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
 
     await waitFor(() => expect(installUpdate).toHaveBeenCalledWith(answer(true).raw_json));
   });

@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use ml_core::{Account, AppPaths, FeatureSet, JavaRuntime};
+use ml_core::{Account, AppPaths, FeatureSet, JavaRuntime, LauncherConfig};
 use ml_launch::args::Session;
 use ml_launch::command::LaunchRequest;
 use ml_launch::jvm::JavaInstallation;
@@ -83,6 +83,7 @@ pub struct LaunchOptions {
 /// Fails when the version is not installed, when no account is selected,
 /// when no Java runtime is found, or when the process cannot be started.
 #[tauri::command]
+#[allow(clippy::too_many_lines)] // The launch steps run in order and share state.
 pub async fn launch_game(
     app: AppHandle,
     state: State<'_, SharedState>,
@@ -93,12 +94,12 @@ pub async fn launch_game(
     if state.running().is_some() {
         return Err(IpcError::invalid("the game is already running"));
     }
+    // The folder cannot move while a launch is being prepared, and a
+    // launch cannot start in the middle of a move.
+    let _activity = state.begin_activity()?;
 
     // --- the account and the version --------------------------------
     let (account, meta) = read_context(&state, &options)?;
-
-    // --- the request ------------------------------------------------
-    let mut request = build_request(&state, &account, &meta, &options)?;
 
     let launch_config = state.storage().load_settings().map_err(|error| {
         IpcError::with_detail(
@@ -107,6 +108,55 @@ pub async fn launch_game(
             error.to_string(),
         )
     })?;
+
+    // --- the request ------------------------------------------------
+    let paths = state.paths();
+    let phase_started = std::time::Instant::now();
+    let mut request = build_request_from(
+        state.storage(),
+        &paths,
+        state.platform(),
+        &launch_config,
+        &account,
+        &meta,
+        &options,
+    )?;
+    tracing::debug!(target: "minlaucher::performance", phase = "launch_request", version = %meta.id, elapsed_ms = phase_started.elapsed().as_millis());
+
+    if account.kind == ml_core::AccountType::Microsoft {
+        let secrets = state
+            .storage()
+            .secrets()
+            .get(&account.id)
+            .map_err(|error| {
+                IpcError::with_detail(
+                    ErrorCode::Storage,
+                    "не удалось прочитать данные Microsoft-аккаунта",
+                    error.to_string(),
+                )
+            })?
+            .ok_or_else(|| {
+                IpcError::invalid("Для Microsoft-аккаунта нужно снова войти через сайт")
+            })?;
+        let access_token = secrets
+            .access_token
+            .clone()
+            .filter(|token| !token.is_empty())
+            .ok_or_else(|| {
+                IpcError::invalid(
+                    "Токен Minecraft отсутствует. Подключите аккаунт снова через сайт.",
+                )
+            })?;
+        if minecraft_token_needs_sign_in(secrets.expires_at, chrono::Utc::now().timestamp()) {
+            return Err(IpcError::invalid(
+                "Срок входа Minecraft истёк. На сайте MinLauncher обновите вход Microsoft и снова откройте лаунчер.",
+            ));
+        }
+        request.session.access_token = access_token;
+        request.session.xuid = secrets.xuid.unwrap_or_default();
+        request.session.client_id = secrets.client_id.unwrap_or_default();
+    }
+
     ml_launch::gameoptions::apply_profile(
         &request.session.game_directory,
         launch_config.optimization.profile,
@@ -124,7 +174,9 @@ pub async fn launch_game(
     // The loader makes the game itself faster. It is optional: a
     // version of the game the loader does not support is started without
     // it, and the game is a little slower but works.
+    let phase_started = std::time::Instant::now();
     prepare_loader(&state, &mut request, &meta.id).await;
+    tracing::debug!(target: "minlaucher::performance", phase = "prepare_loader", version = %meta.id, elapsed_ms = phase_started.elapsed().as_millis());
 
     // The scenario of the run is known now: the preset of the mod that
     // was in the game. The runs with the mod and without it are stored
@@ -140,6 +192,7 @@ pub async fn launch_game(
     // --- the command ------------------------------------------------
     let platform = state.platform();
     let features = features_for(&request);
+    let phase_started = std::time::Instant::now();
     let prepared = ml_launch::prepare(&request, platform, &features, meta.kind.as_manifest_str())
         .map_err(|error| {
         IpcError::with_detail(
@@ -148,10 +201,12 @@ pub async fn launch_game(
             error.to_string(),
         )
     })?;
+    tracing::debug!(target: "minlaucher::performance", phase = "prepare_command_and_natives", version = %meta.id, elapsed_ms = phase_started.elapsed().as_millis(), natives_cache_hit = prepared.extraction.skipped, native_files = prepared.extraction.files.len());
 
     let command_line = prepared.display();
 
     let supervisor = Supervisor::new(prepared.command);
+    let phase_started = std::time::Instant::now();
     let process = supervisor.start().map_err(|error| {
         IpcError::with_detail(
             ErrorCode::Launch,
@@ -159,6 +214,7 @@ pub async fn launch_game(
             error.to_string(),
         )
     })?;
+    tracing::debug!(target: "minlaucher::performance", phase = "spawn_game_process", version = %meta.id, elapsed_ms = phase_started.elapsed().as_millis());
 
     let game = RunningGame {
         pid: process.id(),
@@ -194,6 +250,10 @@ pub async fn launch_game(
         game,
         prepare_ms: started_at.elapsed().as_millis() as u64,
     })
+}
+
+fn minecraft_token_needs_sign_in(expires_at: Option<i64>, now: i64) -> bool {
+    expires_at.is_none_or(|expires_at| expires_at <= now.saturating_add(120))
 }
 
 /// The account and the version a launch needs.
@@ -377,13 +437,12 @@ fn store_agent_report(state: &SharedState, path: &std::path::Path, scenario: &st
 
     // The measurements are also written into the file of the scenario,
     // so that a measurer outside can pick them up.
+    let paths = state.paths();
     for (metric, sample) in [
         (ml_bench::Metric::InGameFps, measurements.fps),
         (ml_bench::Metric::InGameFrametime, measurements.frametime_ms),
     ] {
-        if let Err(error) =
-            ml_bench::samples::append(state.paths(), scenario, metric, sample, &meta)
-        {
+        if let Err(error) = ml_bench::samples::append(&paths, scenario, metric, sample, &meta) {
             tracing::warn!("the measurement of {} was not written: {error}", metric);
         }
     }
@@ -392,7 +451,7 @@ fn store_agent_report(state: &SharedState, path: &std::path::Path, scenario: &st
     // database stores its summary, so each session refreshes the summary
     // from all runs collected under this scenario instead of replacing it
     // with a one-run "benchmark".
-    let samples_path = ml_bench::samples::scenario_file(state.paths(), scenario);
+    let samples_path = ml_bench::samples::scenario_file(&paths, scenario);
     let Ok(samples) = ml_bench::SampleFile::read(&samples_path) else {
         tracing::warn!(
             "cannot read the accumulated game samples at {}",
@@ -427,9 +486,8 @@ fn scenario_of_run(state: &SharedState, mod_is_in_the_game: bool) -> String {
         return ml_bench::scenario_without_mod();
     }
 
-    let config = match state.storage().load_settings() {
-        Ok(config) => config,
-        Err(_) => return ml_bench::scenario_without_mod(),
+    let Ok(config) = state.storage().load_settings() else {
+        return ml_bench::scenario_without_mod();
     };
 
     if config.optimization.profile == ml_core::GamePerformanceProfile::MaxFps {
@@ -538,14 +596,15 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// Everything that has to be known before the game can start is put
 /// together here: the version document, the Java runtime, the libraries
 /// and the session.
-fn build_request(
-    state: &SharedState,
+pub fn build_request_from(
+    storage: &ml_storage::Storage,
+    paths: &AppPaths,
+    platform: ml_core::Platform,
+    config: &LauncherConfig,
     account: &Account,
     meta: &ml_core::VersionMeta,
     options: &LaunchOptions,
 ) -> IpcResult<LaunchRequest> {
-    let storage = state.storage();
-
     // --- the version document ---------------------------------------
     let version_json_path = storage
         .versions()
@@ -572,7 +631,7 @@ fn build_request(
     let version = ml_minecraft::version::VersionJson::parse(&version_bytes)?;
 
     // --- the java runtime -------------------------------------------
-    let java = find_java(state, meta, options.java_path.as_deref())?;
+    let java = find_java(paths, meta, options.java_path.as_deref())?;
 
     // --- the libraries ----------------------------------------------
     //
@@ -580,26 +639,25 @@ fn build_request(
     // database: the database knows what was downloaded, and the rules
     // know what is needed. The path of every jar is derived from its
     // coordinate, so the two never have to be reconciled.
-    let platform = state.platform();
     let libraries = version.resolve_libraries(platform, Some(&meta.id));
 
     // --- the session ------------------------------------------------
-    let session = build_session(state, account, meta, options);
+    let session = build_session(paths, account, meta, options);
 
     // --- the agent --------------------------------------------------
     //
     // The agent measures the game from the inside. It is optional: a
     // game without it runs perfectly well, it is only not measured.
-    let agent = agent_for(state, &meta.id);
+    let agent = agent_for(paths, config, &meta.id);
 
     Ok(LaunchRequest {
         version,
         libraries,
         java,
         session,
-        client_jar: state.paths().version_dir(&meta.id).join("client.jar"),
-        library_directory: library_directory(state.paths()),
-        extra_jvm_args: extra_jvm_args(state),
+        client_jar: paths.version_dir(&meta.id).join("client.jar"),
+        library_directory: library_directory(paths),
+        extra_jvm_args: extra_jvm_args_from(config),
         agent_jar: agent.as_ref().map(|agent| agent.jar.clone()),
         agent_report: agent.as_ref().map(|agent| agent.report.clone()),
         loader: None,
@@ -615,9 +673,12 @@ fn build_request(
 /// those cases the game is started without the loader, and the launcher
 /// says why in its log.
 async fn prepare_loader(state: &SharedState, request: &mut LaunchRequest, version_id: &str) {
-    if request.version.main_class.as_deref() == Some("cpw.mods.bootstraplauncher.BootstrapLauncher")
+    if version_id.contains("-forge-")
+        || version_id.starts_with("fabric-loader-")
+        || request.version.main_class.as_deref()
+            == Some("cpw.mods.bootstraplauncher.BootstrapLauncher")
     {
-        tracing::info!("Forge profile already provides its own mod loader");
+        tracing::info!("the selected profile already provides its mod loader");
         return;
     }
     let Ok(config) = state.storage().load_settings() else {
@@ -632,7 +693,8 @@ async fn prepare_loader(state: &SharedState, request: &mut LaunchRequest, versio
     // The loader needs a version of the game it supports. The answers of
     // the project are kept on the disk, so that the second launch of a
     // version does not wait for a server that may be slow or down.
-    let cache = crate::commands::fabric::LoaderCache::new(state.paths());
+    let paths = state.paths();
+    let cache = crate::commands::fabric::LoaderCache::new(&paths);
 
     let Some(loader_version) = crate::commands::fabric::loader_version_for(
         &crate::commands::fabric::NetworkFetcher::default(),
@@ -665,7 +727,7 @@ async fn prepare_loader(state: &SharedState, request: &mut LaunchRequest, versio
     // The libraries of the loader go into the same store the libraries
     // of the game go into.
     if let Err(error) =
-        crate::commands::fabric::download_libraries(state.paths(), state.platform(), &profile).await
+        crate::commands::fabric::download_libraries(&paths, state.platform(), &profile).await
     {
         tracing::warn!("cannot download the libraries of the loader: {error}");
         return;
@@ -746,17 +808,16 @@ fn mod_jar_to_install<'a>(source: &'a Path, version_id: &str) -> Option<&'a Path
 }
 
 /// The agent to attach to the game, when the settings ask for it.
-fn agent_for(state: &SharedState, version_id: &str) -> Option<crate::commands::agent::Agent> {
-    let enabled = state
-        .storage()
-        .load_settings()
-        .map_or(true, |config| config.jvm.enable_agent);
-
-    if !enabled {
+fn agent_for(
+    paths: &AppPaths,
+    config: &LauncherConfig,
+    version_id: &str,
+) -> Option<crate::commands::agent::Agent> {
+    if !config.jvm.enable_agent {
         return None;
     }
 
-    crate::commands::agent::prepare(state.paths(), version_id)
+    crate::commands::agent::prepare(paths, version_id)
 }
 
 /// The runtime a version needs.
@@ -779,7 +840,7 @@ fn runtime_for(meta: &ml_core::VersionMeta) -> JavaRuntime {
 
 /// Find the Java runtime the version needs.
 fn find_java(
-    state: &SharedState,
+    paths: &AppPaths,
     meta: &ml_core::VersionMeta,
     explicit: Option<&str>,
 ) -> IpcResult<JavaInstallation> {
@@ -787,7 +848,7 @@ fn find_java(
 
     let explicit = explicit.map(PathBuf::from);
 
-    ml_launch::jvm::find_runtime(state.paths(), &runtime, explicit.as_deref()).map_err(|error| {
+    ml_launch::jvm::find_runtime(paths, &runtime, explicit.as_deref()).map_err(|error| {
         IpcError::with_detail(
             ErrorCode::Launch,
             "cannot find a java runtime",
@@ -798,13 +859,11 @@ fn find_java(
 
 /// Build the session of the launch.
 fn build_session(
-    state: &SharedState,
+    paths: &AppPaths,
     account: &Account,
     meta: &ml_core::VersionMeta,
     options: &LaunchOptions,
 ) -> Session {
-    let paths = state.paths();
-
     let game_directory = match &options.instance_id {
         Some(id) => paths.instance_dir(id),
         None => paths.instance_dir("default"),
@@ -841,7 +900,7 @@ fn build_session(
 
 /// The directory the libraries live in.
 fn library_directory(paths: &AppPaths) -> PathBuf {
-    paths.cache_dir.join("libraries")
+    paths.libraries_dir.clone()
 }
 
 /// The features the launcher can turn on for the rules of the version.
@@ -859,12 +918,17 @@ fn features_for(request: &LaunchRequest) -> FeatureSet {
     }
 }
 
-/// The extra JVM arguments the settings ask for.
+/// The extra JVM arguments the settings of the launcher ask for.
+#[cfg(test)]
 fn extra_jvm_args(state: &SharedState) -> Vec<String> {
-    let Ok(config) = state.storage().load_settings() else {
-        return Vec::new();
-    };
+    state
+        .storage()
+        .load_settings()
+        .map_or_else(|_| Vec::new(), |config| extra_jvm_args_from(&config))
+}
 
+/// The extra JVM arguments of one settings value.
+fn extra_jvm_args_from(config: &LauncherConfig) -> Vec<String> {
     let mut args = Vec::new();
 
     if !config.jvm.max_heap.is_empty() {
@@ -915,9 +979,6 @@ fn extra_jvm_args(state: &SharedState) -> Vec<String> {
     args
 }
 
-/// The process of a running game, kept so that the launcher can stop it.
-pub type RunningProcess = GameProcess;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -925,6 +986,15 @@ mod tests {
 
     use ml_core::{OsArch, OsName, Platform};
     use ml_minecraft::library::ResolvedLibrary;
+
+    #[test]
+    fn an_expired_minecraft_token_requires_a_new_sign_in() {
+        assert!(minecraft_token_needs_sign_in(Some(99), 100));
+        assert!(minecraft_token_needs_sign_in(Some(220), 100));
+        assert!(!minecraft_token_needs_sign_in(Some(221), 100));
+        assert!(minecraft_token_needs_sign_in(None, 100));
+        assert!(minecraft_token_needs_sign_in(None, i64::MAX));
+    }
 
     fn library(name: &str) -> ResolvedLibrary {
         ResolvedLibrary {
@@ -1201,6 +1271,16 @@ mod tests {
 
         request.session.resolution_height = Some(1080);
         assert!(features_for(&request).is_enabled("has_custom_resolution"));
+    }
+
+    #[test]
+    fn the_library_directory_follows_the_chosen_root() {
+        let paths = AppPaths::new("C:/data", "C:/cache")
+            .rebase_install_root(Some(Path::new("E:/MinLauncher")));
+        assert_eq!(
+            library_directory(&paths),
+            PathBuf::from("E:/MinLauncher/libraries")
+        );
     }
 
     #[test]

@@ -30,6 +30,7 @@ pub mod fabric;
 pub mod identity;
 pub mod instances;
 pub mod launch;
+pub mod modloaders;
 pub mod runtimes;
 pub mod settings;
 pub mod throttle;

@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const mocks = vi.hoisted(() => ({
   onOpenUrl: vi.fn(),
@@ -9,11 +10,18 @@ const mocks = vi.hoisted(() => ({
   exchangeCodeForSession: vi.fn(),
   onAuthStateChange: vi.fn(),
   getSession: vi.fn(),
+  invoke: vi.fn(),
+  upsertMinLauncherAccount: vi.fn(),
   unsubscribe: vi.fn(),
   deepLinkHandler: null as null | ((urls: string[]) => void),
-  authStateHandler: null as null | ((event: string, session: {
-    user: { email: string; user_metadata: Record<string, unknown> };
-  } | null) => void),
+  authStateHandler: null as
+    | null
+    | ((
+        event: string,
+        session: {
+          user: { email: string; user_metadata: Record<string, unknown> };
+        } | null,
+      ) => void),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
@@ -30,6 +38,7 @@ vi.mock("../auth", () => ({
       signInWithOAuth: mocks.signInWithOAuth,
       exchangeCodeForSession: mocks.exchangeCodeForSession,
     },
+    functions: { invoke: mocks.invoke },
   },
   parseMinLauncherUrl: (raw: string) => {
     const url = new URL(raw);
@@ -39,8 +48,21 @@ vi.mock("../auth", () => ({
     return code ? { kind: "oauth", code } : null;
   },
 }));
+vi.mock("../ipc/client", () => ({
+  listAccounts: vi.fn(),
+  upsertMinLauncherAccount: mocks.upsertMinLauncherAccount,
+}));
 
 import { MinLauncherAccount } from "./MinLauncherAccount";
+
+function renderAccount() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MinLauncherAccount />
+    </QueryClientProvider>,
+  );
+}
 
 describe("MinLauncherAccount OAuth return", () => {
   beforeEach(() => {
@@ -53,8 +75,17 @@ describe("MinLauncherAccount OAuth return", () => {
     });
     mocks.getCurrent.mockResolvedValue(null);
     mocks.open.mockResolvedValue(undefined);
-    mocks.signInWithOAuth.mockResolvedValue({ data: { url: "https://auth.example/oauth" }, error: null });
+    mocks.signInWithOAuth.mockResolvedValue({
+      data: { url: "https://auth.example/oauth" },
+      error: null,
+    });
     mocks.exchangeCodeForSession.mockResolvedValue({ error: null });
+    mocks.invoke.mockResolvedValue({ data: { profile: null }, error: null });
+    mocks.upsertMinLauncherAccount.mockResolvedValue({
+      accounts: [],
+      selected_id: null,
+      nickname_claims: [],
+    });
     mocks.onAuthStateChange.mockImplementation((handler) => {
       mocks.authStateHandler = (event, session) => handler(event, session);
       return { data: { subscription: { unsubscribe: mocks.unsubscribe } } };
@@ -63,7 +94,7 @@ describe("MinLauncherAccount OAuth return", () => {
   });
 
   it("clears browser waiting and allows retry when the provider returns an OAuth error", async () => {
-    render(<MinLauncherAccount />);
+    renderAccount();
     fireEvent.click(screen.getByRole("button", { name: "Войти через Google" }));
     expect(await screen.findByText(/Ожидаем подтверждение в браузере/)).toBeInTheDocument();
 
@@ -75,13 +106,15 @@ describe("MinLauncherAccount OAuth return", () => {
     });
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Google отклонил вход");
-    await waitFor(() => expect(screen.queryByText(/Ожидаем подтверждение в браузере/)).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByText(/Ожидаем подтверждение в браузере/)).not.toBeInTheDocument(),
+    );
     expect(screen.getByRole("button", { name: "Войти через Google" })).toBeEnabled();
   });
 
   it("shows PKCE exchange errors and lets the user retry", async () => {
     mocks.exchangeCodeForSession.mockResolvedValue({ error: new Error("PKCE-код устарел") });
-    render(<MinLauncherAccount />);
+    renderAccount();
     fireEvent.click(screen.getByRole("button", { name: "Войти через Google" }));
     expect(await screen.findByText(/Ожидаем подтверждение в браузере/)).toBeInTheDocument();
 
@@ -91,12 +124,14 @@ describe("MinLauncherAccount OAuth return", () => {
     });
 
     expect(await screen.findByRole("alert")).toHaveTextContent("PKCE-код устарел");
-    await waitFor(() => expect(screen.queryByText(/Ожидаем подтверждение в браузере/)).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByText(/Ожидаем подтверждение в браузере/)).not.toBeInTheDocument(),
+    );
     expect(screen.getByRole("button", { name: "Войти через Google" })).toBeEnabled();
   });
 
   it("shows the account and ends browser waiting after a successful PKCE exchange", async () => {
-    render(<MinLauncherAccount />);
+    renderAccount();
     fireEvent.click(screen.getByRole("button", { name: "Войти через Google" }));
     expect(await screen.findByText(/Ожидаем подтверждение в браузере/)).toBeInTheDocument();
 
@@ -118,10 +153,13 @@ describe("MinLauncherAccount OAuth return", () => {
 
   it("registers the URL listener before reading a cold-start deep link", async () => {
     let finishRegistration: ((unlisten: () => void) => void) | undefined;
-    mocks.onOpenUrl.mockImplementation(() => new Promise((resolve) => {
-      finishRegistration = resolve;
-    }));
-    render(<MinLauncherAccount />);
+    mocks.onOpenUrl.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishRegistration = resolve;
+        }),
+    );
+    renderAccount();
 
     await waitFor(() => expect(finishRegistration).toBeTypeOf("function"));
     expect(mocks.getCurrent).not.toHaveBeenCalled();

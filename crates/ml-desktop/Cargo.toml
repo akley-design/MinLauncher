@@ -1,5 +1,6 @@
 [package]
 name = "ml-desktop"
+default-run = "minlaucher"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,15 +14,16 @@ workspace = true
 
 [lib]
 name = "ml_desktop"
-# Only the library is built. The `staticlib` and the `cdylib` are what
-# the mobile targets need, and this project has none: every release
-# build paid for three copies of the same code — with the link time
-# that goes with them — to produce two files nobody uses.
+# No mobile targets, so no `staticlib` or `cdylib`.
 crate-type = ["rlib"]
 
 [[bin]]
 name = "minlaucher"
 path = "src/main.rs"
+
+[[bin]]
+name = "verify-all"
+path = "src/bin/verify_all.rs"
 
 [build-dependencies]
 tauri-build.workspace = true
@@ -45,18 +47,19 @@ tauri-plugin-deep-link.workspace = true
 keyring.workspace = true
 tokio.workspace = true
 reqwest.workspace = true
+url.workspace = true
 sha2.workspace = true
 hex.workspace = true
 uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
+anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-once_cell.workspace = true
 parking_lot.workspace = true
 chrono.workspace = true
-dirs.workspace = true
+walkdir.workspace = true
+fs2.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

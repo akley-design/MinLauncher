@@ -4,7 +4,7 @@
 *.pdb
 *.dll
 *.exe
-!/scripts/*.exe
+*.blend1
 
 # --- Node / frontend ---
 node_modules/
@@ -15,8 +15,10 @@ dist-ssr/
 
 # --- Tauri ---
 /crates/ml-desktop/gen/
-/apps/ui/src-tauri/target/
-/apps/ui/src-tauri/gen/
+
+# --- Generated design captures ---
+docs/living-dioramas/
+.wrangler/
 
 # --- Java / Gradle ---
 .gradle/
@@ -57,6 +59,9 @@ dist-ssr/
 *.key
 credentials.json
 secrets.json
+
+# --- Local research notes ---
+.grill/
 
 # --- Editors / OS ---
 .idea/

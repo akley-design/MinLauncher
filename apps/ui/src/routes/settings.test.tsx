@@ -21,6 +21,7 @@ import { SettingsRoute } from "./settings";
 // test knows anything about the IPC.
 const readSettings = vi.fn<() => Promise<SettingsView>>();
 const writeSettings = vi.fn<(config: LauncherConfig) => Promise<void>>();
+const pickInstallDirectory = vi.fn<() => Promise<string | null>>();
 
 vi.mock("../ipc/client", async () => {
   const actual = await vi.importActual<typeof import("../ipc/client")>("../ipc/client");
@@ -28,9 +29,14 @@ vi.mock("../ipc/client", async () => {
     ...actual,
     readSettings: () => readSettings(),
     writeSettings: (config: LauncherConfig) => writeSettings(config),
+    pickInstallDirectory: () => pickInstallDirectory(),
     listRuntimes: () => Promise.resolve([]),
   };
 });
+
+vi.mock("../ipc/events", () => ({
+  onInstallRootEvent: () => Promise.resolve(() => {}),
+}));
 
 /** The settings the backend sends. */
 function settings(
@@ -44,6 +50,7 @@ function settings(
     autostart: false,
     default_version: null,
     default_jre: "auto",
+    install_dir: "",
     show_console: false,
     downloads: {
       max_concurrent: 8,
@@ -83,7 +90,13 @@ function settings(
       data: "C:/Users/player/AppData/Roaming/MinLauncher",
       cache: "C:/Users/player/AppData/Local/MinLauncher/cache",
       database: "C:/Users/player/AppData/Roaming/MinLauncher/minlaucher.db",
+      install: "",
+      versions: "C:/Users/player/AppData/Roaming/MinLauncher/versions",
+      libraries: "C:/Users/player/AppData/Local/MinLauncher/libraries",
+      assets: "C:/Users/player/AppData/Local/MinLauncher/assets",
+      runtimes: "C:/Users/player/AppData/Local/MinLauncher/runtimes",
     },
+    install_dir_error: null,
     autostart_supported: autostartSupported,
     jvm_flags: [
       {
@@ -145,7 +158,9 @@ describe("the screen of the settings", () => {
   beforeEach(() => {
     readSettings.mockReset();
     writeSettings.mockReset();
+    pickInstallDirectory.mockReset();
     writeSettings.mockResolvedValue(undefined);
+    pickInstallDirectory.mockResolvedValue(null);
   });
 
   it("shows what the backend sent", async () => {
@@ -312,6 +327,72 @@ describe("the screen of the settings", () => {
 
     expect(screen.getByText(/311 ms старта, 1499 МиБ в игре/)).toBeInTheDocument();
     expect(screen.getByText(/246 ms старта, 1758 МиБ в игре/)).toBeInTheDocument();
+  });
+
+  it("shows the installation folder and the effective game paths", async () => {
+    const view = settings({ install_dir: "E:/MinLauncher" });
+    view.directories.install = "E:/MinLauncher";
+    view.directories.versions = "E:/MinLauncher/versions";
+    view.directories.libraries = "E:/MinLauncher/libraries";
+    readSettings.mockResolvedValue(view);
+    renderScreen();
+
+    const folder = await screen.findByLabelText("Папка установки");
+    expect(folder).toHaveValue("E:/MinLauncher");
+    expect(screen.getByText("E:/MinLauncher/versions")).toBeInTheDocument();
+    expect(screen.getByText("E:/MinLauncher/libraries")).toBeInTheDocument();
+  });
+
+  it("lets the player choose a folder with the native picker", async () => {
+    readSettings.mockResolvedValue(settings());
+    pickInstallDirectory.mockResolvedValue("E:/Games/Minecraft");
+    renderScreen();
+
+    const folder = await screen.findByLabelText("Папка установки");
+    await userEvent.click(screen.getByRole("button", { name: "Выбрать…" }));
+
+    await waitFor(() => expect(folder).toHaveValue("E:/Games/Minecraft"));
+  });
+
+  it("sends the chosen installation folder on save", async () => {
+    readSettings.mockResolvedValue(settings());
+    renderScreen();
+
+    const folder = await screen.findByLabelText("Папка установки");
+    await userEvent.clear(folder);
+    await userEvent.click(folder);
+    await userEvent.paste("E:\\MinLauncher");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+    await waitFor(() => expect(writeSettings).toHaveBeenCalledTimes(1));
+    expect(writeSettings.mock.calls[0]?.[0]?.install_dir).toBe("E:\\MinLauncher");
+  });
+
+  it("resets the installation folder to the default layout", async () => {
+    readSettings.mockResolvedValue(settings({ install_dir: "E:/MinLauncher" }));
+    renderScreen();
+
+    const folder = await screen.findByLabelText("Папка установки");
+    expect(folder).toHaveValue("E:/MinLauncher");
+
+    await userEvent.click(screen.getByRole("button", { name: "Сбросить" }));
+    expect(folder).toHaveValue("");
+
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(writeSettings).toHaveBeenCalledTimes(1));
+    expect(writeSettings.mock.calls[0]?.[0]?.install_dir).toBe("");
+  });
+
+  it("shows why the configured folder is not in use", async () => {
+    const view = settings({ install_dir: "E:/MinLauncher" });
+    view.install_dir_error = "the disk E is not available";
+    readSettings.mockResolvedValue(view);
+    renderScreen();
+
+    expect(
+      await screen.findByText(/Настройка указывает на папку, которую не удалось открыть/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/the disk E is not available/)).toBeInTheDocument();
   });
 
   it("shows the failure of the backend instead of the form", async () => {

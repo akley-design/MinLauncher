@@ -101,7 +101,7 @@ export function DownloadsRoute() {
   }
 
   return (
-    <div className="screen">
+    <div className="screen downloads-screen">
       <div className="screen__header">
         <div>
           <div className="screen__eyebrow">Центр загрузок</div>
@@ -246,10 +246,8 @@ export function DownloadsRoute() {
       <section className="card">
         <div className="card__title">Что такое очередь</div>
         <p className="field__hint">
-          Каждая задача — одна установка: версия или среда Java. Под ней лежат файлы, которые
-          лаунчер для неё качал. Неудачный файл можно перекачать ещё раз: файл пишется рядом с
-          нужным местом и переносится на место только тогда, когда его целиком скачали и сверили с
-          контрольной суммой.
+          Открой задачу, чтобы увидеть её файлы. Если загрузка прервалась, нажми «Повторить» рядом с
+          неудачным файлом. Лаунчер проверит его целостность перед установкой.
         </p>
       </section>
     </div>

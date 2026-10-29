@@ -33,6 +33,15 @@ pub type SqlitePool = Pool<SqliteConnectionManager>;
 /// connection; the connection itself is reached through `Deref`.
 pub type PooledConnection = r2d2::PooledConnection<SqliteConnectionManager>;
 
+/// Borrow a connection, flattening the pool error into a storage error.
+///
+/// # Errors
+/// Fails when the pool cannot hand out a connection.
+pub fn connection(pool: &SqlitePool) -> Result<PooledConnection> {
+    pool.get()
+        .map_err(|e| Error::Storage(format!("cannot acquire connection: {e}")))
+}
+
 /// Handle to the launcher's database.
 #[derive(Debug, Clone)]
 pub struct Database {

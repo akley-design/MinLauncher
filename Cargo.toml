@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1-beta"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT OR Apache-2.0"
@@ -20,11 +20,11 @@ description = "Fast Minecraft launcher with an optimized Rust core and an optimi
 
 [workspace.dependencies]
 # --- internal ---
-ml-core = { path = "crates/ml-core", version = "0.1.0" }
-ml-storage = { path = "crates/ml-storage", version = "0.1.0" }
-ml-minecraft = { path = "crates/ml-minecraft", version = "0.1.0" }
-ml-launch = { path = "crates/ml-launch", version = "0.1.0" }
-ml-bench = { path = "crates/ml-bench", version = "0.1.0" }
+ml-core = { path = "crates/ml-core", version = "0.1.1-beta" }
+ml-storage = { path = "crates/ml-storage", version = "0.1.1-beta" }
+ml-minecraft = { path = "crates/ml-minecraft", version = "0.1.1-beta" }
+ml-launch = { path = "crates/ml-launch", version = "0.1.1-beta" }
+ml-bench = { path = "crates/ml-bench", version = "0.1.1-beta" }
 
 # --- errors & logging ---
 thiserror = "2.0.21"
@@ -43,20 +43,21 @@ tokio = { version = "1.53.3", features = [
     "time",
 ] }
 futures = "0.3"
-futures-util = "0.3.34"
 
 # --- serialization ---
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 
 # --- http ---
-reqwest = { version = "0.13.5", features = ["gzip", "brotli", "json", "stream"] }
+reqwest = { version = "0.13.5", features = ["gzip", "brotli", "json", "stream", "query"] }
 url = "2"
-bytes = "1"
 sha1 = "0.10"
 sha2 = "0.11"
 md-5 = "0.10"
 hex = "0.4"
+aes-gcm = "0.10.3"
+getrandom = "0.4.3"
+pbkdf2 = "0.13.0"
 
 # --- storage ---
 rusqlite = { version = "0.40.2", features = [
@@ -69,20 +70,15 @@ r2d2 = "0.8.10"
 r2d2_sqlite = "0.35.0"
 
 # --- filesystem & compression ---
-tokio-util = { version = "0.7", features = ["io"] }
 walkdir = "2.5.0"
-rayon = "1.12.0"
+fs2 = "0.4.3"
 zip = "9.0.5"
-flate2 = "1"
-zstd = "0.14.3"
 
 # --- utilities ---
 uuid = { version = "1.28.0", features = ["v4", "serde"] }
 dirs = "7.0.0"
-once_cell = "1.21.4"
 parking_lot = "0.12.5"
 chrono = { version = "0.4", features = ["serde"] }
-semver = "1"
 regex = "1"
 
 # --- windows ---

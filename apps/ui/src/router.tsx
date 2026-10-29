@@ -1,15 +1,8 @@
 /**
- * The routes of the launcher.
+ * The six screens of the launcher.
  *
- * The router is built in code, not from files. A launcher has six
- * screens and they never change; a file-based router would add a build
- * plugin and a directory layout to say the same thing as twenty lines
- * of code.
- *
- * The history is a hash one. The frontend is served from a custom
- * protocol, where the path of the document is not the path of the
- * application — a deep link would ask the protocol for a file that does
- * not exist. The hash avoids the problem entirely.
+ * Hash history is not a preference: the frontend runs on a custom
+ * protocol, where a path deep link asks for a file that does not exist.
  */
 
 import {
@@ -18,22 +11,33 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
+import { lazy } from "react";
 
 import { AppShell } from "./components/AppShell";
-import { DownloadsRoute } from "./routes/downloads";
-import { HomeRoute } from "./routes/home";
-import { InstancesRoute } from "./routes/instances";
-import { PerformanceRoute } from "./routes/performance";
-import { SettingsRoute } from "./routes/settings";
-import { VersionsRoute } from "./routes/versions";
 
-/**
- * The root of the route tree.
- *
- * The shell is the root, so that the frame is mounted once and the
- * screens are swapped inside it. The player must not see the sidebar
- * blink when they move from one screen to another.
- */
+// These lazy components are route values, not Fast Refresh exports.
+/* eslint-disable react-refresh/only-export-components */
+const DownloadsRoute = lazy(async () => ({
+  default: (await import("./routes/downloads")).DownloadsRoute,
+}));
+const HomeRoute = lazy(async () => ({
+  default: (await import("./routes/home")).HomeRoute,
+}));
+const InstancesRoute = lazy(async () => ({
+  default: (await import("./routes/instances")).InstancesRoute,
+}));
+const PerformanceRoute = lazy(async () => ({
+  default: (await import("./routes/performance")).PerformanceRoute,
+}));
+const SettingsRoute = lazy(async () => ({
+  default: (await import("./routes/settings")).SettingsRoute,
+}));
+const VersionsRoute = lazy(async () => ({
+  default: (await import("./routes/versions")).VersionsRoute,
+}));
+/* eslint-enable react-refresh/only-export-components */
+
+/** The shell is the root, so the frame mounts once and does not blink on navigation. */
 const rootRoute = createRootRoute({
   component: AppShell,
 });

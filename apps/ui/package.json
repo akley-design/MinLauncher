@@ -1,7 +1,7 @@
 {
   "name": "@minlaucher/ui",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1-beta",
   "type": "module",
   "description": "MinLauncher desktop interface",
   "scripts": {
@@ -25,7 +25,8 @@
     "@tauri-apps/plugin-shell": "^2.5.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "zustand": "^5.0.15"
+    "zustand": "^5.0.15",
+    "@minlauncher/visuals": "*"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

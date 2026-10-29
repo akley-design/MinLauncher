@@ -17,6 +17,13 @@ describe("parseMinLauncherUrl", () => {
     });
   });
 
+  it("accepts a Microsoft Minecraft handoff as its own action", () => {
+    expect(parseMinLauncherUrl("minlauncher://auth/minecraft?code=game-token-handoff")).toEqual({
+      kind: "minecraft",
+      code: "game-token-handoff",
+    });
+  });
+
   it("rejects unrelated schemes, paths and malformed input", () => {
     expect(parseMinLauncherUrl("https://auth/callback?code=x")).toBeNull();
     expect(parseMinLauncherUrl("minlauncher://other/callback?code=x")).toBeNull();

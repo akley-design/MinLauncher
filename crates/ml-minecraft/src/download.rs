@@ -17,6 +17,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use futures::stream::StreamExt;
@@ -33,6 +34,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 /// number pays off. The cap keeps the memory use and the number of open
 /// sockets reasonable.
 pub const DEFAULT_CONCURRENCY: usize = 16;
+
+/// Maximum number of simultaneous downloads accepted by the launcher.
+pub const MAX_CONCURRENCY: usize = 64;
 
 /// How many times a download is retried before it is given up on.
 pub const DEFAULT_ATTEMPTS: u32 = 4;
@@ -166,9 +170,13 @@ pub type ProgressCallback = Arc<dyn Fn(DownloadProgress) + Send + Sync>;
 #[derive(Debug, Clone)]
 pub struct Downloader {
     http: reqwest::Client,
-    concurrency: usize,
+    concurrency: Arc<AtomicUsize>,
     attempts: u32,
     backoff: Duration,
+}
+
+fn normalize_concurrency(concurrency: usize) -> usize {
+    concurrency.clamp(1, MAX_CONCURRENCY)
 }
 
 impl Downloader {
@@ -189,16 +197,26 @@ impl Downloader {
             .user_agent(concat!("MinLauncher/", env!("CARGO_PKG_VERSION")))
             .timeout(Duration::from_secs(300))
             .connect_timeout(Duration::from_secs(20))
-            .pool_max_idle_per_host(concurrency)
+            .pool_max_idle_per_host(MAX_CONCURRENCY)
             .build()
             .map_err(|e| Error::network("http client", e))?;
 
         Ok(Self {
             http,
-            concurrency: concurrency.max(1),
+            concurrency: Arc::new(AtomicUsize::new(normalize_concurrency(concurrency))),
             attempts: attempts.max(1),
             backoff,
         })
+    }
+
+    /// Change the number of downloads run at once.
+    ///
+    /// Clones of this downloader share the new limit. The change applies
+    /// to batches started after this call; batches already running keep
+    /// their original limit.
+    pub fn set_concurrency(&self, concurrency: usize) {
+        self.concurrency
+            .store(normalize_concurrency(concurrency), Ordering::Relaxed);
     }
 
     /// Download a batch of files.
@@ -230,7 +248,7 @@ impl Downloader {
                         }
                     }
                 })
-                .buffer_unordered(self.concurrency)
+                .buffer_unordered(self.concurrency.load(Ordering::Relaxed))
                 .collect()
                 .await;
 
@@ -324,7 +342,7 @@ impl Downloader {
                         result
                     }
                 })
-                .buffer_unordered(self.concurrency)
+                .buffer_unordered(self.concurrency.load(Ordering::Relaxed))
                 .collect()
                 .await;
 
@@ -402,7 +420,16 @@ async fn download_once(http: &reqwest::Client, task: &DownloadTask) -> Result<Do
         let size_matches = task
             .size
             .is_none_or(|size| metadata.len() == size.cast_unsigned());
-        if size_matches {
+        let checksum_matches = if let Some(expected) = &task.sha1 {
+            let target = task.target.clone();
+            let expected = expected.clone();
+            tokio::task::spawn_blocking(move || matches_hash(&target, &expected))
+                .await
+                .unwrap_or(false)
+        } else {
+            true
+        };
+        if size_matches && checksum_matches {
             return Ok(DownloadOutcome {
                 url: task.url.clone(),
                 target: task.target.clone(),
@@ -851,6 +878,21 @@ mod tests {
     }
 
     #[test]
+    fn concurrency_changes_are_shared_and_bounded_across_clones() {
+        let downloader = Downloader::with_settings(4, 1, Duration::ZERO).unwrap();
+        let clone = downloader.clone();
+
+        downloader.set_concurrency(32);
+        assert_eq!(clone.concurrency.load(Ordering::Relaxed), 32);
+
+        downloader.set_concurrency(usize::MAX);
+        assert_eq!(clone.concurrency.load(Ordering::Relaxed), MAX_CONCURRENCY);
+
+        downloader.set_concurrency(0);
+        assert_eq!(clone.concurrency.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
     fn an_empty_batch_is_already_finished() {
         let progress = DownloadProgress::default();
         assert_eq!(progress.fraction(), 1.0);
@@ -921,6 +963,25 @@ mod tests {
         let last = seen.last().unwrap();
         assert!(last.is_finished());
         assert_eq!(last.completed, 1);
+    }
+
+    #[tokio::test]
+    async fn a_same_size_file_with_a_bad_hash_is_downloaded_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("payload.bin");
+        let payload = sample_payload();
+        std::fs::write(&target, vec![0; payload.len()]).unwrap();
+
+        let server = FakeServer::start(payload.clone(), true);
+        let downloader = Downloader::new().unwrap();
+        let result = downloader
+            .download_all(vec![task(&server, &target, &payload)])
+            .await
+            .unwrap();
+
+        assert!(result.is_success(), "{:?}", result.failed);
+        assert_eq!(std::fs::read(target).unwrap(), payload);
+        assert_eq!(server.requests().len(), 1);
     }
 
     #[tokio::test]

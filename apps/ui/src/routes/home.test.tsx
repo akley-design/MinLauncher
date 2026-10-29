@@ -29,7 +29,8 @@ import { HomeRoute } from "./home";
 const listVersions = vi.fn<() => Promise<VersionList>>();
 const listAccounts = vi.fn<() => Promise<AccountList>>();
 const listInstances = vi.fn<() => Promise<InstanceList>>();
-const launchGame = vi.fn<(options: { version_id: string; instance_id?: string }) => Promise<LaunchResult>>();
+const launchGame =
+  vi.fn<(options: { version_id: string; instance_id?: string }) => Promise<LaunchResult>>();
 const installVersion = vi.fn<(options: { version_id: string }) => Promise<InstallResult>>();
 
 vi.mock("../ipc/client", async () => {
@@ -73,6 +74,7 @@ function accounts(): AccountList {
       },
     ],
     selected_id: "acc-1",
+    nickname_claims: [],
   };
 }
 

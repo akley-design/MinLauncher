@@ -228,9 +228,11 @@ fn the_natives_jars_are_collected_for_unpacking() {
     let request = request(&version);
     let jars = request.native_jars(platform());
 
-    // Twenty-one native jars resolve on Windows: twenty LWJGL ones and
-    // the jtracy one.
-    assert_eq!(jars.len(), 21);
+    // Eleven native jars of this machine resolve: ten LWJGL ones and the
+    // jtracy one. The jars that name another architecture stay out — the
+    // natives of 13w47a share their file names between bitnesses, and the
+    // 32-bit copy stops a 64-bit virtual machine.
+    assert_eq!(jars.len(), 11);
 
     let families: BTreeSet<NativeFamily> = jars.iter().map(|jar| jar.family).collect();
     assert!(families.contains(&NativeFamily::Lwjgl));
@@ -238,12 +240,11 @@ fn the_natives_jars_are_collected_for_unpacking() {
 }
 
 #[test]
-fn the_natives_of_both_architectures_are_unpacked() {
+fn the_natives_of_this_architecture_alone_are_unpacked() {
     // The rules of the version only look at the system, so the natives of
-    // the other architecture resolve as well. The two jars hold their
-    // binaries in directories of their own (`windows/x64` against
-    // `windows/arm64`), so unpacking both is safe — and it is what makes
-    // the same download set work on both architectures.
+    // another architecture of the same system resolve as well. Their
+    // classifier names that architecture, and they are not taken: the
+    // two jars may hold their binaries under the same file names.
     let version = real_version();
     let request = request(&version);
     let jars = request.native_jars(platform());
@@ -260,7 +261,7 @@ fn the_natives_of_both_architectures_are_unpacked() {
         "{names:?}"
     );
     assert!(
-        names
+        !names
             .iter()
             .any(|name| name.ends_with("lwjgl-3.4.3-natives-windows-arm64.jar")),
         "{names:?}"

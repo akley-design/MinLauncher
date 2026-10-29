@@ -13,18 +13,15 @@ workspace = true
 
 [dependencies]
 ml-core.workspace = true
-ml-minecraft.workspace = true
 ml-launch.workspace = true
 ml-storage.workspace = true
-tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tracing.workspace = true
-anyhow.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+ml-minecraft.workspace = true
 tempfile.workspace = true
 
 [[bench]]

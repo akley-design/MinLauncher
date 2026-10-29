@@ -15,7 +15,7 @@
 export type VersionKind = "release" | "snapshot" | "old_beta" | "old_alpha";
 
 /** The kind of an account. */
-export type AccountType = "microsoft" | "mojang" | "offline" | "third_party";
+export type AccountType = "microsoft" | "mojang" | "offline" | "minlauncher" | "third_party";
 
 /** The machine-readable kind of a failure. */
 export type ErrorCode =
@@ -68,6 +68,16 @@ export interface Account {
 export interface AccountList {
   accounts: Account[];
   selected_id: string | null;
+  nickname_claims: {
+    account_id: string;
+    nickname: string;
+    status: "reserved" | "conflict" | "release_pending";
+  }[];
+}
+
+export interface OfflineIdentity {
+  id: string;
+  uuid: string;
 }
 
 /** A game instance. */
@@ -84,6 +94,19 @@ export interface Instance {
 /** The instances of the launcher. */
 export interface InstanceList {
   instances: Instance[];
+}
+
+/** Stable Forge/Fabric releases compatible with a Minecraft release. */
+export interface ModloaderVersion {
+  minecraft_version: string;
+  forge_version: string | null;
+  fabric_loader: string | null;
+  fabric_api_version: string | null;
+}
+
+/** The on-demand catalog of compatible modloader profiles. */
+export interface ModloaderCatalog {
+  versions: ModloaderVersion[];
 }
 
 /** The result of installing the pinned Forge 1.20.1 performance mods. */
@@ -174,6 +197,13 @@ export interface LauncherConfig {
   autostart: boolean;
   default_version: string | null;
   default_jre: string;
+  /**
+   * Root of the game files: versions, libraries, assets and runtimes.
+   *
+   * An empty string keeps the historical layout under the data and cache
+   * directories of the operating system.
+   */
+  install_dir: string;
   show_console: boolean;
   downloads: DownloadConfig;
   jvm: JvmConfig;
@@ -193,6 +223,12 @@ export interface Directories {
   data: string;
   cache: string;
   database: string;
+  /** The chosen game root; empty for the historical layout. */
+  install: string;
+  versions: string;
+  libraries: string;
+  assets: string;
+  runtimes: string;
 }
 
 /** The settings as they are now, together with the directories. */
@@ -205,6 +241,21 @@ export interface SettingsView {
   jvm_flags: ProfileFlags[];
   /** What the measurement said about the collectors of the garbage. */
   jvm_collectors: CollectorMeasurement[];
+  /** Why the configured installation directory is not in use. */
+  install_dir_error?: string | null;
+}
+
+/** One version directory that a scan of the installation could not read. */
+export interface VersionScanFailure {
+  version_id: string;
+  message: string;
+}
+
+/** What a scan of the installation directory found. */
+export interface VersionScanReport {
+  scanned: number;
+  installed: number;
+  failed: VersionScanFailure[];
 }
 
 /**
@@ -419,6 +470,14 @@ export interface InstallResult {
  * The four kinds are the four moments of an installation: it begins, it
  * makes progress, it ends, or it fails.
  */
+/**
+ * What the launcher tells the frontend while the installation root changes.
+ */
+export type InstallRootEvent =
+  | { kind: "copying"; copied_bytes: number; total_bytes: number }
+  | { kind: "scanning" }
+  | { kind: "ready"; installed: number; failed: number };
+
 export type InstallEvent =
   | { kind: "started"; version_id: string; total: number; bytes: number }
   | {

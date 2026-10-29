@@ -106,7 +106,7 @@ pub fn create_instance(
     list_instances(state)
 }
 
-/// Import the local Forge 1.20.1 profile into an isolated MinLauncher instance.
+/// Import the local Forge 1.20.1 profile into an isolated `MinLauncher` instance.
 ///
 /// The source installation is read only. The selected version, libraries,
 /// mods, configuration, resource packs, shaders, options and saves are copied
@@ -295,6 +295,7 @@ pub struct PerformanceModInstall {
 /// The source `.minecraft` tree is never touched. Every downloaded jar is
 /// checked against the pinned SHA-512 published for its Modrinth file.
 #[tauri::command]
+#[allow(clippy::too_many_lines)] // Keeps the staged download/install transaction together.
 pub async fn install_performance_mods(
     instance_id: String,
     state: State<'_, SharedState>,
@@ -357,8 +358,8 @@ pub async fn install_performance_mods(
                 error.to_string(),
             )
         })?;
-    let stage = mods_dir.join(format!(".minlauncher-performance-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir(&stage).map_err(|error| {
+    let staging_dir = mods_dir.join(format!(".minlauncher-performance-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&staging_dir).map_err(|error| {
         IpcError::with_detail(
             ErrorCode::Storage,
             "cannot create a temporary mod folder",
@@ -434,7 +435,7 @@ pub async fn install_performance_mods(
                     artifact.filename
                 )));
             }
-            let staged = stage.join(artifact.filename);
+            let staged = staging_dir.join(artifact.filename);
             std::fs::write(&staged, &bytes).map_err(|error| {
                 IpcError::with_detail(
                     ErrorCode::Storage,
@@ -464,7 +465,7 @@ pub async fn install_performance_mods(
         Ok(())
     }
     .await;
-    let _ = std::fs::remove_dir_all(&stage);
+    let _ = std::fs::remove_dir_all(&staging_dir);
     result?;
 
     Ok(PerformanceModInstall {
@@ -487,6 +488,7 @@ struct ImportedForgeFiles {
     game_dir: PathBuf,
 }
 
+#[allow(clippy::too_many_lines)] // Keeps the validated profile import transaction together.
 fn import_forge_profile_files(
     paths: &ml_core::AppPaths,
     platform: ml_core::Platform,
@@ -654,7 +656,7 @@ fn forge_identity(document: &Value) -> Result<(String, String), String> {
                 match values {
                     Some(Value::String(value)) => args.push(value.clone()),
                     Some(Value::Array(values)) => {
-                        args.extend(values.iter().filter_map(Value::as_str).map(str::to_string))
+                        args.extend(values.iter().filter_map(Value::as_str).map(str::to_string));
                     }
                     _ => {}
                 }

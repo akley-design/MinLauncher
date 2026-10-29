@@ -143,6 +143,7 @@ pub async fn install_runtime(
     state: State<'_, SharedState>,
     component: String,
 ) -> IpcResult<RuntimeResult> {
+    let _activity = state.begin_activity()?;
     let service = state.service_clone();
 
     let result = install(&service, &component, &app).await;
