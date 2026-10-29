@@ -620,10 +620,15 @@
     padding-bottom: 7px;
   }
   .home-hero__play {
+    order: 4;
     min-height: 48px;
   }
   .home-hero__specs {
+    order: 6;
     gap: 8px;
+  }
+  .home-game-account {
+    order: 5;
   }
   .home-game-account .accounts__button {
     padding: 3px 7px;
