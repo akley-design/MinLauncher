@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { sceneWidesSite } from "@minlauncher/visuals/site";
+import { ResponsiveImage, siteMedia } from "./media";
 import { supabase } from "./supabase";
 import {
   nicknamePatternSource,
@@ -38,7 +38,7 @@ function AuthGateway({ children }: { children: ReactNode }) {
   return (
     <section className="auth-page auth-page--gateway">
       <div className="auth-art page-art" aria-hidden="true">
-        <img src={sceneWidesSite.portal} alt="" />
+        <ResponsiveImage image={siteMedia.wide.portal} alt="" priority />
         <span className="auth-art__caption">MINLAUNCHER / PORTAL</span>
       </div>
       {children}
@@ -58,9 +58,12 @@ function AuthWash({
       className={`auth-page auth-page--${variant === "cave" ? "key" : "airlock"}`}
     >
       <div className="auth-wash" aria-hidden="true">
-        <img
-          src={variant === "cave" ? sceneWidesSite.cave : sceneWidesSite.portal}
+        <ResponsiveImage
+          image={
+            variant === "cave" ? siteMedia.wide.cave : siteMedia.wide.portal
+          }
           alt=""
+          priority
         />
       </div>
       {children}

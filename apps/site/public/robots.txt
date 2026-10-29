@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /account
+Disallow: /auth/
+Disallow: /api/
+
+Sitemap: https://minlauncher.pages.dev/sitemap.xml

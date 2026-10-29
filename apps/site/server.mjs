@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
 const types = {
+  ".avif": "image/avif",
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".ico": "image/x-icon",
@@ -13,8 +14,10 @@ const types = {
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
   ".svg": "image/svg+xml",
+  ".txt": "text/plain; charset=utf-8",
   ".webp": "image/webp",
   ".woff2": "font/woff2",
+  ".xml": "application/xml; charset=utf-8",
   ".ttf": "font/ttf",
 };
 const releaseManifest =
@@ -43,13 +46,20 @@ export function createSiteServer(
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader(
+      "Permissions-Policy",
+      "camera=(), microphone=(), geolocation=()",
+    );
+    res.setHeader(
       "Content-Security-Policy",
       "default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self' data:; script-src 'self'; connect-src 'self' https: wss:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
     );
 
     let pathname;
+    let search;
     try {
-      pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+      const url = new URL(req.url ?? "/", "http://localhost");
+      pathname = url.pathname;
+      search = url.search;
     } catch {
       res.writeHead(400).end("Bad request");
       return;
@@ -57,6 +67,31 @@ export function createSiteServer(
 
     if (req.method !== "GET" && req.method !== "HEAD") {
       res.writeHead(405, { Allow: "GET, HEAD" }).end("Method not allowed");
+      return;
+    }
+    if (pathname === "/index.html") {
+      res.writeHead(308, { Location: `/${search}` }).end();
+      return;
+    }
+    if (pathname !== "/" && pathname.endsWith("/")) {
+      res
+        .writeHead(308, {
+          Location: `${pathname.replace(/\/+$/, "")}${search}`,
+        })
+        .end();
+      return;
+    }
+    if (pathname === "/api/clock.json") {
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.writeHead(200).end(
+        req.method === "HEAD"
+          ? undefined
+          : JSON.stringify({
+              now: Date.now(),
+              releaseAt: Date.parse("2026-10-27T22:04:21.000Z"),
+            }),
+      );
       return;
     }
     if (pathname === "/api/latest.json") {
@@ -99,6 +134,7 @@ export function createSiteServer(
 
     let size;
     let body;
+    let status = 200;
     const headOnly = req.method === "HEAD";
     try {
       let info = await stat(file);
@@ -109,22 +145,35 @@ export function createSiteServer(
       size = info.size;
       if (!headOnly) body = await readFile(file);
     } catch {
-      if (req.headers.accept?.includes("text/html")) {
+      try {
+        const candidate = join(file, "index.html");
+        const info = await stat(candidate);
+        file = candidate;
+        size = info.size;
+        if (!headOnly) body = await readFile(file);
+      } catch {
+        if (/\.[a-z0-9]+$/i.test(pathname)) {
+          res.writeHead(404).end("Not found");
+          return;
+        }
         try {
-          file = join(root, "index.html");
+          file = join(root, "404.html");
           size = (await stat(file)).size;
           if (!headOnly) body = await readFile(file);
+          status = 404;
         } catch {
           res.writeHead(503).end("Site is not built yet");
           return;
         }
-      } else {
-        res.writeHead(404).end("Not found");
-        return;
       }
     }
 
     const immutableAsset = file.includes(`${sep}assets${sep}`);
+    const longCache =
+      immutableAsset ||
+      file.includes(`${sep}fonts${sep}`) ||
+      file.includes(`${sep}media${sep}`) ||
+      file.includes(`${sep}og${sep}`);
     const contentType =
       types[extname(file).toLowerCase()] ?? "application/octet-stream";
     const compressible =
@@ -132,8 +181,13 @@ export function createSiteServer(
     res.setHeader("Content-Type", contentType);
     res.setHeader(
       "Cache-Control",
-      immutableAsset ? "public, max-age=31536000, immutable" : "no-cache",
+      immutableAsset
+        ? "public, max-age=31536000, immutable"
+        : longCache
+          ? "public, max-age=604800"
+          : "no-cache",
     );
+    if (status === 404) res.setHeader("X-Robots-Tag", "noindex");
     res.setHeader("Vary", "Accept-Encoding");
     if (
       compressible &&
@@ -143,13 +197,13 @@ export function createSiteServer(
       res.setHeader("Content-Encoding", "gzip");
     }
     if (headOnly) {
-      res.writeHead(200).end();
+      res.writeHead(status).end();
       return;
     }
     const responseBody = res.hasHeader("Content-Encoding")
       ? gzipSync(body)
       : body;
-    res.writeHead(200).end(responseBody);
+    res.writeHead(status).end(responseBody);
   });
 }
 

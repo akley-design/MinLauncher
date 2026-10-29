@@ -1,10 +1,5 @@
 import { DioramaCore, type DioramaProps } from "./DioramaCore";
-import {
-  sceneCoversSite,
-  scenePostersSite,
-  sceneWidesSite,
-  sitePosterThumb,
-} from "./site/posters";
+import { scenePostersSite } from "./site/posters";
 import type { SceneSource } from "./types";
 
 const siteScene: SceneSource = {
@@ -12,18 +7,29 @@ const siteScene: SceneSource = {
   posters: scenePostersSite,
 };
 
-export type SiteDioramaProps = Omit<DioramaProps, "mode">;
+export type SiteDioramaProps = Omit<DioramaProps, "mode" | "reuse">;
 
-export function SiteDiorama({ variant, motion, className }: SiteDioramaProps) {
+export function SiteDiorama({
+  variant,
+  motion,
+  className,
+  poster,
+  priority,
+  lazy,
+}: SiteDioramaProps) {
   return (
     <DioramaCore
       variant={variant}
       motion={motion}
       mode="site"
       className={className}
+      poster={poster}
+      priority={priority}
+      lazy={lazy}
+      reuse
       scene={siteScene}
     />
   );
 }
 
-export { sceneCoversSite, scenePostersSite, sceneWidesSite, sitePosterThumb };
+export { scenePostersSite };

@@ -177,6 +177,9 @@ jobs:
       - name: Test the website
         run: npm run site:test
 
+      - name: Check the prerendered SEO output
+        run: npm run site:seo
+
       - name: Test shared visuals
         run: npm run test:visuals
 

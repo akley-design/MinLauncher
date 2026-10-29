@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { articles, type NewsArticle, type SceneArt } from "./news";
+import { siteMedia } from "./media";
 
 export type PageId =
   | "home"
@@ -22,6 +23,9 @@ export interface PageMetaInfo {
   canonical?: string;
   noindex?: boolean;
   ogType?: "website" | "article";
+  ogImage?: string;
+  ogImageAlt?: string;
+  articlePublishedAt?: string;
 }
 
 export interface ResolvedPage {
@@ -33,6 +37,8 @@ export interface ResolvedPage {
 
 export const SITE_ORIGIN = "https://minlauncher.pages.dev";
 const SHARE_IMAGE = `${SITE_ORIGIN}/social-card.png`;
+export const OG_WIDTH = 1200;
+export const OG_HEIGHT = 630;
 
 const ACCENTS: Record<SceneArt, PageAccent> = {
   island: "lime",
@@ -40,7 +46,30 @@ const ACCENTS: Record<SceneArt, PageAccent> = {
   portal: "violet",
 };
 
-function normalize(pathname: string) {
+function absolute(path: string) {
+  return path.startsWith("http") ? path : `${SITE_ORIGIN}${path}`;
+}
+
+export const PUBLIC_ROUTES: string[] = [
+  "/",
+  "/features",
+  "/download",
+  "/news",
+  ...articles.map((article) => `/news/${article.slug}`),
+];
+
+export const PRIVATE_ROUTES: string[] = [
+  "/account",
+  "/account/settings",
+  "/auth/reset-password",
+  "/auth/callback",
+];
+
+export const STATIC_ROUTES: string[] = [...PUBLIC_ROUTES, ...PRIVATE_ROUTES];
+
+const PRIVATE_SET = new Set(PRIVATE_ROUTES);
+
+export function normalize(pathname: string) {
   let value = pathname;
   try {
     value = decodeURIComponent(pathname);
@@ -50,6 +79,10 @@ function normalize(pathname: string) {
   return value.replace(/\/+$/, "") || "/";
 }
 
+export function isPrivateRoute(pathname: string) {
+  return PRIVATE_SET.has(normalize(pathname));
+}
+
 export function resolvePage(pathname: string): ResolvedPage {
   const path = normalize(pathname);
   if (path === "/") {
@@ -57,11 +90,13 @@ export function resolvePage(pathname: string): ResolvedPage {
       page: "home",
       accent: "lime",
       meta: {
-        title: "MinLauncher · Твой Minecraft",
+        title: "MinLauncher — лаунчер Minecraft для Windows",
         description:
-          "Версии Minecraft, отдельные сборки, настройки Java и результаты замеров в MinLauncher для Windows.",
+          "MinLauncher — быстрый лаунчер Minecraft Java для Windows: версии, изолированные сборки, настройка Java и памяти, замеры запуска. Скачать бесплатно.",
         canonical: `${SITE_ORIGIN}/`,
         ogType: "website",
+        ogImage: absolute(siteMedia.og.home),
+        ogImageAlt: "MinLauncher — лаунчер Minecraft для Windows",
       },
     };
   }
@@ -70,11 +105,13 @@ export function resolvePage(pathname: string): ResolvedPage {
       page: "features",
       accent: "copper",
       meta: {
-        title: "Возможности · MinLauncher",
+        title: "Возможности MinLauncher — профили и настройки Minecraft",
         description:
-          "Игровые профили, Java и память, повторное использование файлов и замеры запуска.",
+          "Игровые профили, отдельные версии Minecraft, настройка Java и памяти, повторное использование файлов и замеры запуска в MinLauncher.",
         canonical: `${SITE_ORIGIN}/features`,
         ogType: "website",
+        ogImage: absolute(siteMedia.og.features),
+        ogImageAlt: "Пещера в стиле Minecraft — возможности MinLauncher",
       },
     };
   }
@@ -83,11 +120,13 @@ export function resolvePage(pathname: string): ResolvedPage {
       page: "download",
       accent: "violet",
       meta: {
-        title: "Скачать MinLauncher для Windows",
+        title: "Скачать MinLauncher для Windows — лаунчер Minecraft",
         description:
-          "Релиз MinLauncher для Windows x64: версия, дата публикации и установщик.",
+          "Скачать MinLauncher для Windows x64: версия 0.1.1-beta, дата публикации и установщик лаунчера Minecraft. Бесплатно.",
         canonical: `${SITE_ORIGIN}/download`,
         ogType: "website",
+        ogImage: absolute(siteMedia.og.download),
+        ogImageAlt: "Портал в стиле Minecraft — скачать MinLauncher",
       },
     };
   }
@@ -96,11 +135,13 @@ export function resolvePage(pathname: string): ResolvedPage {
       page: "news",
       accent: "cream",
       meta: {
-        title: "Журнал · MinLauncher",
+        title: "Журнал MinLauncher — релизы и производительность Minecraft",
         description:
-          "Заметки о релизах, производительности и устройстве MinLauncher.",
+          "Заметки о релизах MinLauncher, производительности запуска Minecraft и устройстве лаунчера.",
         canonical: `${SITE_ORIGIN}/news`,
         ogType: "website",
+        ogImage: absolute(siteMedia.og.news),
+        ogImageAlt: "Журнал MinLauncher о Minecraft и запуске игры",
       },
     };
   }
@@ -112,10 +153,13 @@ export function resolvePage(pathname: string): ResolvedPage {
         page: "article",
         accent: ACCENTS[article.scene],
         meta: {
-          title: `${article.title} · Журнал MinLauncher`,
+          title: `${article.title} — журнал MinLauncher`,
           description: article.excerpt,
           canonical: `${SITE_ORIGIN}/news/${article.slug}`,
           ogType: "article",
+          ogImage: absolute(siteMedia.og.article[article.scene]),
+          ogImageAlt: `Иллюстрация к статье «${article.title}»`,
+          articlePublishedAt: article.publishedAt,
         },
         article,
       };
@@ -126,10 +170,12 @@ export function resolvePage(pathname: string): ResolvedPage {
       page: "account",
       accent: "mint",
       meta: {
-        title: "Вход в аккаунт · MinLauncher",
+        title: "Вход в аккаунт — MinLauncher",
         description:
           "Вход и регистрация MinLauncher по нику Minecraft, почте и паролю.",
         noindex: true,
+        ogImage: SHARE_IMAGE,
+        ogImageAlt: "MinLauncher",
       },
     };
   }
@@ -138,10 +184,12 @@ export function resolvePage(pathname: string): ResolvedPage {
       page: "settings",
       accent: "parchment",
       meta: {
-        title: "Настройки профиля · MinLauncher",
+        title: "Настройки профиля — MinLauncher",
         description:
           "Ник, канал обновлений и привязка Microsoft / Minecraft в профиле MinLauncher.",
         noindex: true,
+        ogImage: SHARE_IMAGE,
+        ogImageAlt: "MinLauncher",
       },
     };
   }
@@ -150,10 +198,12 @@ export function resolvePage(pathname: string): ResolvedPage {
       page: "reset",
       accent: "copper",
       meta: {
-        title: "Восстановление пароля · MinLauncher",
+        title: "Восстановление пароля — MinLauncher",
         description:
           "Восстановление доступа к аккаунту MinLauncher по электронной почте.",
         noindex: true,
+        ogImage: SHARE_IMAGE,
+        ogImageAlt: "MinLauncher",
       },
     };
   }
@@ -165,6 +215,8 @@ export function resolvePage(pathname: string): ResolvedPage {
         title: "Вход в MinLauncher",
         description: "Завершаем вход и передаём сессию в лаунчер.",
         noindex: true,
+        ogImage: SHARE_IMAGE,
+        ogImageAlt: "MinLauncher",
       },
     };
   }
@@ -172,10 +224,12 @@ export function resolvePage(pathname: string): ResolvedPage {
     page: "not-found",
     accent: "copper",
     meta: {
-      title: "Страница не найдена · MinLauncher",
+      title: "Страница не найдена — MinLauncher",
       description:
         "Такой страницы нет. Вернитесь на главную MinLauncher или к загрузке.",
       noindex: true,
+      ogImage: SHARE_IMAGE,
+      ogImageAlt: "MinLauncher",
     },
   };
 }
@@ -221,9 +275,16 @@ function upsertCanonical(href: string | null) {
 
 export function PageMeta({ meta }: { meta: PageMetaInfo }) {
   useEffect(() => {
+    const ogImage = meta.ogImage ?? SHARE_IMAGE;
     document.title = meta.title;
     upsertMeta("name", "description", meta.description);
-    upsertMeta("name", "robots", meta.noindex ? "noindex, nofollow" : null);
+    upsertMeta(
+      "name",
+      "robots",
+      meta.noindex
+        ? "noindex, nofollow"
+        : "index, follow, max-image-preview:large",
+    );
     upsertCanonical(meta.canonical ?? null);
     upsertMeta("property", "og:title", meta.title);
     upsertMeta("property", "og:description", meta.description);
@@ -231,11 +292,20 @@ export function PageMeta({ meta }: { meta: PageMetaInfo }) {
     upsertMeta("property", "og:locale", "ru_RU");
     upsertMeta("property", "og:type", meta.ogType ?? "website");
     upsertMeta("property", "og:url", meta.canonical ?? SITE_ORIGIN);
-    upsertMeta("property", "og:image", SHARE_IMAGE);
+    upsertMeta("property", "og:image", ogImage);
+    upsertMeta("property", "og:image:width", String(OG_WIDTH));
+    upsertMeta("property", "og:image:height", String(OG_HEIGHT));
+    upsertMeta("property", "og:image:alt", meta.ogImageAlt ?? "MinLauncher");
+    upsertMeta(
+      "property",
+      "article:published_time",
+      meta.articlePublishedAt ?? null,
+    );
     upsertMeta("name", "twitter:card", "summary_large_image");
     upsertMeta("name", "twitter:title", meta.title);
     upsertMeta("name", "twitter:description", meta.description);
-    upsertMeta("name", "twitter:image", SHARE_IMAGE);
+    upsertMeta("name", "twitter:image", ogImage);
+    upsertMeta("name", "twitter:image:alt", meta.ogImageAlt ?? "MinLauncher");
   }, [meta]);
   return null;
 }

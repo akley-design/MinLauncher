@@ -715,11 +715,6 @@ export function addCottage(
   ctx.voxel.detail(x - 0.78, y + 3.1, z + 5.26, 0.54, 0.34, 0.54, PAL.lantern);
   const lanternWorld = center(x - 0.55, y + 3.25, z + 5.55);
   ctx.glow("#ffd79a", lanternWorld, 0.8, 0.34);
-  ctx.light("#ffc47d", 1.3, 3.2, [
-    lanternWorld[0],
-    lanternWorld[1],
-    lanternWorld[2],
-  ]);
 
   const smoke = center(x + 1, y + 9.25, z + 1);
   const windowLight = center(x + 2.5, y + 2.5, z + 5.5);
@@ -825,12 +820,10 @@ export function addCrystalCluster(
     0.95 * scale,
     0.24,
   );
-  const light = ctx.light("#6fe8c9", 0.85, 2.5, [x, y + 0.4 * scale, z]);
   ctx.movers.push((time) => {
     const pulse = 0.5 + 0.5 * Math.sin(time * 1.15 + x * 0.7);
     material.emissiveIntensity = 0.25 + pulse * 0.2;
     glow.material.opacity = 0.13 + pulse * 0.08;
-    light.intensity = 0.5 + pulse * 0.25;
   });
   return group;
 }

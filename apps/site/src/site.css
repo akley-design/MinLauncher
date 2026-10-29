@@ -42,6 +42,22 @@ img {
   max-width: 100%;
   display: block;
 }
+.site-picture {
+  display: contents;
+}
+@view-transition {
+  navigation: auto;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
 button {
   color: inherit;
 }
@@ -164,6 +180,7 @@ main:focus {
   align-items: center;
   border-left: 1px solid #41493f;
   padding-left: 32px;
+  min-width: 120px;
 }
 .menu-toggle {
   display: none;
@@ -361,7 +378,7 @@ main:focus {
   font-weight: 400;
   letter-spacing: 0.08em;
 }
-.launcher-shot > img {
+.launcher-shot img {
   width: 100%;
   border-radius: 4px;
   border: 1px solid #343d31;
@@ -445,7 +462,7 @@ main:focus {
   border-radius: 6px;
   aspect-ratio: 1.65;
 }
-.article-card__visual > img {
+.article-card__visual img {
   height: 100%;
   width: 100%;
   object-fit: cover;
@@ -1338,7 +1355,7 @@ main:focus {
     font-size: 7px;
     padding: 0 7px;
   }
-  .launcher-shot > img {
+  .launcher-shot img {
     aspect-ratio: 1.45;
     object-fit: cover;
     object-position: left top;

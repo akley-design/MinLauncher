@@ -1,0 +1,10 @@
+@font-face {
+  font-family: "Golos Site";
+  src: url("/fonts/GolosText-subset.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: optional;
+}
+:root {
+  --ml-font: "Golos Site", "Segoe UI", sans-serif;
+}

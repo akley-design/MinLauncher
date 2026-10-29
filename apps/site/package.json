@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc --noEmit && vite build && node scripts/copy-public-assets.mjs",
+    "build": "tsc --noEmit && vite build && vite build --ssr src/entry-server.tsx --outDir dist-ssr && node scripts/copy-public-assets.mjs && node scripts/prerender.mjs",
     "typecheck": "tsc --noEmit",
     "start": "node server.mjs",
-    "test": "vitest run src && node --test server.test.mjs"
+    "test": "vitest run src && node --test server.test.mjs worker.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.99.0",

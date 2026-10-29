@@ -19,6 +19,8 @@ let ready: (() => void) | undefined;
 let observers: Array<(entries: unknown[]) => void>;
 let handles: Array<{
   setRunning: ReturnType<typeof vi.fn>;
+  setActive: ReturnType<typeof vi.fn>;
+  setQuality: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 }>;
 
@@ -51,7 +53,12 @@ beforeEach(() => {
     (_host, _variant, _fps, fallback, _mode, onReady) => {
       fail = fallback;
       ready = onReady;
-      const handle = { setRunning: vi.fn(), dispose: vi.fn() };
+      const handle = {
+        setRunning: vi.fn(),
+        setActive: vi.fn(),
+        setQuality: vi.fn(),
+        dispose: vi.fn(),
+      };
       handles.push(handle);
       return handle;
     },
@@ -71,12 +78,13 @@ describe("site diorama entry", () => {
     expect(runtime.mount.mock.calls[0]![4]).toBe("site");
     expect(runtime.mount.mock.calls[0]![2]).toBe(60);
     expect(handles[0]!.setRunning).toHaveBeenCalledWith(true);
+    expect(handles[0]!.setActive).toHaveBeenCalledWith(true);
     expect(container.querySelector("img")?.getAttribute("src")).toBe(
       scenePostersSite.island,
     );
   });
 
-  it("drops to the compact frame budget when the viewport narrows", async () => {
+  it("drops to the compact frame budget without rebuilding the scene", async () => {
     const compactMedia = {
       matches: false,
       addEventListener: vi.fn(),
@@ -98,9 +106,14 @@ describe("site diorama entry", () => {
       compactMedia.matches = true;
       compactMedia.addEventListener.mock.calls[0]![1]();
     });
-    await waitFor(() => expect(handles).toHaveLength(2));
-    expect(runtime.mount.mock.calls[1]![2]).toBe(30);
-    expect(handles[0]!.dispose).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(handles[0]!.setQuality).toHaveBeenCalledWith({
+        fps: 30,
+        compact: true,
+      }),
+    );
+    expect(handles).toHaveLength(1);
+    expect(handles[0]!.dispose).not.toHaveBeenCalled();
   });
 
   it("keeps the poster for reduced motion without loading WebGL", async () => {
@@ -139,10 +152,19 @@ describe("site diorama entry", () => {
     expect(handles[0]!.dispose).toHaveBeenCalledOnce();
   });
 
-  it("stops the scene when the game starts", async () => {
+  it("pauses and resumes the scene without disposing it", async () => {
     const view = render(<SiteDiorama variant="island" />);
     await waitFor(() => expect(handles).toHaveLength(1));
     view.rerender(<SiteDiorama variant="island" motion="paused" />);
-    await waitFor(() => expect(handles[0]!.dispose).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(handles[0]!.setRunning).toHaveBeenLastCalledWith(false),
+    );
+    expect(handles[0]!.setActive).toHaveBeenLastCalledWith(false);
+    expect(handles[0]!.dispose).not.toHaveBeenCalled();
+    view.rerender(<SiteDiorama variant="island" />);
+    await waitFor(() =>
+      expect(handles[0]!.setRunning).toHaveBeenLastCalledWith(true),
+    );
+    expect(handles[0]!.setActive).toHaveBeenLastCalledWith(true);
   });
 });

@@ -20,12 +20,12 @@ import {
 import { createFrameLoop } from "../frame-loop";
 import { clamp, easeOutCubic } from "./motion";
 import { buildSiteWorld } from "./world";
-import type { DioramaVariant } from "../types";
-
-export interface SceneHandle {
-  setRunning: (running: boolean) => void;
-  dispose: () => void;
-}
+import type {
+  DioramaVariant,
+  SceneHandle,
+  SceneMountOptions,
+  SceneQuality,
+} from "../types";
 
 interface CameraPreset {
   position: [number, number, number];
@@ -54,6 +54,25 @@ const PRESETS: Record<DioramaVariant, CameraPreset> = {
     shadowY: -2.45,
   },
 };
+
+interface QualityStep {
+  dpr: number;
+  shadows: boolean;
+}
+
+const DESKTOP_QUALITY: QualityStep[] = [
+  { dpr: 1.5, shadows: true },
+  { dpr: 1.25, shadows: true },
+  { dpr: 1, shadows: true },
+  { dpr: 1, shadows: false },
+  { dpr: 0.85, shadows: false },
+];
+
+const COMPACT_QUALITY: QualityStep[] = [
+  { dpr: 1.25, shadows: false },
+  { dpr: 1, shadows: false },
+  { dpr: 0.85, shadows: false },
+];
 
 function createContactShadow() {
   const size = 128;
@@ -84,6 +103,25 @@ function createContactShadow() {
   return texture;
 }
 
+function createRenderer(compact: boolean) {
+  const options = {
+    alpha: true,
+    antialias: !compact,
+  } as const;
+  try {
+    return new WebGLRenderer({
+      ...options,
+      powerPreference: "high-performance",
+    });
+  } catch {
+    return new WebGLRenderer({
+      ...options,
+      antialias: false,
+      powerPreference: "low-power",
+    });
+  }
+}
+
 export function mountScene(
   host: HTMLElement,
   variant: DioramaVariant,
@@ -91,13 +129,21 @@ export function mountScene(
   onFallback: () => void,
   _mode: "site" | "launcher" = "site",
   onReady?: () => void,
+  options: SceneMountOptions = {},
 ): SceneHandle {
   const preset = PRESETS[variant];
-  const renderer = new WebGLRenderer({
-    alpha: true,
-    antialias: true,
-    powerPreference: "low-power",
-  });
+  let compact = options.compact ?? innerWidth <= 720;
+  const adaptive = options.adaptive ?? true;
+  const perfWindow = window as Window & {
+    __mlPerfFrames?: Record<string, number>;
+  };
+  const perfFrames =
+    typeof location !== "undefined" &&
+    new URLSearchParams(location.search).has("ml-perf")
+      ? (perfWindow.__mlPerfFrames ??= {})
+      : null;
+  let frameCount = 0;
+  const renderer = createRenderer(compact);
   const cleanups: Array<() => void> = [
     () => {
       renderer.dispose();
@@ -123,7 +169,7 @@ export function mountScene(
     renderer.toneMapping = ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.03;
     renderer.setClearColor(0x141716, 0);
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !compact;
     renderer.shadowMap.type = PCFShadowMap;
     renderer.shadowMap.autoUpdate = false;
 
@@ -144,8 +190,8 @@ export function mountScene(
     scene.add(ambient);
     const sun = new DirectionalLight("#ffe4bb", 3);
     sun.position.set(-4.5, 8.5, 5.5);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.castShadow = !compact;
+    sun.shadow.mapSize.set(compact ? 1024 : 2048, compact ? 1024 : 2048);
     Object.assign(sun.shadow.camera, {
       left: -5.5,
       right: 5.5,
@@ -161,9 +207,6 @@ export function mountScene(
     const rim = new DirectionalLight("#9fd0bb", 0.85);
     rim.position.set(5, 4, -6);
     scene.add(rim);
-    const bounce = new DirectionalLight("#a7b8aa", 0.45);
-    bounce.position.set(2, -4, 6);
-    scene.add(bounce);
     const accent = new PointLight(
       variant === "portal"
         ? "#b45cff"
@@ -201,19 +244,42 @@ export function mountScene(
     shadow.position.y = preset.shadowY;
     scene.add(shadow);
 
-    host.append(renderer.domElement);
     renderer.domElement.setAttribute("aria-hidden", "true");
+    let attached = false;
+    let compiled = false;
+    let runningRequested = false;
+    let activeRequested = options.attach !== false;
+    let ready = false;
+    let firstRender = true;
+    let shadowDirty = true;
+    let shadowSettled = false;
+    let lastTime = 0;
+    let lastWidth = 0;
+    let lastHeight = 0;
+    let lastPixelRatio = 0;
+    let bounds: DOMRect | null = null;
+    let boundsFrame = 0;
+
+    let quality = compact ? COMPACT_QUALITY : DESKTOP_QUALITY;
+    let qualityIndex = 0;
+    let pixelRatio = quality[0]!.dpr;
 
     let pointerX = 0;
     let pointerY = 0;
     let currentX = 0;
     let currentY = 0;
-    let lastTime = 0;
-    let ready = false;
-    let pixelRatio = Math.min(
-      devicePixelRatio || 1,
-      innerWidth <= 720 ? 1 : 1.5,
-    );
+
+    const refreshBounds = () => {
+      bounds = host.getBoundingClientRect();
+    };
+
+    const scheduleBounds = () => {
+      if (boundsFrame) return;
+      boundsFrame = requestAnimationFrame(() => {
+        boundsFrame = 0;
+        refreshBounds();
+      });
+    };
 
     const render = (elapsed: number) => {
       const delta = lastTime ? clamp(elapsed - lastTime, 0, 0.05) : 0.016;
@@ -237,19 +303,44 @@ export function mountScene(
           Math.cos(elapsed * 0.22) * 0.18,
       );
       camera.lookAt(target);
-      if (elapsed < 1.3) renderer.shadowMap.needsUpdate = true;
+      if (!shadowSettled && elapsed >= 1.15) {
+        shadowSettled = true;
+        shadowDirty = true;
+      }
+      if (firstRender) {
+        firstRender = false;
+        shadowDirty = true;
+      }
+      if (shadowDirty && renderer.shadowMap.enabled) {
+        renderer.shadowMap.needsUpdate = true;
+      }
+      shadowDirty = false;
       world.animate(elapsed, false);
       renderer.render(scene, camera);
+      if (perfFrames) perfFrames[variant] = ++frameCount;
       if (!ready) {
         ready = true;
         onReady?.();
       }
     };
 
-    const resize = () => {
+    const resize = (force = false) => {
       if (disposed) return;
-      const { width, height } = host.getBoundingClientRect();
+      const rect = host.getBoundingClientRect();
+      const width = Math.round(rect.width);
+      const height = Math.round(rect.height);
       if (width < 1 || height < 1) return;
+      bounds = rect;
+      if (
+        !force &&
+        width === lastWidth &&
+        height === lastHeight &&
+        pixelRatio === lastPixelRatio
+      )
+        return;
+      lastWidth = width;
+      lastHeight = height;
+      lastPixelRatio = pixelRatio;
       renderer.setPixelRatio(pixelRatio);
       renderer.setSize(width, height, false);
       world.setPixelRatio(pixelRatio);
@@ -261,26 +352,58 @@ export function mountScene(
       camera.top = halfHeight;
       camera.bottom = -halfHeight;
       camera.updateProjectionMatrix();
-      renderer.shadowMap.needsUpdate = true;
-      render(0);
+      shadowDirty = true;
     };
 
-    renderer.compile(scene, camera);
+    const applyQuality = () => {
+      const step = quality[qualityIndex]!;
+      pixelRatio = step.dpr;
+      renderer.shadowMap.enabled = step.shadows;
+      sun.castShadow = step.shadows;
+      world.setPixelRatio(pixelRatio);
+      resize(true);
+      if (step.shadows) shadowDirty = true;
+    };
+
+    const attach = () => {
+      if (disposed || attached) return;
+      host.append(renderer.domElement);
+      attached = true;
+      refreshBounds();
+      resize(true);
+    };
+
+    const detach = () => {
+      if (!attached) return;
+      renderer.domElement.remove();
+      attached = false;
+    };
+
     const loop = createFrameLoop({
       fps,
       render,
+      adaptive,
       simplify() {
-        pixelRatio = 1;
-        renderer.shadowMap.enabled = false;
-        world.setPixelRatio(1);
-        resize();
+        if (qualityIndex < quality.length - 1) {
+          qualityIndex++;
+          applyQuality();
+          return true;
+        }
+        return false;
+      },
+      restore() {
+        if (qualityIndex > 0) {
+          qualityIndex--;
+          applyQuality();
+        }
       },
       fallback: onFallback,
     });
     cleanups.push(() => loop.stop());
 
     const pointer = (event: PointerEvent) => {
-      const bounds = host.getBoundingClientRect();
+      if (!bounds) refreshBounds();
+      if (!bounds || bounds.width === 0 || bounds.height === 0) return;
       pointerX = (event.clientX - bounds.left) / bounds.width - 0.5;
       pointerY = (event.clientY - bounds.top) / bounds.height - 0.5;
     };
@@ -288,30 +411,86 @@ export function mountScene(
       pointerX = 0;
       pointerY = 0;
     };
+    const enter = () => refreshBounds();
     const lost = (event: Event) => {
       event.preventDefault();
       loop.stop();
       onFallback();
     };
-    host.addEventListener("pointermove", pointer);
-    host.addEventListener("pointerleave", leave);
+    const scrolled = () => scheduleBounds();
+    host.addEventListener("pointermove", pointer, { passive: true });
+    host.addEventListener("pointerenter", enter, { passive: true });
+    host.addEventListener("pointerleave", leave, { passive: true });
+    window.addEventListener("scroll", scrolled, { passive: true });
     renderer.domElement.addEventListener("webglcontextlost", lost);
     cleanups.push(() => {
       host.removeEventListener("pointermove", pointer);
+      host.removeEventListener("pointerenter", enter);
       host.removeEventListener("pointerleave", leave);
+      window.removeEventListener("scroll", scrolled);
       renderer.domElement.removeEventListener("webglcontextlost", lost);
+      if (boundsFrame) cancelAnimationFrame(boundsFrame);
     });
 
-    const observer = new ResizeObserver(resize);
+    const observer = new ResizeObserver(() => {
+      scheduleBounds();
+      resize();
+    });
     cleanups.push(() => observer.disconnect());
     observer.observe(host);
-    resize();
+    resize(true);
+
+    const compile = () => {
+      const targetRenderer = renderer as WebGLRenderer & {
+        compileAsync?: (
+          scene: Scene,
+          camera: OrthographicCamera,
+        ) => Promise<unknown>;
+      };
+      return typeof targetRenderer.compileAsync === "function"
+        ? targetRenderer.compileAsync(scene, camera)
+        : Promise.resolve().then(() => renderer.compile(scene, camera));
+    };
+    void compile()
+      .then(() => {
+        if (disposed) return;
+        compiled = true;
+        if (activeRequested && runningRequested) loop.start();
+      })
+      .catch((error: unknown) => {
+        if (disposed) return;
+        console.warn("MinLauncher diorama compile failed", error);
+        onFallback();
+      });
+
+    if (options.attach !== false) attach();
 
     return {
       setRunning(running: boolean) {
-        if (!disposed) {
-          if (running) loop.start();
-          else loop.stop();
+        if (disposed) return;
+        runningRequested = running;
+        if (running && compiled && attached) loop.start();
+        else loop.stop();
+      },
+      setActive(active: boolean) {
+        if (disposed) return;
+        activeRequested = active;
+        if (active) {
+          attach();
+          if (compiled && runningRequested) loop.start();
+        } else {
+          loop.stop();
+          detach();
+        }
+      },
+      setQuality(next: SceneQuality) {
+        if (disposed) return;
+        loop.setFps(next.fps);
+        if (next.compact !== compact) {
+          compact = next.compact;
+          quality = compact ? COMPACT_QUALITY : DESKTOP_QUALITY;
+          qualityIndex = Math.min(qualityIndex, quality.length - 1);
+          applyQuality();
         }
       },
       dispose,

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "include": ["/*"],
+  "exclude": [
+    "/assets/*",
+    "/fonts/*",
+    "/media/*",
+    "/og/*",
+    "/robots.txt",
+    "/sitemap.xml",
+    "/feed.xml",
+    "/brand.svg",
+    "/brand-512.png",
+    "/social-card.png",
+    "/launcher-preview.png",
+    "/api/latest.json"
+  ]
+}

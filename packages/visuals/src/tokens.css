@@ -37,10 +37,17 @@
   height: 100%;
 }
 .ml-diorama__poster {
+  display: block;
   object-fit: contain;
   transition: opacity 240ms ease;
 }
-.ml-diorama[data-rendered="true"] .ml-diorama__poster {
+.ml-diorama__poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.ml-diorama[data-rendered="true"][data-active="true"] .ml-diorama__poster,
+.ml-diorama[data-rendered="true"]:not([data-active]) .ml-diorama__poster {
   opacity: 0;
 }
 .ml-diorama__stage canvas {

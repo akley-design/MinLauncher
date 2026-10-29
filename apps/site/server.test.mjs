@@ -7,13 +7,28 @@ import { gunzipSync } from "node:zlib";
 import test from "node:test";
 import { createSiteServer } from "./server.mjs";
 
-test("serves deep links with SPA fallback, serves assets, and blocks traversal", async () => {
+test("serves static routes, real 404s, redirects, assets and releases", async () => {
   const temp = await mkdtemp(join(tmpdir(), "minlaucher-site-"));
   const testDist = join(temp, "dist");
   await mkdir(join(testDist, "assets"), { recursive: true });
+  await mkdir(join(testDist, "features"), { recursive: true });
+  await mkdir(join(testDist, "news", "speed-without-magic"), {
+    recursive: true,
+  });
+  await mkdir(join(testDist, "media"), { recursive: true });
   await writeFile(join(testDist, "index.html"), "<main>site</main>");
+  await writeFile(
+    join(testDist, "features", "index.html"),
+    "<main>features</main>",
+  );
+  await writeFile(
+    join(testDist, "news", "speed-without-magic", "index.html"),
+    "<main>article</main>",
+  );
+  await writeFile(join(testDist, "404.html"), "<main>missing</main>");
   const assetBody = "x".repeat(512);
   await writeFile(join(testDist, "assets", "app.js"), assetBody);
+  await writeFile(join(testDist, "media", "scene.avif"), assetBody);
   let hasRelease = true;
   let releaseFailed = false;
   let releaseMethod;
@@ -35,11 +50,47 @@ test("serves deep links with SPA fallback, serves assets, and blocks traversal",
   });
   try {
     const base = `http://127.0.0.1:${address.port}`;
-    const home = await fetch(`${base}/news/speed-without-magic`, {
-      headers: { Accept: "text/html" },
-    });
+    const home = await fetch(`${base}/`, { headers: { Accept: "text/html" } });
     assert.equal(home.status, 200);
     assert.equal(await home.text(), "<main>site</main>");
+    assert.equal(home.headers.get("cache-control"), "no-cache");
+
+    const article = await fetch(`${base}/news/speed-without-magic`, {
+      headers: { Accept: "text/html" },
+    });
+    assert.equal(article.status, 200);
+    assert.equal(await article.text(), "<main>article</main>");
+
+    const features = await fetch(`${base}/features`, {
+      headers: { Accept: "text/html" },
+    });
+    assert.equal(features.status, 200);
+    assert.equal(await features.text(), "<main>features</main>");
+
+    const slash = await fetch(`${base}/features/?from=test`, {
+      redirect: "manual",
+      headers: { Accept: "text/html" },
+    });
+    assert.equal(slash.status, 308);
+    assert.equal(slash.headers.get("location"), "/features?from=test");
+
+    const indexHtml = await fetch(`${base}/index.html`, {
+      redirect: "manual",
+    });
+    assert.equal(indexHtml.status, 308);
+    assert.equal(indexHtml.headers.get("location"), "/");
+
+    const missing = await fetch(`${base}/missing-page`, {
+      headers: { Accept: "text/html" },
+    });
+    assert.equal(missing.status, 404);
+    assert.equal(await missing.text(), "<main>missing</main>");
+    assert.equal(missing.headers.get("x-robots-tag"), "noindex");
+
+    const missingAsset = await fetch(`${base}/missing.js`);
+    assert.equal(missingAsset.status, 404);
+    assert.equal(await missingAsset.text(), "Not found");
+
     const asset = await new Promise((resolve, reject) =>
       get(
         `${base}/assets/app.js`,
@@ -61,6 +112,12 @@ test("serves deep links with SPA fallback, serves assets, and blocks traversal",
       "public, max-age=31536000, immutable",
     );
     assert.equal(gunzipSync(asset.body).toString(), assetBody);
+
+    const media = await fetch(`${base}/media/scene.avif`);
+    assert.equal(media.status, 200);
+    assert.equal(media.headers.get("content-type"), "image/avif");
+    assert.equal(media.headers.get("cache-control"), "public, max-age=604800");
+
     const headAsset = await fetch(`${base}/assets/app.js`, {
       method: "HEAD",
       headers: { "Accept-Encoding": "gzip" },
@@ -72,6 +129,7 @@ test("serves deep links with SPA fallback, serves assets, and blocks traversal",
       "text/javascript; charset=utf-8",
     );
     assert.equal(await headAsset.text(), "");
+
     const manifest = await fetch(`${base}/api/latest.json`);
     assert.equal(manifest.status, 200);
     assert.equal(

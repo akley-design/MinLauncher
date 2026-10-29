@@ -69,14 +69,16 @@ describe("site page identity", () => {
     expect(
       document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href,
     ).toBe(`${SITE_ORIGIN}/features`);
-    expect(document.querySelector('meta[name="robots"]')).toBeNull();
+    expect(
+      document.querySelector<HTMLMetaElement>('meta[name="robots"]')?.content,
+    ).toBe("index, follow, max-image-preview:large");
 
     view.rerender(<PageMeta meta={privatePage.meta} />);
     expect(document.title).toBe(privatePage.meta.title);
     expect(document.querySelector('link[rel="canonical"]')).toBeNull();
-    expect(document.querySelector<HTMLMetaElement>('meta[name="robots"]')?.content).toBe(
-      "noindex, nofollow",
-    );
+    expect(
+      document.querySelector<HTMLMetaElement>('meta[name="robots"]')?.content,
+    ).toBe("noindex, nofollow");
     expect(document.querySelectorAll('meta[name="description"]')).toHaveLength(
       1,
     );
@@ -85,7 +87,9 @@ describe("site page identity", () => {
     );
 
     view.rerender(<PageMeta meta={publicPage.meta} />);
-    expect(document.querySelector('meta[name="robots"]')).toBeNull();
+    expect(
+      document.querySelector<HTMLMetaElement>('meta[name="robots"]')?.content,
+    ).toBe("index, follow, max-image-preview:large");
     expect(document.querySelectorAll('link[rel="canonical"]')).toHaveLength(1);
   });
 });

@@ -160,9 +160,7 @@ export function buildCave(ctx: SceneBuilder) {
   ctx.block(4, 5, -2, PAL.stone);
   ctx.block(1, 5, -5, PAL.stoneDark);
 
-  const tunnelLight = ctx.light("#4a9e8f", 0.3, 3.6, [0, 1.2, -2.2]);
   ctx.movers.push((time) => {
-    tunnelLight.intensity = 0.2 + Math.sin(time * 0.7) * 0.06;
     tunnelMist.material.opacity =
       0.1 + (0.5 + 0.5 * Math.sin(time * 0.6)) * 0.05;
   });
