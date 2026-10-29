@@ -116,9 +116,7 @@ export default {
       });
     }
 
-    const pagePath =
-      pathname === "/" ? "/index.html" : `${pathname}/index.html`;
-    const page = await env.ASSETS.fetch(assetRequest(request, pagePath, true));
+    const page = await env.ASSETS.fetch(assetRequest(request, pathname, true));
     if (page.status === 200) {
       return withHeaders(page, {
         ...HTML_SECURITY,
@@ -126,21 +124,20 @@ export default {
       });
     }
 
-    const notFound = await env.ASSETS.fetch(
-      assetRequest(request, "/404.html", true),
+    const isNotFoundHtml = (page.headers.get("content-type") ?? "").includes(
+      "text/html",
     );
-    if (notFound.status === 200) {
-      return withHeaders(
-        notFound,
-        {
-          ...HTML_SECURITY,
-          "Cache-Control": "no-cache",
-          "X-Robots-Tag": "noindex",
-        },
-        404,
-      );
-    }
-
-    return new Response("Not found", { status: 404 });
+    const notFound = isNotFoundHtml
+      ? page
+      : await env.ASSETS.fetch(assetRequest(request, "/404", true));
+    return withHeaders(
+      notFound,
+      {
+        ...HTML_SECURITY,
+        "Cache-Control": "no-cache",
+        "X-Robots-Tag": "noindex",
+      },
+      404,
+    );
   },
 };

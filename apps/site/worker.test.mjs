@@ -3,9 +3,9 @@ import test from "node:test";
 import worker from "./public/_worker.js";
 
 const files = new Map([
-  ["/index.html", "<main>home</main>"],
-  ["/features/index.html", "<main>features</main>"],
-  ["/404.html", "<main>missing</main>"],
+  ["/", "<main>home</main>"],
+  ["/features", "<main>features</main>"],
+  ["/404", "<main>missing</main>"],
   ["/assets/app.js", "console.log('app')"],
 ]);
 
@@ -19,11 +19,15 @@ function assets(seen = []) {
         etag: request.headers.get("if-none-match"),
       });
       const body = files.get(url.pathname);
-      return body === undefined
-        ? new Response("Not found", { status: 404 })
-        : new Response(request.method === "HEAD" ? null : body, {
-            status: 200,
-          });
+      if (body !== undefined) {
+        return new Response(request.method === "HEAD" ? null : body, {
+          status: 200,
+        });
+      }
+      return new Response(files.get("/404"), {
+        status: 404,
+        headers: { "Content-Type": "text/html" },
+      });
     },
   };
 }
@@ -50,7 +54,7 @@ test("worker serves prerendered HTML, redirects and real 404s", async () => {
   );
   assert.equal(features.status, 200);
   assert.equal(await features.text(), "<main>features</main>");
-  assert.equal(seen.at(-1).pathname, "/features/index.html");
+  assert.equal(seen.at(-1).pathname, "/features");
   assert.equal(seen.at(-1).etag, null, "HTML fetch must ignore stale ETag");
 
   const head = await worker.fetch(
