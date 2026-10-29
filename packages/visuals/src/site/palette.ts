@@ -1,0 +1,91 @@
+import type { BlockStyle } from "./voxel";
+
+function cube(
+  tile: BlockStyle["top"],
+  tint: string,
+  extra: Partial<BlockStyle> = {},
+): BlockStyle {
+  return { top: tile, side: tile, bottom: tile, tint, ...extra };
+}
+
+export const PAL = {
+  grass: {
+    top: "grass_top",
+    side: "grass_side",
+    bottom: "dirt",
+    tint: "#ffffff",
+    topTint: "#9caf80",
+    sideTint: "#f5f0dc",
+    bottomTint: "#e8dcc8",
+  },
+  grassDark: {
+    top: "grass_top",
+    side: "grass_side",
+    bottom: "dirt",
+    tint: "#ffffff",
+    topTint: "#849b6a",
+    sideTint: "#ece4ce",
+    bottomTint: "#ded2bc",
+  },
+  grassLime: {
+    top: "grass_top",
+    side: "grass_side",
+    bottom: "dirt",
+    tint: "#ffffff",
+    topTint: "#adbd90",
+    sideTint: "#faf6e6",
+    bottomTint: "#eee2cc",
+  },
+  dirt: cube("dirt", "#e8dcc8"),
+  dirtLight: cube("dirt", "#f4ead6"),
+  dirtDark: cube("dirt", "#d4c4ac"),
+  stone: cube("stone", "#d4d8d4"),
+  stoneDark: cube("stone", "#bcc2be"),
+  stoneLight: cube("stone", "#e4e7e2"),
+  cobble: cube("cobble", "#d2d6d2"),
+  cobbleDark: cube("cobble", "#bcc0ba"),
+  gravel: cube("gravel", "#e4dcc8"),
+  sand: cube("sand", "#fff2da"),
+  planks: cube("planks", "#f0e2c8"),
+  planksDark: cube("planks", "#d8c6a8"),
+  planksPale: cube("planks", "#f8ecd8"),
+  log: {
+    top: "log_top",
+    side: "log_side",
+    bottom: "log_top",
+    tint: "#f4e6d0",
+  },
+  logDark: {
+    top: "log_top",
+    side: "log_side",
+    bottom: "log_top",
+    tint: "#dccab2",
+  },
+  birch: {
+    top: "birch_top",
+    side: "birch_side",
+    bottom: "birch_top",
+    tint: "#f8f8ee",
+  },
+  plaster: cube("plaster", "#faf4e6"),
+  plasterWarm: cube("plaster", "#f2e8d2"),
+  roof: cube("roof", "#e8d6c8"),
+  roofDark: cube("roof", "#d4bcae"),
+  leaves: cube("leaves", "#dfe8d4"),
+  leavesDark: cube("leaves", "#ccd9c0"),
+  leavesLime: cube("leaves", "#eaf1dc"),
+  leavesBirch: cube("leaves_birch", "#e8efda"),
+  leavesPine: cube("leaves_pine", "#d6e0d6"),
+  obsidian: cube("obsidian", "#9c92b4"),
+  obsidianDark: cube("obsidian", "#8c82a4"),
+  deepslate: cube("deepslate", "#d0d4dc"),
+  deepslateDark: cube("deepslate", "#b8bcc6"),
+  oreCopper: cube("ore_copper", "#f0f0e6"),
+  oreAmethyst: cube("ore_amethyst", "#f0f0e6"),
+  window: cube("window", "#fff8e8", { emissive: true }),
+  lantern: cube("lantern", "#fff4dc", { emissive: true }),
+  crystal: cube("crystal", "#f0fffa", { emissive: true }),
+  metal: cube("metal", "#e4e8e4"),
+} satisfies Record<string, BlockStyle>;
+
+export type PaletteName = keyof typeof PAL;

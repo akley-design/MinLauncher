@@ -14,24 +14,38 @@ const types = {
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".webp": "image/webp",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
 };
-const releaseManifest = "https://github.com/akley-design/MinLauncher/releases/latest/download/latest.json";
+const releaseManifest =
+  "https://github.com/akley-design/MinLauncher/releases/latest/download/latest.json";
 
 function safePath(pathname, root) {
   const decoded = decodeURIComponent(pathname);
   const file = resolve(root, `.${decoded}`);
   const rel = relative(root, file);
-  if (rel === ".." || rel.startsWith(`..${sep}`) || resolve(file) === root && decoded !== "/") return null;
+  if (
+    rel === ".." ||
+    rel.startsWith(`..${sep}`) ||
+    (resolve(file) === root && decoded !== "/")
+  )
+    return null;
   return file;
 }
 
-export function createSiteServer(siteRoot = fileURLToPath(new URL("./dist/", import.meta.url)), fetchRelease = fetch) {
+export function createSiteServer(
+  siteRoot = fileURLToPath(new URL("./dist/", import.meta.url)),
+  fetchRelease = fetch,
+) {
   const root = resolve(siteRoot);
   return createServer(async (req, res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self' data:; script-src 'self'; connect-src 'self' https: wss:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self' data:; script-src 'self'; connect-src 'self' https: wss:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+    );
 
     let pathname;
     try {
@@ -47,14 +61,26 @@ export function createSiteServer(siteRoot = fileURLToPath(new URL("./dist/", imp
     }
     if (pathname === "/api/latest.json") {
       try {
-        const upstream = await fetchRelease(releaseManifest, { signal: AbortSignal.timeout(6000) });
+        const upstream = await fetchRelease(releaseManifest, {
+          method: req.method,
+          signal: AbortSignal.timeout(6000),
+        });
+        if (upstream.status === 404) {
+          res
+            .writeHead(404, { "Cache-Control": "no-store" })
+            .end("Release is not published");
+          return;
+        }
         if (!upstream.ok) throw new Error(`GitHub returned ${upstream.status}`);
-        const body = await upstream.text();
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         res.setHeader("Cache-Control", "public, max-age=300");
-        res.writeHead(200).end(req.method === "HEAD" ? undefined : body);
+        res
+          .writeHead(200)
+          .end(req.method === "HEAD" ? undefined : await upstream.text());
       } catch {
-        res.writeHead(502, { "Cache-Control": "no-store" }).end("Release manifest unavailable");
+        res
+          .writeHead(502, { "Cache-Control": "no-store" })
+          .end("Release manifest unavailable");
       }
       return;
     }
@@ -71,14 +97,23 @@ export function createSiteServer(siteRoot = fileURLToPath(new URL("./dist/", imp
       return;
     }
 
+    let size;
+    let body;
+    const headOnly = req.method === "HEAD";
     try {
-      if ((await stat(file)).isDirectory()) file = join(file, "index.html");
-      var body = await readFile(file);
+      let info = await stat(file);
+      if (info.isDirectory()) {
+        file = join(file, "index.html");
+        info = await stat(file);
+      }
+      size = info.size;
+      if (!headOnly) body = await readFile(file);
     } catch {
       if (req.headers.accept?.includes("text/html")) {
         try {
           file = join(root, "index.html");
-          body = await readFile(file);
+          size = (await stat(file)).size;
+          if (!headOnly) body = await readFile(file);
         } catch {
           res.writeHead(503).end("Site is not built yet");
           return;
@@ -90,21 +125,40 @@ export function createSiteServer(siteRoot = fileURLToPath(new URL("./dist/", imp
     }
 
     const immutableAsset = file.includes(`${sep}assets${sep}`);
-    const contentType = types[extname(file).toLowerCase()] ?? "application/octet-stream";
-    const compressible = contentType.startsWith("text/") || contentType.startsWith("application/");
-    let responseBody = body;
+    const contentType =
+      types[extname(file).toLowerCase()] ?? "application/octet-stream";
+    const compressible =
+      contentType.startsWith("text/") || contentType.startsWith("application/");
     res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", immutableAsset ? "public, max-age=31536000, immutable" : "no-cache");
+    res.setHeader(
+      "Cache-Control",
+      immutableAsset ? "public, max-age=31536000, immutable" : "no-cache",
+    );
     res.setHeader("Vary", "Accept-Encoding");
-    if (compressible && body.length > 256 && /\bgzip\b/i.test(req.headers["accept-encoding"] ?? "")) {
-      responseBody = gzipSync(body);
+    if (
+      compressible &&
+      size > 256 &&
+      /\bgzip\b/i.test(req.headers["accept-encoding"] ?? "")
+    ) {
       res.setHeader("Content-Encoding", "gzip");
     }
-    res.writeHead(200).end(req.method === "HEAD" ? undefined : responseBody);
+    if (headOnly) {
+      res.writeHead(200).end();
+      return;
+    }
+    const responseBody = res.hasHeader("Content-Encoding")
+      ? gzipSync(body)
+      : body;
+    res.writeHead(200).end(responseBody);
   });
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
   const port = Number(process.env.PORT) || 3000;
-  createSiteServer().listen(port, "0.0.0.0", () => console.log(`MinLauncher site listening on ${port}`));
+  createSiteServer().listen(port, "0.0.0.0", () =>
+    console.log(`MinLauncher site listening on ${port}`),
+  );
 }

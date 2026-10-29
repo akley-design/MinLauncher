@@ -1,0 +1,11 @@
+{
+  "version": "0.1.1-beta",
+  "pub_date": "2026-10-27T22:04:21.000Z",
+  "beta": true,
+  "notes": "Бета 0.1.1: обновлённый интерфейс, email-регистрация MinLauncher, игровые профили, выбор папки установки и управление загрузчиками модов.",
+  "platforms": {
+    "windows-x86_64-nsis": {
+      "url": "/MinLauncher_0.1.1-beta_x64-setup.exe"
+    }
+  }
+}

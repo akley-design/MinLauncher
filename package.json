@@ -1,11 +1,12 @@
 {
   "name": "minlaucher",
-  "version": "0.1.0",
+  "version": "0.1.1-beta",
   "private": true,
   "description": "MinLauncher — fast Minecraft launcher (Tauri + React)",
   "workspaces": [
     "apps/ui",
-    "apps/site"
+    "apps/site",
+    "packages/visuals"
   ],
   "scripts": {
     "dev": "npm run dev --workspace @minlaucher/ui",
@@ -14,20 +15,28 @@
     "test": "npm run test --workspace @minlaucher/ui",
     "test:run": "npm run test:run --workspace @minlaucher/ui",
     "test:scripts": "node --test \"scripts/*.test.mjs\"",
+    "test:supabase": "node --test supabase/functions/redeem-handoff/handoff.test.mjs supabase/functions/launcher-nickname/nickname.test.mjs supabase/functions/launcher-nickname/signin.test.mjs supabase/functions/minecraft-oauth-complete/policy.test.mjs supabase/functions/redeem-minecraft-handoff/handoff.test.mjs",
     "lint": "npm run lint --workspace @minlaucher/ui",
     "typecheck": "npm run typecheck --workspace @minlaucher/ui",
-    "format": "npm run format --workspace @minlaucher/ui",
-    "format:check": "npm run format:check --workspace @minlaucher/ui",
+    "format": "npm run format --workspace @minlaucher/ui && prettier --write apps/site/src apps/site/server.mjs apps/site/server.test.mjs packages/visuals/src supabase/functions scripts",
+    "format:check": "npm run format:check --workspace @minlaucher/ui && prettier --check apps/site/src apps/site/server.mjs apps/site/server.test.mjs packages/visuals/src supabase/functions scripts",
     "site:dev": "npm run dev --workspace @minlaucher/site",
     "site:build": "npm run build --workspace @minlaucher/site",
     "site:start": "npm run start --workspace @minlaucher/site",
     "site:test": "npm run test --workspace @minlaucher/site",
     "tauri": "tauri",
     "tauri:dev": "cd crates/ml-desktop && tauri dev",
-    "tauri:build": "cd crates/ml-desktop && tauri build"
+    "tauri:build": "cd crates/ml-desktop && tauri build",
+    "tauri:build:installer": "cd crates/ml-desktop && tauri build --config tauri.installer.conf.json",
+    "tauri:build:store": "cd crates/ml-desktop && tauri build --config tauri.store.conf.json --no-bundle",
+    "store:package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-store-msix.ps1",
+    "test:visuals": "npm run test --workspace @minlauncher/visuals",
+    "design:check": "node scripts/design-smoke.mjs",
+    "design:render": "node scripts/render-dioramas.mjs"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.3"
+    "@tauri-apps/cli": "2.12.3",
+    "playwright": "^1.64.1"
   },
   "engines": {
     "node": ">=20.19"

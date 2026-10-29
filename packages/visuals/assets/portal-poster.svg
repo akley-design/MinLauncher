@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480">
+  <defs>
+    <linearGradient id="grass" x2=".8" y2="1"><stop stop-color="#9db878"/><stop offset="1" stop-color="#496843"/></linearGradient>
+    <linearGradient id="obsidian" x2="1" y2="1"><stop stop-color="#514065"/><stop offset="1" stop-color="#191522"/></linearGradient>
+    <linearGradient id="portal" x2=".8" y2="1"><stop stop-color="#ecb8ff"/><stop offset=".35" stop-color="#a942ed"/><stop offset="1" stop-color="#5723a7"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="11"/></filter>
+  </defs>
+  <ellipse cx="324" cy="415" rx="242" ry="31" fill="#101411" opacity=".55"/>
+  <path d="m74 322 155-88 344 56-154 99-345-31Z" fill="#302b37"/>
+  <path d="m74 296 155-91 344 57-154 94-345-31Z" fill="url(#grass)"/>
+  <path d="m74 296 155-91v27L74 322Zm345 60v-27l154-94v27Z" fill="#292536"/>
+  <path d="m257 283 41-23 36 7v-83l25-18 26 16v91l-28 18v-75l-11-9-11 8v71l-14 8v-68l-14-9-14 8v78Z" fill="url(#obsidian)"/>
+  <path d="m305 184 21-40 21 12v25l-21-12Zm60 0 21-17 21 13v23l-21-13Z" fill="url(#obsidian)"/>
+  <path d="m324 272 1-78 16-12 18 11v79Z" fill="url(#portal)"/>
+  <path d="m326 201 8-7 20 11v66h-8v-62Z" fill="#f2c5ff" opacity=".55"/>
+  <path d="M337 194v77" stroke="#efb8ff" stroke-width="25" opacity=".5" filter="url(#glow)"/>
+  <path d="m281 299 94-14 4 13-95 16Zm-18 15 130-20 5 13-131 21Zm-20 16 159-25 5 13-160 26Z" fill="#aaa285"/>
+  <path d="m281 299 94-14 4 13-95 16Zm-18 15 130-20 5 13-131 21Z" fill="#d5caa6" opacity=".72"/>
+  <path d="m238 269 19-11 13 4-19 12Zm170 17 21-13 13 3-21 14Z" fill="#78934e"/>
+  <circle cx="334" cy="222" r="49" fill="#a94cff" opacity=".22" filter="url(#glow)"/>
+  <path d="M336 210h25m-43 24h31m-14 22h17" stroke="#f1ceff" stroke-width="4" stroke-linecap="round" opacity=".85"/>
+</svg>
