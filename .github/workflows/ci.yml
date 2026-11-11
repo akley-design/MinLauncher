@@ -210,6 +210,7 @@ jobs:
         run: ./gradlew build
 
       - name: Check that the jars were built
+        working-directory: apps/java
         # The launcher looks for these two names, and not for any other:
         # the agent is the fat jar, because it carries the classes of the
         # libraries it weaves into.
