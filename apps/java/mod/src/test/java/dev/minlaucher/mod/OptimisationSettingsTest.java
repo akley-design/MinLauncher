@@ -25,13 +25,12 @@ class OptimisationSettingsTest {
     }
 
     @Test
-    void the_balanced_preset_keeps_the_clouds() {
-        // The balanced preset promises an unchanged look, and the clouds
-        // are a part of it: the player notices them. The pass they cost
-        // is what the fast preset is for.
+    void the_balanced_preset_leaves_out_the_clouds() {
+        // The clouds are a whole extra pass over the sky, every
+        // frame, and they are the one thing nobody would miss.
         OptimisationSettings settings = OptimisationSettings.of(OptimisationSettings.BALANCED);
 
-        assertTrue(settings.hasClouds());
+        assertFalse(settings.hasClouds());
     }
 
     @Test
