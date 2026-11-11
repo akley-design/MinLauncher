@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -44,7 +45,7 @@ class MinLauncherAgentTest {
         try {
             Path path = MinLauncherAgent.outputPath(
                     MinLauncherAgent.parseArguments("output=C:\\other.json"));
-            assertEquals("C:\\a\\b.json", path.toString());
+            assertEquals(Paths.get("C:\\a\\b.json").toAbsolutePath(), path);
         } finally {
             System.clearProperty(MinLauncherAgent.OUTPUT_PROPERTY);
         }
@@ -52,7 +53,9 @@ class MinLauncherAgentTest {
 
     @Test
     void the_report_path_can_be_unique_to_each_java_process() {
-        System.setProperty(MinLauncherAgent.OUTPUT_PROPERTY, "C:\\reports\\game-{pid}.json");
+        System.setProperty(
+                MinLauncherAgent.OUTPUT_PROPERTY,
+                Paths.get("reports", "game-{pid}.json").toString());
         try {
             Path path = MinLauncherAgent.outputPath(MinLauncherAgent.parseArguments(""));
             assertTrue(path.getFileName().toString().matches("game-[0-9]+\\.json"));
@@ -66,7 +69,7 @@ class MinLauncherAgentTest {
         System.clearProperty(MinLauncherAgent.OUTPUT_PROPERTY);
         Path path = MinLauncherAgent.outputPath(
                 MinLauncherAgent.parseArguments("output=C:\\a\\b.json"));
-        assertEquals("C:\\a\\b.json", path.toString());
+        assertEquals(Paths.get("C:\\a\\b.json").toAbsolutePath(), path);
     }
 
     @Test
