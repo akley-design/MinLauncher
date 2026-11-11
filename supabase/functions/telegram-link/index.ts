@@ -10,7 +10,8 @@ if (!supabaseUrl || !anonKey || !serviceRoleKey || !botSecret) {
   Deno.serve((request) => {
     const headers = {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "authorization, apikey, x-client-info, content-type, x-minlauncher-bot-secret",
+      "Access-Control-Allow-Headers":
+        "authorization, apikey, x-client-info, content-type, x-minlauncher-bot-secret",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
       "Cache-Control": "no-store",
       "Content-Type": "application/json; charset=utf-8",
@@ -68,10 +69,13 @@ if (!supabaseUrl || !anonKey || !serviceRoleKey || !botSecret) {
         if (error) throw new Error("Telegram challenge creation failed");
       },
       async redeemChallenge({ tokenHash, telegramUserId }) {
-        const { data, error } = await admin.rpc("minlauncher_redeem_telegram_link", {
-          p_token_hash: tokenHash,
-          p_telegram_user_id: telegramUserId,
-        });
+        const { data, error } = await admin.rpc(
+          "minlauncher_redeem_telegram_link",
+          {
+            p_token_hash: tokenHash,
+            p_telegram_user_id: telegramUserId,
+          },
+        );
         if (error) throw new Error("Telegram challenge redemption failed");
         return { status: data };
       },
@@ -85,9 +89,12 @@ if (!supabaseUrl || !anonKey || !serviceRoleKey || !botSecret) {
         return data?.user_id ?? null;
       },
       async getActivity(userId) {
-        const { data, error } = await admin.rpc("minlauncher_activity_get_progress", {
-          p_user_id: userId,
-        });
+        const { data, error } = await admin.rpc(
+          "minlauncher_activity_get_progress",
+          {
+            p_user_id: userId,
+          },
+        );
         if (error) throw new Error("Activity progress lookup failed");
         return data;
       },

@@ -1453,7 +1453,7 @@ function AccountPage({
             ) : null}
             {activity.progress?.nextReward ? (
               <small>
-                До уровня {activity.progress.nextLevel}: {" "}
+                До уровня {activity.progress.nextLevel}:{" "}
                 {formatActivityDuration(activity.progress.secondsRemaining)} ·
                 награда: {activity.progress.nextReward.rewardLabel}
               </small>

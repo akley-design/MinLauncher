@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-type LinkStatus = "loading" | "signed_out" | "unlinked" | "linked" | "unavailable";
+type LinkStatus =
+  "loading" | "signed_out" | "unlinked" | "linked" | "unavailable";
 type Action = "create" | "refresh" | "unlink";
 type LinkChallenge = { href: string; expiresAt: string };
 type Language = "ru" | "uk";
@@ -41,11 +42,13 @@ const COPY: Record<Language, Copy> = {
     unlinked: "Профиль не привязан",
     linked: "Профиль привязан",
     unavailable: "Статус привязки недоступен",
-    intro: "Свяжите аккаунты, чтобы открыть в боте уровень и косметические награды лаунчера.",
+    intro:
+      "Свяжите аккаунты, чтобы открыть в боте уровень и косметические награды лаунчера.",
     create: "Создать ссылку",
     createAgain: "Создать новую ссылку",
     openTelegram: "Открыть Telegram",
-    expires: "Ссылка действует 10 минут. После запуска бота вернитесь сюда и проверьте привязку.",
+    expires:
+      "Ссылка действует 10 минут. После запуска бота вернитесь сюда и проверьте привязку.",
     expired: "Срок ссылки истёк. Создайте новую, чтобы продолжить.",
     refresh: "Проверить привязку",
     unlink: "Отвязать аккаунт",
@@ -54,11 +57,14 @@ const COPY: Record<Language, Copy> = {
     unlinkedSuccess: "Telegram-аккаунт отвязан. Прогресс лаунчера сохранён.",
     alreadyLinked: "Этот профиль или Telegram-аккаунт уже привязан.",
     linkExpired: "Ссылка истекла. Создайте новую и попробуйте ещё раз.",
-    linkUsed: "Ссылка уже использована. Создайте новую, если привязка не появилась.",
+    linkUsed:
+      "Ссылка уже использована. Создайте новую, если привязка не появилась.",
     botMissing: "Привязка Telegram ещё не настроена на сайте.",
-    apiUnavailable: "Не удалось связаться с сервисом привязки. Попробуйте позже.",
+    apiUnavailable:
+      "Не удалось связаться с сервисом привязки. Попробуйте позже.",
     genericError: "Не удалось выполнить действие. Попробуйте ещё раз.",
-    privacy: "Отвязка удаляет только связь аккаунтов; аккаунт и игровой прогресс MinLauncher остаются.",
+    privacy:
+      "Отвязка удаляет только связь аккаунтов; аккаунт и игровой прогресс MinLauncher остаются.",
   },
   uk: {
     title: "TELEGRAM",
@@ -67,11 +73,13 @@ const COPY: Record<Language, Copy> = {
     unlinked: "Профіль не прив’язано",
     linked: "Профіль прив’язано",
     unavailable: "Статус прив’язки недоступний",
-    intro: "Зв’яжіть акаунти, щоб відкрити в боті рівень і косметичні нагороди лаунчера.",
+    intro:
+      "Зв’яжіть акаунти, щоб відкрити в боті рівень і косметичні нагороди лаунчера.",
     create: "Створити посилання",
     createAgain: "Створити нове посилання",
     openTelegram: "Відкрити Telegram",
-    expires: "Посилання діє 10 хвилин. Після запуску бота поверніться сюди та перевірте прив’язку.",
+    expires:
+      "Посилання діє 10 хвилин. Після запуску бота поверніться сюди та перевірте прив’язку.",
     expired: "Термін дії посилання минув. Створіть нове, щоб продовжити.",
     refresh: "Перевірити прив’язку",
     unlink: "Відв’язати акаунт",
@@ -80,11 +88,14 @@ const COPY: Record<Language, Copy> = {
     unlinkedSuccess: "Telegram-акаунт відв’язано. Прогрес лаунчера збережено.",
     alreadyLinked: "Цей профіль або Telegram-акаунт уже прив’язано.",
     linkExpired: "Посилання прострочене. Створіть нове й спробуйте ще раз.",
-    linkUsed: "Посилання вже використано. Створіть нове, якщо прив’язка не з’явилася.",
+    linkUsed:
+      "Посилання вже використано. Створіть нове, якщо прив’язка не з’явилася.",
     botMissing: "Прив’язку Telegram ще не налаштовано на сайті.",
-    apiUnavailable: "Не вдалося зв’язатися із сервісом прив’язки. Спробуйте пізніше.",
+    apiUnavailable:
+      "Не вдалося зв’язатися із сервісом прив’язки. Спробуйте пізніше.",
     genericError: "Не вдалося виконати дію. Спробуйте ще раз.",
-    privacy: "Відв’язування видаляє лише зв’язок акаунтів; акаунт і ігровий прогрес MinLauncher залишаються.",
+    privacy:
+      "Відв’язування видаляє лише зв’язок акаунтів; акаунт і ігровий прогрес MinLauncher залишаються.",
   },
 };
 
@@ -96,10 +107,17 @@ function apiCode(data: unknown): string | null {
   return isRecord(data) && typeof data.error === "string" ? data.error : null;
 }
 
-async function responseErrorCode(data: unknown, error: unknown): Promise<string | null> {
+async function responseErrorCode(
+  data: unknown,
+  error: unknown,
+): Promise<string | null> {
   const bodyCode = apiCode(data);
   if (bodyCode) return bodyCode;
-  if (!isRecord(error) || !isRecord(error.context) || typeof error.context.json !== "function") {
+  if (
+    !isRecord(error) ||
+    !isRecord(error.context) ||
+    typeof error.context.json !== "function"
+  ) {
     return null;
   }
   try {
@@ -136,14 +154,18 @@ export function TelegramLinkCard({
   botUsername?: string;
   language?: Language;
 }) {
-  const detectedLanguage: Language = language ??
-    (typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("uk")
+  const detectedLanguage: Language =
+    language ??
+    (typeof navigator !== "undefined" &&
+    navigator.language.toLowerCase().startsWith("uk")
       ? "uk"
       : "ru");
   const copy = COPY[detectedLanguage];
   const username = (botUsername ?? "").trim().replace(/^@/, "");
   const usernameValid = isValidUsername(username);
-  const [status, setStatus] = useState<LinkStatus>(signedIn ? "loading" : "signed_out");
+  const [status, setStatus] = useState<LinkStatus>(
+    signedIn ? "loading" : "signed_out",
+  );
   const [busy, setBusy] = useState<Action | null>(null);
   const [challenge, setChallenge] = useState<LinkChallenge | null>(null);
   const [confirmingUnlink, setConfirmingUnlink] = useState(false);
@@ -156,7 +178,8 @@ export function TelegramLinkCard({
     [challenge, currentTime],
   );
   const challengeInvalid = useMemo(
-    () => challenge !== null && !Number.isFinite(Date.parse(challenge.expiresAt)),
+    () =>
+      challenge !== null && !Number.isFinite(Date.parse(challenge.expiresAt)),
     [challenge],
   );
 
@@ -168,16 +191,19 @@ export function TelegramLinkCard({
     setBusy("refresh");
     setError("");
     try {
-      const { data, error: invokeError } = await client.functions.invoke("telegram-link", {
-        body: { action: "status" },
-      });
+      const { data, error: invokeError } = await client.functions.invoke(
+        "telegram-link",
+        {
+          body: { action: "status" },
+        },
+      );
       if (invokeError || !isRecord(data) || typeof data.linked !== "boolean") {
         throw new Error("status_unavailable");
       }
       setStatus(data.linked ? "linked" : "unlinked");
       if (data.linked) setChallenge(null);
     } catch {
-      setStatus((current) => current === "linked" ? current : "unavailable");
+      setStatus((current) => (current === "linked" ? current : "unavailable"));
       setError(copy.apiUnavailable);
     } finally {
       setBusy(null);
@@ -209,9 +235,12 @@ export function TelegramLinkCard({
     setError("");
     setMessage("");
     try {
-      const { data, error: invokeError } = await client.functions.invoke("telegram-link", {
-        body: { action: "create" },
-      });
+      const { data, error: invokeError } = await client.functions.invoke(
+        "telegram-link",
+        {
+          body: { action: "create" },
+        },
+      );
       if (invokeError) {
         const code = await responseErrorCode(data, invokeError);
         if (code === "already_linked") setStatus("linked");
@@ -233,7 +262,11 @@ export function TelegramLinkCard({
       });
     } catch (cause) {
       const code = cause instanceof Error ? cause.message : null;
-      setError(code === "request_failed" ? copy.apiUnavailable : messageForCode(code, copy));
+      setError(
+        code === "request_failed"
+          ? copy.apiUnavailable
+          : messageForCode(code, copy),
+      );
     } finally {
       setBusy(null);
     }
@@ -245,11 +278,16 @@ export function TelegramLinkCard({
     setError("");
     setMessage("");
     try {
-      const { data, error: invokeError } = await client.functions.invoke("telegram-link", {
-        body: { action: "unlink" },
-      });
+      const { data, error: invokeError } = await client.functions.invoke(
+        "telegram-link",
+        {
+          body: { action: "unlink" },
+        },
+      );
       if (invokeError || (isRecord(data) && typeof data.error === "string")) {
-        throw new Error((await responseErrorCode(data, invokeError)) ?? "request_failed");
+        throw new Error(
+          (await responseErrorCode(data, invokeError)) ?? "request_failed",
+        );
       }
       setStatus("unlinked");
       setChallenge(null);
@@ -272,9 +310,16 @@ export function TelegramLinkCard({
   }[status];
 
   return (
-    <section className="field field--email telegram-link-card" aria-labelledby="telegram-link-title">
+    <section
+      className="field field--email telegram-link-card"
+      aria-labelledby="telegram-link-title"
+    >
       <span id="telegram-link-title">{copy.title}</span>
-      <p className="telegram-link-card__status" role="status" aria-live="polite">
+      <p
+        className="telegram-link-card__status"
+        role="status"
+        aria-live="polite"
+      >
         {statusText}
       </p>
       <small>{copy.intro}</small>
@@ -321,7 +366,11 @@ export function TelegramLinkCard({
                 disabled={busy !== null || !usernameValid}
                 onClick={() => void createLink()}
               >
-                {busy === "create" ? "…" : challenge ? copy.createAgain : copy.create}
+                {busy === "create"
+                  ? "…"
+                  : challenge
+                    ? copy.createAgain
+                    : copy.create}
               </button>
               <button
                 className="button button--ghost"
@@ -360,9 +409,19 @@ export function TelegramLinkCard({
           ) : null}
         </>
       )}
-      {!usernameValid && signedIn ? <small role="alert">{copy.botMissing}</small> : null}
-      {message ? <small className="form-message form-message--success" role="status">{message}</small> : null}
-      {error ? <small className="form-message form-message--error" role="alert">{error}</small> : null}
+      {!usernameValid && signedIn ? (
+        <small role="alert">{copy.botMissing}</small>
+      ) : null}
+      {message ? (
+        <small className="form-message form-message--success" role="status">
+          {message}
+        </small>
+      ) : null}
+      {error ? (
+        <small className="form-message form-message--error" role="alert">
+          {error}
+        </small>
+      ) : null}
     </section>
   );
 }
