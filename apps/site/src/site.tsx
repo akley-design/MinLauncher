@@ -31,6 +31,12 @@ import {
   sceneWidesSite,
 } from "@minlauncher/visuals/site";
 import { supabase } from "./supabase";
+import {
+  formatActivityDuration,
+  useActivityProgress,
+  type ActivityStatus,
+} from "@minlauncher/activity-progress";
+import { TelegramLinkCard } from "./telegram-link";
 
 function Icon({
   name,
@@ -1062,6 +1068,7 @@ function AccountPage({
   session: Session | null;
   authLoading: boolean;
 }) {
+  const activity = useActivityProgress();
   const [name, setName] = useState("");
   const [channel, setChannel] = useState("stable");
   const [registeredNickname, setRegisteredNickname] = useState("");
@@ -1081,6 +1088,15 @@ function AccountPage({
   const [minecraftHandoffUrl, setMinecraftHandoffUrl] = useState("");
   const [minecraftError, setMinecraftError] = useState("");
   const metadata = session?.user.user_metadata ?? {};
+  const activityStatusMessage: Record<ActivityStatus, string> = {
+    loading: "Загружаем сохранённый прогресс…",
+    signed_out: "Войдите в аккаунт, чтобы сохранять уровень.",
+    starting: "Проверяем активную сессию…",
+    active: "Время примерно засчитывается, пока вкладка открыта и в фокусе.",
+    paused: "Пауза: вкладка скрыта или окно не в фокусе.",
+    offline: "Нет связи с сервером. Время сейчас не начисляется.",
+    unavailable: "Прогресс сейчас недоступен.",
+  };
 
   useEffect(() => {
     setName(String(metadata.display_name ?? metadata.full_name ?? ""));
@@ -1419,6 +1435,42 @@ function AccountPage({
               доступа.
             </small>
           </div>
+          <div
+            className="field field--email"
+            aria-label="Прогресс Атласа миров"
+          >
+            <span>АТЛАС МИРОВ</span>
+            <p>
+              Уровень {activity.progress?.level ?? "—"} / 50
+              {activity.progress
+                ? ` · ${formatActivityDuration(activity.progress.confirmedSeconds)} подтверждённой активности`
+                : ""}
+            </p>
+            {activity.progress?.currentReward ? (
+              <small>
+                Последняя награда: {activity.progress.currentReward.rewardLabel}
+              </small>
+            ) : null}
+            {activity.progress?.nextReward ? (
+              <small>
+                До уровня {activity.progress.nextLevel}:{" "}
+                {formatActivityDuration(activity.progress.secondsRemaining)} ·
+                награда: {activity.progress.nextReward.rewardLabel}
+              </small>
+            ) : activity.progress?.level === 50 ? (
+              <small>Все 50 уровней и косметические награды открыты.</small>
+            ) : null}
+            <small role="status" aria-live="polite">
+              {activityStatusMessage[activity.status]}
+            </small>
+          </div>
+          <TelegramLinkCard
+            key={session.user.id}
+            client={supabase}
+            userId={session.user.id}
+            signedIn
+            botUsername={import.meta.env.VITE_TELEGRAM_BOT_USERNAME}
+          />
           <div className="field field--email">
             <span>MINECRAFT JAVA</span>
             {minecraftLinked ? (

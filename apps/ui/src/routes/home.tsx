@@ -10,7 +10,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { ActivityProgressSummary } from "@minlauncher/activity-progress";
 
+import { ActivityAtlasLoadout } from "../components/ActivityAtlasLoadout";
 import { Button } from "../components/Button";
 import { Diorama } from "@minlauncher/visuals";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
@@ -483,6 +485,10 @@ export function HomeRoute() {
             mode="launcher"
             motion={running || starting ? "paused" : "active"}
           />
+          <ActivityAtlasLoadout />
+          <div className="home-hero__progress">
+            <ActivityProgressSummary compact />
+          </div>
           <div className="home-hero__caption">
             <span>Дом у реки</span>
           </div>

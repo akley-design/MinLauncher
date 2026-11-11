@@ -74,9 +74,9 @@ describe("site page identity", () => {
     view.rerender(<PageMeta meta={privatePage.meta} />);
     expect(document.title).toBe(privatePage.meta.title);
     expect(document.querySelector('link[rel="canonical"]')).toBeNull();
-    expect(document.querySelector<HTMLMetaElement>('meta[name="robots"]')?.content).toBe(
-      "noindex, nofollow",
-    );
+    expect(
+      document.querySelector<HTMLMetaElement>('meta[name="robots"]')?.content,
+    ).toBe("noindex, nofollow");
     expect(document.querySelectorAll('meta[name="description"]')).toHaveLength(
       1,
     );

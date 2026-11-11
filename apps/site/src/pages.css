@@ -1099,6 +1099,45 @@ html.nav-open {
   width: 100%;
 }
 
+.telegram-link-card {
+  align-content: start;
+  gap: 10px;
+}
+
+.telegram-link-card__status {
+  margin: 0;
+  color: var(--ml-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.telegram-link-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.telegram-link-card__challenge {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.telegram-link-card .form-message {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .telegram-link-card__actions > .button,
+  .telegram-link-card__challenge > .button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .settings-page--empty .settings-banner {
   min-height: 520px;
 }

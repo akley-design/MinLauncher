@@ -16,5 +16,8 @@ verify_jwt = false
 [functions.minecraft-account-unlink]
 verify_jwt = false
 
+[functions.telegram-link]
+verify_jwt = false
+
 [functions.redeem-minecraft-handoff]
 verify_jwt = false
