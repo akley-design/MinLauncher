@@ -215,5 +215,5 @@ jobs:
         # the agent is the fat jar, because it carries the classes of the
         # libraries it weaves into.
         run: |
-          test -f agent/build/libs/minlaucher-agent-*.jar
-          test -f mod/build/libs/mod-*.jar
+          find agent/build/libs -maxdepth 1 -type f -name 'minlaucher-agent-*.jar' -print -quit | grep -q .
+          find mod/build/libs -maxdepth 1 -type f -name 'mod-*.jar' ! -name '*-sources.jar' -print -quit | grep -q .
