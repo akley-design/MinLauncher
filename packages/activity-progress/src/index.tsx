@@ -1,6 +1,690 @@
-Y™Áäx-ÆÈ‹j◊ù¢Îi∫⁄+äßj[hëÈ‹¢ÈÌÎﬁ{NãZñã≠¶Îeäw¨’•µ¡Ω…–ÅÏ(ÄÅç…ïÖ—ïΩπ—ï·–∞(ÄÅ’ÕïΩπ—ï·–∞(ÄÅ’Õïôôïç–∞(ÄÅ’ÕïM—Ö—î∞(ÄÅ—Â¡îÅ•Õ¡Ö—ç†∞(ÄÅ—Â¡îÅMï—M—Ö—ïç—•Ω∏∞(ÄÅ—Â¡îÅA…Ω¡Õ]•—°°•±ë…ï∏∞)ÙÅô…Ω¥Äâ…ïÖç–àÏ)•µ¡Ω…–Å—Â¡îÅÏÅMïÕÕ•Ω∏∞ÅM’¡ÖâÖÕï±•ïπ–ÅÙÅô…Ω¥ÄâÕ’¡ÖâÖÕîΩÕ’¡ÖâÖÕîµ©ÃàÏ()ï·¡Ω…–ÅçΩπÕ–ÅQ%Y%Qe}!IQ	Q}%9QIY1}5LÄÙÄ»¡|¿¿¿Ï()ï·¡Ω…–Å—Â¡îÅç—•Ÿ•—ÂM—Ö—’ÃÄÙ(ÄÅÄâ±ΩÖë•πúà(ÄÅÄâÕ•ùπïë}Ω’–à(ÄÅÄâÕ—Ö…—•πúà(ÄÅÄâÖç—•Ÿîà(ÄÅÄâ¡Ö’Õïêà(ÄÅÄâΩôô±•πîà(ÄÅÄâ’πÖŸÖ•±Öâ±îàÏ()ï·¡Ω…–Å•π—ï…ôÖçîÅç—•Ÿ•—ÂIï›Ö…êÅÏ(ÄÅ±ïŸï∞ËÅπ’µâï»Ï(ÄÅÕ—ï¡MïçΩπëÃËÅπ’µâï»Ï(ÄÅ—Ω—Ö±MïçΩπëÃËÅπ’µâï»Ï(ÄÅ…ï›Ö…ë%êËÅÕ—…•πúÏ(ÄÅ…ï›Ö…ë1Öâï∞ËÅÕ—…•πúÏ)Ù()ï·¡Ω…–Å•π—ï…ôÖçîÅç—•Ÿ•—ÂA…Ωù…ïÕÃÅÏ(ÄÅç’…ŸïYï…Õ•Ω∏ËÅπ’µâï»Ï(ÄÅ±ïŸï∞ËÅπ’µâï»Ï(ÄÅ—Ω—Ö±MïçΩπëÃËÅπ’µâï»Ï(ÄÅ—Ω—Ö±5•±±•ÕïçΩπëÃËÅπ’µâï»Ï(ÄÅçΩπô•…µïëMïçΩπëÃËÅπ’µâï»Ï(ÄÅÕïçΩπëÕ%π—Ω1ïŸï∞ËÅπ’µâï»Ï(ÄÅ…ï≈’•…ïëMïçΩπëÃËÅπ’µâï»Ï(ÄÅÕïçΩπëÕIïµÖ•π•πúËÅπ’µâï»Ï(ÄÅπï·—1ïŸï∞ËÅπ’µâï»ÅÅπ’±∞Ï(ÄÅ’π±Ωç≠ïëIï›Ö…ë%ëÃËÅÕ—…•πùmtÏ(ÄÅï≈’•¡¡ïë—±ÖÕ%ëÃËÅÕ—…•πùmtÏ(ÄÅç…ïë•—ïë5•±±•ÕïçΩπëÃËÅπ’µâï»Ï(ÄÅç’……ïπ—Iï›Ö…êËÅç—•Ÿ•—ÂIï›Ö…êÅÅπ’±∞Ï(ÄÅπï·—Iï›Ö…êËÅç—•Ÿ•—ÂIï›Ö…êÅÅπ’±∞Ï)Ù()ï·¡Ω…–Å•π—ï…ôÖçîÅç—•Ÿ•—ÂA…Ωù…ïÕÕYÖ±’îÅÏ(ÄÅÕ—Ö—’ÃËÅç—•Ÿ•—ÂM—Ö—’ÃÏ(ÄÅ¡…Ωù…ïÕÃËÅç—•Ÿ•—ÂA…Ωù…ïÕÃÅÅπ’±∞Ï)Ù()ï·¡Ω…–Å•π—ï…ôÖçîÅç—•Ÿ•—ÂA…Ωù…ïÕÕY•ï‹Åï·—ïπëÃÅç—•Ÿ•—ÂA…Ωù…ïÕÕYÖ±’îÅÏ(ÄÅ’Õï…%êËÅÕ—…•πúÅÅπ’±∞Ï)Ù()ï·¡Ω…–Åô’πç—•Ω∏ÅôΩ…µÖ—ç—•Ÿ•—Â’…Ö—•Ω∏°—Ω—Ö±MïçΩπëÃËÅπ’µâï»§ËÅÕ—…•πúÅÏ(ÄÅçΩπÕ–ÅÕïçΩπëÃÄÙÅ5Ö—†πµÖ‡†¿∞Å5Ö—†πô±ΩΩ»°—Ω—Ö±MïçΩπëÃ§§Ï(ÄÅçΩπÕ–Å°Ω’…ÃÄÙÅ5Ö—†πô±ΩΩ»°ÕïçΩπëÃÄºÄÃÿ¿¿§Ï(ÄÅçΩπÕ–Åµ•π’—ïÃÄÙÅ5Ö—†πô±ΩΩ»†°ÕïçΩπëÃÄîÄÃÿ¿¿§ÄºÄÿ¿§Ï(ÄÅ…ï—’…∏Å°Ω’…ÃÄ¯Ä¿Ä¸ÅÄëÌ°Ω’…ÕÙÉFÄëÌµ•π’—ïÕÙÉBÛB„BıÄÄËÅÄëÌµ•π’—ïÕÙÉBÛB„BıÄÏ)Ù()•π—ï…ôÖçîÅç—•Ÿ•—ÂA…Ωù…ïÕÕΩπ—ï·—YÖ±’îÅï·—ïπëÃÅç—•Ÿ•—ÂA…Ωù…ïÕÕYÖ±’îÅÏ(ÄÅÖ’—°IïÖë‰ËÅâΩΩ±ïÖ∏Ï(ÄÅ’Õï…%êËÅÕ—…•πúÅÅπ’±∞Ï)Ù()•π—ï…ôÖçîÅç—•Ÿ•—ÂA…Ωù…ïÕÕA…ΩŸ•ëï…A…Ω¡ÃÅï·—ïπëÃÅA…Ω¡Õ]•—°°•±ë…ï∏ÅÏ(ÄÅç±•ïπ–ËÅM’¡ÖâÖÕï±•ïπ–ÅÅπ’±∞Ï(ÄÅÕΩ’…çîËÄâÕ•—îàÅÄâ±Ö’πç°ï»àÏ)Ù()çΩπÕ–Å5AQe}Y1UËÅç—•Ÿ•—ÂA…Ωù…ïÕÕΩπ—ï·—YÖ±’îÄÙÅÏ(ÄÅÖ’—°IïÖë‰ËÅ—…’î∞(ÄÅÕ—Ö—’ÃËÄâ’πÖŸÖ•±Öâ±îà∞(ÄÅ¡…Ωù…ïÕÃËÅπ’±∞∞(ÄÅ’Õï…%êËÅπ’±∞∞)ÙÏ()çΩπÕ–Åç—•Ÿ•—ÂA…Ωù…ïÕÕΩπ—ï·–ÄÙ(ÄÅç…ïÖ—ïΩπ—ï·–Òç—•Ÿ•—ÂA…Ωù…ïÕÕΩπ—ï·—YÖ±’î¯°5AQe}Y1U§Ï)çΩπÕ–ÅMMM%=9}%}AQQI8ÄÙ(ÄÄΩyl¿¥ÂÑµôuÏ·Ùµl¿¥ÂÑµôuÏ—Ùµlƒ¥·ul¿¥ÂÑµôuÏÕÙµl‡ÂÖâul¿¥ÂÑµôuÏÕÙµl¿¥ÂÑµôuÏƒ…ÙêΩ§Ï()ô’πç—•Ω∏Å•ÕIïçΩ…ê°ŸÖ±’îËÅ’π≠πΩ›∏§ËÅŸÖ±’îÅ•ÃÅIïçΩ…êÒÕ—…•πú∞Å’π≠πΩ›∏¯ÅÏ(ÄÅ…ï—’…∏ÅŸÖ±’îÄÑÙÙÅπ’±∞ÄòòÅ—Â¡ïΩòÅŸÖ±’îÄÙÙÙÄâΩâ©ïç–àÄòòÄÖ……Ö‰π•Õ……Ö‰°ŸÖ±’î§Ï)Ù()ô’πç—•Ω∏Å•Õ9Ωπ9ïùÖ—•ŸïMÖôï%π—ïùï»°ŸÖ±’îËÅ’π≠πΩ›∏§ËÅŸÖ±’îÅ•ÃÅπ’µâï»ÅÏ(ÄÅ…ï—’…∏Å9’µâï»π•ÕMÖôï%π—ïùï»°ŸÖ±’î§ÄòòÅ—Â¡ïΩòÅŸÖ±’îÄÙÙÙÄâπ’µâï»àÄòòÅŸÖ±’îÄ¯ÙÄ¿Ï)Ù()ô’πç—•Ω∏Å¡Ö…ÕïIï›Ö…ê°ŸÖ±’îËÅ’π≠πΩ›∏§ËÅç—•Ÿ•—ÂIï›Ö…êÅÅπ’±∞ÅÅ’πëïô•πïêÅÏ(ÄÅ•òÄ°ŸÖ±’îÄÙÙÙÅπ’±∞§Å…ï—’…∏Åπ’±∞Ï(ÄÅ•òÄ†Ö•ÕIïçΩ…ê°ŸÖ±’î§§Å…ï—’…∏Å’πëïô•πïêÏ(ÄÅ•òÄ†(ÄÄÄÄÖ9’µâï»π•ÕMÖôï%π—ïùï»°ŸÖ±’îπ±ïŸï∞§ÅÒ(ÄÄÄÅ—Â¡ïΩòÅŸÖ±’îπ±ïŸï∞ÄÑÙÙÄâπ’µâï»àÅÒ(ÄÄÄÅŸÖ±’îπ±ïŸï∞ÄÄƒÅÒ(ÄÄÄÅŸÖ±’îπ±ïŸï∞Ä¯Ä‘¿ÅÒ(ÄÄÄÄÖ•Õ9Ωπ9ïùÖ—•ŸïMÖôï%π—ïùï»°ŸÖ±’îπÕ—ï¡MïçΩπëÃ§ÅÒ(ÄÄÄÄÖ•Õ9Ωπ9ïùÖ—•ŸïMÖôï%π—ïùï»°ŸÖ±’îπ—Ω—Ö±MïçΩπëÃ§ÅÒ(ÄÄÄÅ—Â¡ïΩòÅŸÖ±’îπ…ï›Ö…ë%êÄÑÙÙÄâÕ—…•πúàÅÒ(ÄÄÄÄÑΩymÑµË¿¥Â}uÏƒ∞ÿ—Ùêºπ—ïÕ–°ŸÖ±’îπ…ï›Ö…ë%ê§ÅÒ(ÄÄÄÅ—Â¡ïΩòÅŸÖ±’îπ…ï›Ö…ë1Öâï∞ÄÑÙÙÄâÕ—…•πúàÅÒ(ÄÄÄÅŸÖ±’îπ…ï›Ö…ë1Öâï∞π±ïπù—†Ä¯Äƒ»¿(ÄÄ§(ÄÄÄÅ…ï—’…∏Å’πëïô•πïêÏ(ÄÅ…ï—’…∏ÅÏ(ÄÄÄÅ±ïŸï∞ËÅŸÖ±’îπ±ïŸï∞∞(ÄÄÄÅÕ—ï¡MïçΩπëÃËÅŸÖ±’îπÕ—ï¡MïçΩπëÃ∞(ÄÄÄÅ—Ω—Ö±MïçΩπëÃËÅŸÖ±’îπ—Ω—Ö±MïçΩπëÃ∞(ÄÄÄÅ…ï›Ö…ë%êËÅŸÖ±’îπ…ï›Ö…ë%ê∞(ÄÄÄÅ…ï›Ö…ë1Öâï∞ËÅŸÖ±’îπ…ï›Ö…ë1Öâï∞∞(ÄÅÙÏ)Ù()ï·¡Ω…–Åô’πç—•Ω∏Å¡Ö…Õïç—•Ÿ•—ÂA…Ωù…ïÕÃ°ŸÖ±’îËÅ’π≠πΩ›∏§ËÅç—•Ÿ•—ÂA…Ωù…ïÕÃÅÅπ’±∞ÅÏ(ÄÅ•òÄ†Ö•ÕIïçΩ…ê°ŸÖ±’î§§Å…ï—’…∏Åπ’±∞Ï(ÄÅçΩπÕ–Å’π±Ωç≠ïëIï›Ö…ë%ëÃÄÙÅŸÖ±’îπ’π±Ωç≠ïëIï›Ö…ë%ëÃÏ(ÄÅçΩπÕ–Åï≈’•¡¡ïë—±ÖÕ%ëÃÄÙÅŸÖ±’îπï≈’•¡¡ïë—±ÖÕ%ëÃÄ¸¸ÅmtÏ(ÄÅ•òÄ†(ÄÄÄÄÖ9’µâï»π•ÕMÖôï%π—ïùï»°ŸÖ±’îπç’…ŸïYï…Õ•Ω∏§ÅÒ(ÄÄÄÅ—Â¡ïΩòÅŸÖ±’îπç’…ŸïYï…Õ•Ω∏ÄÑÙÙÄâπ’µâï»àÅÒ(ÄÄÄÅŸÖ±’îπç’…ŸïYï…Õ•Ω∏ÄÑÙÙÄƒÅÒ(ÄÄÄÄÖ9’µâï»π•ÕMÖôï%π—ïùï»°ŸÖ±’îπ±ïŸï∞§ÅÒ(ÄÄÄÅ—Â¡ïΩòÅŸÖ±’îπ±ïŸï∞ÄÑÙÙÄâπ’µâï»àÅÒ(ÄÄÄÅŸÖ±’îπ±ïŸï∞ÄÄ¿ÅÒ(ÄÄÄÅŸÖ±’îπ±ïŸï∞Ä¯Ä‘¿ÅÒ(ÄÄÄÄÖ•Õ9Ωπ9ïùÖ—•ŸïMÖôï%π—ïùï»°ŸÖ±’îπ—Ω—Ö±MïçΩπëÃ§ÅÒ(ÄÄÄÄÖ•Õ9Ωπ9ïùÖ—•ŸïMÖôï%π—ïùï»°ŸÖ±’îπ—Ω—Ö±5•±±•ÕïçΩπëÃ§ÅÒ(ÄÄÄÄÖ•Õ9Ωπ9ïùÖ—•ŸïMÖôï%π—ïùï»°ŸÖ±’îπçΩπô•…µïëMïçΩπëÃ§ÅÒ(ÄÄÄÅŸÖ±’îπçΩπô•…µïëMïçΩπëÃÄÑÙÙÅŸÖ±’îπ—Ω—Ö±MïçΩπëÃÅÒ(ÄÄÄÅ5Ö—†πô±ΩΩ»°ŸÖ±’îπ—Ω—Ö±5•±±•ÕïçΩπëÃÄºÄƒ¿¿¿§ÄÑÙÙÅŸÖ±’îπ—Ω—Ö±MïçΩπëÃÅÒ(ÄÄÄÄÖ•Õ9Ωπ9ïùÖ—•ŸïMÖôï%π—ïùï»°ŸÖ±’îπÕïçΩπëÕ%π—Ω1ïŸï∞§ÅÒ(ÄÄÄÄÖ•Õ9Ωπ9ïùÖ—•ŸïMÖôï%π—ïùï»°ŸÖ±’îπ…ï≈’•…ïëMïçΩπëÃ§ÅÒ(ÄÄÄÄÖ•Õ9Ωπ9ïùÖ—•ŸïMÖôï%π—ïùï»°ŸÖ±’îπÕïçΩπëÕIïµÖ•π•πú§ÅÒ(ÄÄÄÄÖ•Õ9Ωπ9ïùÖ—•ŸïMÖôï%π—ïùï»°ŸÖ±’îπç…ïë•—ïë5•±±•ÕïçΩπëÃ§ÅÒ(ÄÄÄÄ°ŸÖ±’îππï·—1ïŸï∞ÄÑÙÙÅπ’±∞Äòò(ÄÄÄÄÄÄ†Ö9’µâï»π•ÕMÖôï%π—ïùï»°ŸÖ±’îππï·—1ïŸï∞§ÅÒ(ÄÄÄÄÄÄÄÅ—Â¡ïΩòÅŸÖ±’îππï·—1ïŸï∞ÄÑÙÙÄâπ’µâï»àÅÒ(ÄÄÄÄÄÄÄÅŸÖ±’îππï·—1ïŸï∞ÄÄƒÅÒ(ÄÄÄÄÄÄÄÅŸÖ±’îππï·—1ïŸï∞Ä¯Ä‘¿§§ÅÒ(ÄÄÄÄÖ……Ö‰π•Õ……Ö‰°’π±Ωç≠ïëIï›Ö…ë%ëÃ§ÅÒ(ÄÄÄÅ’π±Ωç≠ïëIï›Ö…ë%ëÃπ±ïπù—†ÄÑÙÙÅŸÖ±’îπ±ïŸï∞ÅÒ(ÄÄÄÄÖ’π±Ωç≠ïëIï›Ö…ë%ëÃπïŸï…‰†(ÄÄÄÄÄÄ°…ï›Ö…ë%ê§ÄÙ¯(ÄÄÄÄÄÄÄÅ—Â¡ïΩòÅ…ï›Ö…ë%êÄÙÙÙÄâÕ—…•πúàÄòòÄΩymÑµË¿¥Â}uÏƒ∞ÿ—Ùêºπ—ïÕ–°…ï›Ö…ë%ê§∞(ÄÄÄÄ§ÅÒ(ÄÄÄÄÖ……Ö‰π•Õ……Ö‰°ï≈’•¡¡ïë—±ÖÕ%ëÃ§ÅÒ(ÄÄÄÅï≈’•¡¡ïë—±ÖÕ%ëÃπ±ïπù—†Ä¯Ä–ÅÒ(ÄÄÄÄÖï≈’•¡¡ïë—±ÖÕ%ëÃπïŸï…‰†(ÄÄÄÄÄÄ°…ï›Ö…ë%ê§ÄÙ¯(ÄÄÄÄÄÄÄÅ—Â¡ïΩòÅ…ï›Ö…ë%êÄÙÙÙÄâÕ—…•πúàÄòò(ÄÄÄÄÄÄÄÄΩyÖ—±ÖÕ}mÑµË¿¥Â}uÏƒ∞‘·Ùêºπ—ïÕ–°…ï›Ö…ë%ê§Äòò(ÄÄÄÄÄÄÄÅ’π±Ωç≠ïëIï›Ö…ë%ëÃπ•πç±’ëïÃ°…ï›Ö…ë%ê§∞(ÄÄÄÄ§ÅÒ(ÄÄÄÅπï‹ÅMï–°ï≈’•¡¡ïë—±ÖÕ%ëÃ§πÕ•ÈîÄÑÙÙÅï≈’•¡¡ïë—±ÖÕ%ëÃπ±ïπù—†(ÄÄ§(ÄÄÄÅ…ï—’…∏Åπ’±∞Ï((ÄÅçΩπÕ–Åç’……ïπ—Iï›Ö…êÄÙÅ¡Ö…ÕïIï›Ö…ê°ŸÖ±’îπç’……ïπ—Iï›Ö…ê§Ï(ÄÅçΩπÕ–Åπï·—Iï›Ö…êÄÙÅ¡Ö…ÕïIï›Ö…ê°ŸÖ±’îππï·—Iï›Ö…ê§Ï(ÄÅ•òÄ†(ÄÄÄÅç’……ïπ—Iï›Ö…êÄÙÙÙÅ’πëïô•πïêÅÒ(ÄÄÄÅπï·—Iï›Ö…êÄÙÙÙÅ’πëïô•πïêÅÒ(ÄÄÄÄ°ŸÖ±’îπ±ïŸï∞ÄÙÙÙÄ¿ÄòòÅç’……ïπ—Iï›Ö…êÄÑÙÙÅπ’±∞§ÅÒ(ÄÄÄÄ°ŸÖ±’îπ±ïŸï∞Ä¯Ä¿ÄòòÅç’……ïπ—Iï›Ö…ê¸π±ïŸï∞ÄÑÙÙÅŸÖ±’îπ±ïŸï∞§ÅÒ(ÄÄÄÄ°ŸÖ±’îπ±ïŸï∞Ä¯Ä¿Äòò(ÄÄÄÄÄÅç’……ïπ—Iï›Ö…ê¸π…ï›Ö…ë%êÄÑÙÙÅ’π±Ωç≠ïëIï›Ö…ë%ëÕmŸÖ±’îπ±ïŸï∞Ä¥Ä≈t§ÅÒ(ÄÄÄÄ°ŸÖ±’îππï·—1ïŸï∞ÄÙÙÙÅπ’±∞ÄòòÅπï·—Iï›Ö…êÄÑÙÙÅπ’±∞§ÅÒ(ÄÄÄÄ°ŸÖ±’îππï·—1ïŸï∞ÄÑÙÙÅπ’±∞ÄòòÅπï·—Iï›Ö…ê¸π±ïŸï∞ÄÑÙÙÅŸÖ±’îππï·—1ïŸï∞§(ÄÄ§(ÄÄÄÅ…ï—’…∏Åπ’±∞Ï((ÄÅ…ï—’…∏ÅÏ(ÄÄÄÅç’…ŸïYï…Õ•Ω∏ËÅŸÖ±’îπç’…ŸïYï…Õ•Ω∏∞(ÄÄÄÅ±ïŸï∞ËÅŸÖ±’îπ±ïŸï∞∞(ÄÄÄÅ—Ω—Ö±MïçΩπëÃËÅŸÖ±’îπ—Ω—Ö±MïçΩπëÃ∞(ÄÄÄÅ—Ω—Ö±5•±±•ÕïçΩπëÃËÅŸÖ±’îπ—Ω—Ö±5•±±•ÕïçΩπëÃ∞(ÄÄÄÅçΩπô•…µïëMïçΩπëÃËÅŸÖ±’îπçΩπô•…µïëMïçΩπëÃ∞(ÄÄÄÅÕïçΩπëÕ%π—Ω1ïŸï∞ËÅŸÖ±’îπÕïçΩπëÕ%π—Ω1ïŸï∞∞(ÄÄÄÅ…ï≈’•…ïëMïçΩπëÃËÅŸÖ±’îπ…ï≈’•…ïëMïçΩπëÃ∞(ÄÄÄÅÕïçΩπëÕIïµÖ•π•πúËÅŸÖ±’îπÕïçΩπëÕIïµÖ•π•πú∞(ÄÄÄÅπï·—1ïŸï∞ËÅŸÖ±’îππï·—1ïŸï∞∞(ÄÄÄÅ’π±Ωç≠ïëIï›Ö…ë%ëÃËÅl∏∏π’π±Ωç≠ïëIï›Ö…ë%ëÕt∞(ÄÄÄÅï≈’•¡¡ïë—±ÖÕ%ëÃËÅl∏∏πï≈’•¡¡ïë—±ÖÕ%ëÕt∞(ÄÄÄÅç…ïë•—ïë5•±±•ÕïçΩπëÃËÅŸÖ±’îπç…ïë•—ïë5•±±•ÕïçΩπëÃ∞(ÄÄÄÅç’……ïπ—Iï›Ö…ê∞(ÄÄÄÅπï·—Iï›Ö…ê∞(ÄÅÙÏ)Ù()ô’πç—•Ω∏Åùï—IïÕ¡ΩπÕïM—Ö—’Ã°ï……Ω»ËÅ’π≠πΩ›∏§ËÅπ’µâï»ÅÅ’πëïô•πïêÅÏ(ÄÅ•òÄ†Ö•ÕIïçΩ…ê°ï……Ω»§ÅÒÄÖ•ÕIïçΩ…ê°ï……Ω»πçΩπ—ï·–§§Å…ï—’…∏Å’πëïô•πïêÏ(ÄÅ…ï—’…∏Åï……Ω»πçΩπ—ï·–πÕ—Ö—’ÃÅÖÃÅπ’µâï»ÅÅ’πëïô•πïêÏ)Ù()ô’πç—•Ω∏Å¡Ö’Õï1Öâï∞†§ËÅç—•Ÿ•—ÂM—Ö—’ÃÅÏ(ÄÅ…ï—’…∏ÅπÖŸ•ùÖ—Ω»πΩπ1•πîÄ¸Äâ¡Ö’ÕïêàÄËÄâΩôô±•πîàÏ)Ù()ô’πç—•Ω∏Åç—•Ÿ•—ÂA…Ωù…ïÕÕΩπ—…Ω±±ï»°Ï(ÄÅç±•ïπ–∞(ÄÅÕΩ’…çî∞(ÄÅÕïÕÕ•Ω∏∞(ÄÅÖ’—°IïÖë‰∞(ÄÅΩπYÖ±’î∞)ÙËÅÏ(ÄÅç±•ïπ–ËÅM’¡ÖâÖÕï±•ïπ–Ï(ÄÅÕΩ’…çîËÄâÕ•—îàÅÄâ±Ö’πç°ï»àÏ(ÄÅÕïÕÕ•Ω∏ËÅMïÕÕ•Ω∏ÅÅπ’±∞Ï(ÄÅÖ’—°IïÖë‰ËÅâΩΩ±ïÖ∏Ï(ÄÅΩπYÖ±’îËÅ•Õ¡Ö—ç†ÒMï—M—Ö—ïç—•Ω∏Òç—•Ÿ•—ÂA…Ωù…ïÕÕYÖ±’î¯¯Ï)Ù§ÅÏ(ÄÅ’Õïôôïç–††§ÄÙ¯ÅÏ(ÄÄÄÅ•òÄ†ÖÖ’—°IïÖë‰§ÅÏ(ÄÄÄÄÄÅΩπYÖ±’î°ÏÅÕ—Ö—’ÃËÄâ±ΩÖë•πúà∞Å¡…Ωù…ïÕÃËÅπ’±∞ÅÙ§Ï(ÄÄÄÄÄÅ…ï—’…∏Ï(ÄÄÄÅÙ(ÄÄÄÅ•òÄ†ÖÕïÕÕ•Ω∏¸π’Õï»π•ê§ÅÏ(ÄÄÄÄÄÅΩπYÖ±’î°ÏÅÕ—Ö—’ÃËÄâÕ•ùπïë}Ω’–à∞Å¡…Ωù…ïÕÃËÅπ’±∞ÅÙ§Ï(ÄÄÄÄÄÅ…ï—’…∏Ï(ÄÄÄÅÙ((ÄÄÄÅ±ï–Åë•Õ¡ΩÕïêÄÙÅôÖ±ÕîÏ(ÄÄÄÅ±ï–ÅôΩç’Õïπï…Ö—•Ω∏ÄÙÄ¿Ï(ÄÄÄÅ±ï–ÅÕïÕÕ•Ωπ%êËÅÕ—…•πúÅÅπ’±∞ÄÙÅπ’±∞Ï(ÄÄÄÅ±ï–ÅÕï≈’ïπçîÄÙÄ¿Ï(ÄÄÄÅ±ï–ÅÕ—Ö…—•πúÄÙÅôÖ±ÕîÏ(ÄÄÄÅ±ï–Å°ïÖ…—âïÖ—I’ππ•πúÄÙÅôÖ±ÕîÏ(ÄÄÄÅ±ï–Å¡Öùï!•ëëï∏ÄÙÅôÖ±ÕîÏ(ÄÄÄÅ±ï–Åç±ΩÕ•πúËÅA…Ωµ•ÕîÒŸΩ•ê¯ÅÅπ’±∞ÄÙÅπ’±∞Ï(ÄÄÄÅ±ï–Å°ïÖ…—âïÖ—Q•µï»ËÅπ’µâï»ÅÅ’πëïô•πïêÏ(ÄÄÄÅ±ï–Å…ï—…ÂQ•µï»ËÅπ’µâï»ÅÅ’πëïô•πïêÏ(ÄÄÄÅ±ï–ÅπÖ—•ŸïΩç’ÕïêÄÙÅëΩç’µïπ–π°ÖÕΩç’Ã†§Ï((ÄÄÄÅçΩπÕ–ÅÕï—YÖ±’îÄÙÄ†(ÄÄÄÄÄÅÕ—Ö—’ÃËÅç—•Ÿ•—ÂM—Ö—’Ã∞(ÄÄÄÄÄÅ¡…Ωù…ïÕÃ¸ËÅç—•Ÿ•—ÂA…Ωù…ïÕÃÅÅπ’±∞∞(ÄÄÄÄ§ÄÙ¯ÅÏ(ÄÄÄÄÄÅ•òÄ°ë•Õ¡ΩÕïê§Å…ï—’…∏Ï(ÄÄÄÄÄÅΩπYÖ±’î†°¡…ïŸ•Ω’Ã§ÄÙ¯Ä°Ï(ÄÄÄÄÄÄÄÅÕ—Ö—’Ã∞(ÄÄÄÄÄÄÄÅ¡…Ωù…ïÕÃËÅ¡…Ωù…ïÕÃÄÙÙÙÅ’πëïô•πïêÄ¸Å¡…ïŸ•Ω’Ãπ¡…Ωù…ïÕÃÄËÅ¡…Ωù…ïÕÃ∞(ÄÄÄÄÄÅÙ§§Ï(ÄÄÄÅÙÏ+_yÓ⁄$z{-ÆÈ‹j◊ù”∞¢6ˆÁ7BˆÂvTÜñFR“Çí”‚∞¢vTÜñFFV‚“G'VS∞¢fˆ7W4vVÊW&Fñˆ‚≥“∞¢fˆñBW6U6W76ñˆ‚Çì∞¢”∞¢6ˆÁ7BˆÂvU6Ü˜r“Çí”‚∞¢vTÜñFFV‚“f«6S∞¢&V6ˆÊ6ñ∆RÇì∞¢”∞†¢6WEf«VRÇ&∆ˆFñÊr"¬ÁV∆¬ì∞¢fˆñB&Vg&W6Ö&ˆw&W72Çì∞¢&V6ˆÊ6ñ∆RÇì∞¢Fˆ7V÷VÁBÊFDWfVÁD∆ó7FVÊW"Ç'fó6ñ&ñ∆óGñ6ÜÊvR"¬&V6ˆÊ6ñ∆Rì∞¢vñÊF˜rÊFDWfVÁD∆ó7FVÊW"Ç&fˆ7W2"¬&V6ˆÊ6ñ∆Rì∞¢vñÊF˜rÊFDWfVÁD∆ó7FVÊW"Ç&&«W""¬&V6ˆÊ6ñ∆Rì∞¢vñÊF˜rÊFDWfVÁD∆ó7FVÊW"Ç'vVÜñFR"¬ˆÂvTÜñFRì∞¢vñÊF˜rÊFDWfVÁD∆ó7FVÊW"Ç'vW6Ü˜r"¬ˆÂvU6Ü˜rì∞¢vñÊF˜rÊFDWfVÁD∆ó7FVÊW"Ç&ˆÊ∆ñÊR"¬&V6ˆÊ6ñ∆Rì∞¢vñÊF˜rÊFDWfVÁD∆ó7FVÊW"Ç&ˆff∆ñÊR"¬ˆ‰ˆff∆ñÊRì∞¢ñbá6˜W&6R””“&∆VÊ6ÜW""í∞¢vñÊF˜rÊFDWfVÁD∆ó7FVÊW"Ç&÷ñÊ∆VÊ6ÜW#ßvñÊF˜r÷fˆ7W2"¬ˆ‰ÊFófTfˆ7W2ì∞¢–†¢&WGW&‚Çí”‚∞¢Fó7˜6VB“G'VS∞¢6∆V$ÜV'F&VBÇì∞¢6∆V%&WG'íÇì∞¢Fˆ7V÷VÁBÁ&V÷˜fTWfVÁD∆ó7FVÊW"Ç'fó6ñ&ñ∆óGñ6ÜÊvR"¬&V6ˆÊ6ñ∆Rì∞¢vñÊF˜rÁ&V÷˜fTWfVÁD∆ó7FVÊW"Ç&fˆ7W2"¬&V6ˆÊ6ñ∆Rì∞¢vñÊF˜rÁ&V÷˜fTWfVÁD∆ó7FVÊW"Ç&&«W""¬&V6ˆÊ6ñ∆Rì∞¢vñÊF˜rÁ&V÷˜fTWfVÁD∆ó7FVÊW"Ç'vVÜñFR"¬ˆÂvTÜñFRì∞¢vñÊF˜rÁ&V÷˜fTWfVÁD∆ó7FVÊW"Ç'vW6Ü˜r"¬ˆÂvU6Ü˜rì∞¢vñÊF˜rÁ&V÷˜fTWfVÁD∆ó7FVÊW"Ç&ˆÊ∆ñÊR"¬&V6ˆÊ6ñ∆Rì∞¢vñÊF˜rÁ&V÷˜fTWfVÁD∆ó7FVÊW"Ç&ˆff∆ñÊR"¬ˆ‰ˆff∆ñÊRì∞¢ñbá6˜W&6R””“&∆VÊ6ÜW""í∞¢vñÊF˜rÁ&V÷˜fTWfVÁD∆ó7FVÊW"Ç&÷ñÊ∆VÊ6ÜW#ßvñÊF˜r÷fˆ7W2"¬ˆ‰ÊFófTfˆ7W2ì∞¢–¢ñbá6W76ñˆ‰ñBí∞¢fˆñB6∆˜6U&V÷˜FU6W76ñˆ‚á6W76ñˆ‰ñBíÊ6F6ÇÇÇí”‚∞¢6ˆÁ6ˆ∆RÁv&‚Ä¢-	›R=MΩÌ¬}≠Ω-¬]-]›=‚]ç‚≠-ç-›Ì-Ç˝Ç}ÕÌ›-çÌ-›çÇ‚"¿¢ì∞¢“ì∞¢6W76ñˆ‰ñB“ÁV∆√∞¢–¢”∞¢“¬∂WFÖ&VGí¬6∆ñVÁB¬ˆÂf«VR¬6W76ñˆ„ÚÁW6W"ÊñB¬6˜W&6U“ì∞†¢&WGW&‚ÁV∆√∞ß–†¶Wá˜'BgVÊ7Fñˆ‚7FófóGï&ˆw&W75&˜fñFW"á∞¢6Üñ∆G&V‚¿¢6∆ñVÁB¿¢6˜W&6R¿ß”¢7FófóGï&ˆw&W75&˜fñFW%&˜2í∞¢6ˆÁ7B∑6W76ñˆ‚¬6WE6W76ñˆÂ““W6U7FFS≈6W76ñˆ‚¬ÁV∆√‚ÜÁV∆¬ì∞¢6ˆÁ7B∂WFÖ&VGí¬6WDWFÖ&VGï““W6U7FFRÇ6∆ñVÁBì∞¢6ˆÁ7B∑f«VR¬6WEf«VU““W6U7FFSƒ7FófóGï&ˆw&W75f«VS‚á∞¢7FGW3¢6∆ñVÁBÚ&∆ˆFñÊr"¢'VÊfñ∆&∆R"¿¢&ˆw&W73¢ÁV∆¬¿¢“ì∞†¢W6TVffV7BÇÇí”‚∞¢ñbÇ6∆ñVÁBí∞¢6WE6W76ñˆ‚ÜÁV∆¬ì∞¢6WDWFÖ&VGíáG'VRì∞¢6WEf«VRá≤7FGW3¢'VÊfñ∆&∆R"¬&ˆw&W73¢ÁV∆¬“ì∞¢&WGW&„∞¢–†¢∆WB7FófR“G'VS∞¢∆WBWFÑWfVÁE6VV‚“f«6S∞¢6WDWFÖ&VGíÜf«6Rì∞¢6ˆÁ7B∞¢FF¢≤7V'67&óFñˆ‚“¿¢““6∆ñVÁBÊWFÇÊˆ‰WFÖ7FFT6ÜÊvRÇÖˆWfVÁB¬ÊWáE6W76ñˆ‚í”‚∞¢WFÑWfVÁE6VV‚“G'VS∞¢ñbÇ7FófRí&WGW&„∞¢6WE6W76ñˆ‚ÜÊWáE6W76ñˆ‚ì∞¢6WDWFÖ&VGíáG'VRì∞¢“ì∞¢fˆñB6∆ñVÁBÊWFÄ¢ÊvWE6W76ñˆ‚Çê¢ÁFÜV‚Çá≤FF¬W'&˜"“í”‚∞¢ñbÇ7FófR«¬WFÑWfVÁE6VV‚í&WGW&„∞¢6WE6W76ñˆ‚ÜFFÁ6W76ñˆ‚ì∞¢6WDWFÖ&VGíáG'VRì∞¢ñbÜW'&˜"í6WEf«VRá≤7FGW3¢&ˆff∆ñÊR"¬&ˆw&W73¢ÁV∆¬“ì∞¢“ê¢Ê6F6ÇÇÇí”‚∞¢ñbÇ7FófR«¬WFÑWfVÁE6VV‚í&WGW&„∞¢6WE6W76ñˆ‚ÜÁV∆¬ì∞¢6WDWFÖ&VGíáG'VRì∞¢6WEf«VRá≤7FGW3¢&ˆff∆ñÊR"¬&ˆw&W73¢ÁV∆¬“ì∞¢“ì∞†¢&WGW&‚Çí”‚∞¢7FófR“f«6S∞¢7V'67&óFñˆ‚ÁVÁ7V'67&ñ&RÇì∞¢”∞¢“¬∂6∆ñVÁE“ì∞†¢&WGW&‚Ä¢ƒ7FófóGï&ˆw&W746ˆÁFWáBÂ&˜fñFW ¢f«VS◊∑≤‚‚Áf«VR¬WFÖ&VGí¬W6W$ñC¢6W76ñˆ„ÚÁW6W"ÊñBÛÚÁV∆¬◊–¢‡¢∂6∆ñVÁBÚÄ¢ƒ7FófóGï&ˆw&W746ˆÁG&ˆ∆∆W ¢6∆ñVÁC◊∂6∆ñVÁG–¢6˜W&6S◊∑6˜W&6W–¢6W76ñˆ„◊∑6W76ñˆÁ–¢WFÖ&VGì◊∂WFÖ&VGó–¢ˆÂf«VS◊∑6WEf«VW–¢Û‡¢í¢ÁV∆«–¢∂6Üñ∆G&VÁ–¢¬Ù7FófóGï&ˆw&W746ˆÁFWáBÂ&˜fñFW#‡¢ì∞ß–†¶Wá˜'BgVÊ7Fñˆ‚W6T7FófóGï&ˆw&W72Çì¢7FófóGï&ˆw&W75fñWr∞¢6ˆÁ7B≤7FGW2¬&ˆw&W72¬W6W$ñB““W6T6ˆÁFWáBÑ7FófóGï&ˆw&W746ˆÁFWáBì∞¢&WGW&‚≤7FGW2¬&ˆw&W72¬W6W$ñB”∞ß–†¶6ˆÁ7B5DEU5ıDUÖC¢&V6˜&Cƒ7FófóGï7FGW2¬7G&ñÊs‚“∞¢∆ˆFñÊs¢-	}==m]¬Ì]›››Ωí˝Ì=](
-b"¿¢6ñvÊVEˆ˜WC¢-	-ÌùMç-R"≠≠=›"¬}-Ì≤Ì]›˝-¬=Ì-]›¬‚"¿¢7F'FñÊs¢-	˝Ì-]˝]¬≠-ç-›=‚]çÓ(
-b"¿¢7FófS¢-	}}"çM"¬˝Ì≠›-‚Ì≠›‚Ì-≠Ω-‚Ç"MÌ≠=R‚"¿¢W6VC¢-	˝=}‚	-]›ç-]¬"›-‚Ì≠›‚¬}-Ì≤˝ÌMÌΩmç-¬‚"¿¢ˆff∆ñÊS¢-	›]"-˝}Ç]-]Ì¬‚	-]ÕÚ]ù}›R›}çΩ˝]-Ú‚"¿¢VÊfñ∆&∆S¢-	˝Ì=]]ù}›]MÌ-=˝]“‚"¿ß”∞†¶6ˆÁ7B4Ù’5Eı5DEU5ıDUÖC¢&V6˜&Cƒ7FófóGï7FGW2¬7G&ñÊs‚“∞¢∆ˆFñÊs¢-	}==m]¬=Ì-]›¬"¿¢6ñvÊVEˆ˜WC¢-	-ÌùMç-R¬}-Ì≤≠Ì˝ç-¬"¿¢7F'FñÊs¢-	}˝=≠]¬}}""¿¢7FófS¢-	-]ÕÚ›}çΩ˝]-Ú"¿¢W6VC¢-	˝=}¢-]›ç-]¬ÌM"¿¢ˆff∆ñÊS¢-	›]"-˝}Ç¬}}"Ì-›Ì-Ω]“"¿¢VÊfñ∆&∆S¢-	˝Ì=]›]MÌ-=˝]“"¿ß”∞†¶Wá˜'BgVÊ7Fñˆ‚7FófóGï&ˆw&W757V÷÷'íá∞¢6ˆ◊7B“f«6R¿ß”¢≤6ˆ◊7CÛ¢&ˆˆ∆V‚““∑“í∞¢6ˆÁ7B≤7FGW2¬&ˆw&W72““W6T7FófóGï&ˆw&W72Çì∞¢6ˆÁ7BÜ5&ˆw&W72“&ˆw&W72”“ÁV∆√∞¢6ˆÁ7B∆WfV¬“Ü5&ˆw&W72Ú&ˆw&W72Ê∆WfV¬¢ÁV∆√∞¢6ˆÁ7BD÷Üñ◊V““∆WfV¬””“S∞¢6ˆÁ7B&ˆw&W74÷Üñ◊V““&ˆw&W73ÚÁ&WVó&VE6V6ˆÊG2«¬∞¢6ˆÁ7B&ˆw&W75f«VR“D÷Üñ◊V–¢Ú¢¢÷FÇÊ÷ñ‚á&ˆw&W74÷Üñ◊V“¬&ˆw&W73ÚÁ6V6ˆÊG4ñÁFÙ∆WfV¬ÛÚì∞¢6ˆÁ7BW&6VÁB“÷FÇÁ&˜VÊBÇá&ˆw&W75f«VRÚ&ˆw&W74÷Üñ◊V“í¢ì∞†¢&WGW&‚Ä¢«6V7Fñˆ‡¢6∆74Ê÷S◊∞¢6ˆ◊7@¢Ú&7FófóGí◊&ˆw&W727FófóGí◊&ˆw&W72“÷6ˆ◊7B ¢¢&7FófóGí◊&ˆw&W72 ¢–¢FF◊7FFS◊∑7FGW7–¢&ñ÷∆&V√“-	˝Ì=]	-ΩÕçÌ" ¢‡¢∆Fób6∆74Ê÷S“&7FófóGí◊&ˆw&W75ıˆÜVB#‡¢∆Fóc‡¢«7‚6∆74Ê÷S“&7FófóGí◊&ˆw&W75ıˆWñV'&˜r#Ì	
--	Ω	
-	Õ	ç
-	Ì	#¬˜7„‡¢«7G&ˆÊs‡¢∂∆WfV¬””“ÁV∆¬Ú.(	B"¢∆WfV«“«7„‚ÚS¬˜7„‡¢¬˜7G&ˆÊs‡¢¬ˆFóc‡¢«7‚6∆74Ê÷S“&7FófóGí◊&ˆw&W75ı˜Fñ÷R#‡¢∂Ü5&ˆw&W70¢Úf˜&÷D7FófóGîGW&Fñˆ‚á&ˆw&W72Ê6ˆÊfó&÷VE6V6ˆÊG2ê¢¢.(	B'–¢¬˜7„‡¢¬ˆFóc‡¢∆Fó`¢6∆74Ê÷S“&7FófóGí◊&ˆw&W75ı˜G&6≤ ¢&ˆ∆S“'&ˆw&W76&" ¢&ñ÷∆&V√“-	˝Ì=]M‚Ω]M=Ìù]=‚=Ì-›Ú ¢&ñ◊f«VV÷ñ„◊≥–¢&ñ◊f«VV÷É◊≥–¢&ñ◊f«VVÊ˜s◊∑W&6VÁG–¢&ñ◊f«VWFWáC◊∞¢D÷Üñ◊V–¢Ú-	Õ≠çÕΩÕ›Ωí=Ì-]›¬ ¢¢G∑W&6VÁG“RM‚Ω]M=Ìù]=‚=Ì-›ˆ ¢–¢‡¢«7‚7Gñ∆S◊∑≤vñGFÉ¢G∑W&6VÁG“V◊“Û‡¢¬ˆFóc‡¢« ¢6∆74Ê÷S“&7FófóGí◊&ˆw&W75ı˜7FGW2 ¢&ˆ∆S◊∂6ˆ◊7BÚVÊFVfñÊVB¢'7FGW2'–¢&ñ÷∆ófS◊∂6ˆ◊7BÚVÊFVfñÊVB¢'ˆ∆óFR'–¢‡¢∂6ˆ◊7BÚ4Ù’5Eı5DEU5ıDUÖE∑7FGW5“¢5DEU5ıDUÖE∑7FGW5◊–¢¬˜‡¢∂Ü5&ˆw&W72ÚÄ¢√‡¢≤6ˆ◊7Bbb&ˆw&W72Ê7W'&VÁE&Wv&BÚÄ¢«6∆74Ê÷S“&7FófóGí◊&ˆw&W75ı˜&Wv&B#‡¢	Ì-≠Ω-„¢∑&ˆw&W72Ê7W'&VÁE&Wv&BÁ&Wv&D∆&V«–¢¬˜‡¢í¢ÁV∆«–¢«6∆74Ê÷S“&7FófóGí◊&ˆw&W75ı˜&Wv&B#‡¢∂D÷Üñ◊V–¢Ú-	-R›=M≤	-ΩÌ-≠Ω-≤‚ ¢¢&ˆw&W72ÊÊWáE&Wv&@¢Ú	MΩÕçS¢G∑&ˆw&W72ÊÊWáE&Wv&BÁ&Wv&D∆&V«“+rG∂f˜&÷D7FófóGîGW&Fñˆ‚á&ˆw&W72Á6V6ˆÊG5&V÷ñÊñÊró÷ ¢¢-	›}›ç-RÌ-≠Ω--¬-›çm≤	-Ω‚'–¢¬˜‡¢¬Û‡¢í¢ÁV∆«–¢¬˜6V7Fñˆ„‡¢ì∞ß–
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+  type PropsWithChildren,
+} from "react";
+import type { Session, SupabaseClient } from "@supabase/supabase-js";
+
+export const ACTIVITY_HEARTBEAT_INTERVAL_MS = 20_000;
+
+export type ActivityStatus =
+  | "loading"
+  | "signed_out"
+  | "starting"
+  | "active"
+  | "paused"
+  | "offline"
+  | "unavailable";
+
+export interface ActivityReward {
+  level: number;
+  stepSeconds: number;
+  totalSeconds: number;
+  rewardId: string;
+  rewardLabel: string;
+}
+
+export interface ActivityProgress {
+  curveVersion: number;
+  level: number;
+  totalSeconds: number;
+  totalMilliseconds: number;
+  confirmedSeconds: number;
+  secondsIntoLevel: number;
+  requiredSeconds: number;
+  secondsRemaining: number;
+  nextLevel: number | null;
+  unlockedRewardIds: string[];
+  equippedAtlasIds: string[];
+  creditedMilliseconds: number;
+  currentReward: ActivityReward | null;
+  nextReward: ActivityReward | null;
+}
+
+export interface ActivityProgressValue {
+  status: ActivityStatus;
+  progress: ActivityProgress | null;
+}
+
+export interface ActivityProgressView extends ActivityProgressValue {
+  userId: string | null;
+}
+
+export function formatActivityDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return hours > 0 ? `${hours} —á ${minutes} –º–∏–Ω` : `${minutes} –º–∏–Ω`;
+}
+
+interface ActivityProgressContextValue extends ActivityProgressValue {
+  authReady: boolean;
+  userId: string | null;
+}
+
+interface ActivityProgressProviderProps extends PropsWithChildren {
+  client: SupabaseClient | null;
+  source: "site" | "launcher";
+}
+
+const EMPTY_VALUE: ActivityProgressContextValue = {
+  authReady: true,
+  status: "unavailable",
+  progress: null,
+  userId: null,
+};
+
+const ActivityProgressContext =
+  createContext<ActivityProgressContextValue>(EMPTY_VALUE);
+const SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && typeof value === "number" && value >= 0;
+}
+
+function parseReward(value: unknown): ActivityReward | null | undefined {
+  if (value === null) return null;
+  if (!isRecord(value)) return undefined;
+  if (
+    !Number.isSafeInteger(value.level) ||
+    typeof value.level !== "number" ||
+    value.level < 1 ||
+    value.level > 50 ||
+    !isNonNegativeSafeInteger(value.stepSeconds) ||
+    !isNonNegativeSafeInteger(value.totalSeconds) ||
+    typeof value.rewardId !== "string" ||
+    !/^[a-z0-9_]{1,64}$/.test(value.rewardId) ||
+    typeof value.rewardLabel !== "string" ||
+    value.rewardLabel.length > 120
+  )
+    return undefined;
+  return {
+    level: value.level,
+    stepSeconds: value.stepSeconds,
+    totalSeconds: value.totalSeconds,
+    rewardId: value.rewardId,
+    rewardLabel: value.rewardLabel,
+  };
+}
+
+export function parseActivityProgress(value: unknown): ActivityProgress | null {
+  if (!isRecord(value)) return null;
+  const unlockedRewardIds = value.unlockedRewardIds;
+  const equippedAtlasIds = value.equippedAtlasIds ?? [];
+  if (
+    !Number.isSafeInteger(value.curveVersion) ||
+    typeof value.curveVersion !== "number" ||
+    value.curveVersion !== 1 ||
+    !Number.isSafeInteger(value.level) ||
+    typeof value.level !== "number" ||
+    value.level < 0 ||
+    value.level > 50 ||
+    !isNonNegativeSafeInteger(value.totalSeconds) ||
+    !isNonNegativeSafeInteger(value.totalMilliseconds) ||
+    !isNonNegativeSafeInteger(value.confirmedSeconds) ||
+    value.confirmedSeconds !== value.totalSeconds ||
+    Math.floor(value.totalMilliseconds / 1000) !== value.totalSeconds ||
+    !isNonNegativeSafeInteger(value.secondsIntoLevel) ||
+    !isNonNegativeSafeInteger(value.requiredSeconds) ||
+    !isNonNegativeSafeInteger(value.secondsRemaining) ||
+    !isNonNegativeSafeInteger(value.creditedMilliseconds) ||
+    (value.nextLevel !== null &&
+      (!Number.isSafeInteger(value.nextLevel) ||
+        typeof value.nextLevel !== "number" ||
+        value.nextLevel < 1 ||
+        value.nextLevel > 50)) ||
+    !Array.isArray(unlockedRewardIds) ||
+    unlockedRewardIds.length !== value.level ||
+    !unlockedRewardIds.every(
+      (rewardId) =>
+        typeof rewardId === "string" && /^[a-z0-9_]{1,64}$/.test(rewardId),
+    ) ||
+    !Array.isArray(equippedAtlasIds) ||
+    equippedAtlasIds.length > 4 ||
+    !equippedAtlasIds.every(
+      (rewardId) =>
+        typeof rewardId === "string" &&
+        /^atlas_[a-z0-9_]{1,58}$/.test(rewardId) &&
+        unlockedRewardIds.includes(rewardId),
+    ) ||
+    new Set(equippedAtlasIds).size !== equippedAtlasIds.length
+  )
+    return null;
+
+  const currentReward = parseReward(value.currentReward);
+  const nextReward = parseReward(value.nextReward);
+  if (
+    currentReward === undefined ||
+    nextReward === undefined ||
+    (value.level === 0 && currentReward !== null) ||
+    (value.level > 0 && currentReward?.level !== value.level) ||
+    (value.level > 0 &&
+      currentReward?.rewardId !== unlockedRewardIds[value.level - 1]) ||
+    (value.nextLevel === null && nextReward !== null) ||
+    (value.nextLevel !== null && nextReward?.level !== value.nextLevel)
+  )
+    return null;
+
+  return {
+    curveVersion: value.curveVersion,
+    level: value.level,
+    totalSeconds: value.totalSeconds,
+    totalMilliseconds: value.totalMilliseconds,
+    confirmedSeconds: value.confirmedSeconds,
+    secondsIntoLevel: value.secondsIntoLevel,
+    requiredSeconds: value.requiredSeconds,
+    secondsRemaining: value.secondsRemaining,
+    nextLevel: value.nextLevel,
+    unlockedRewardIds: [...unlockedRewardIds],
+    equippedAtlasIds: [...equippedAtlasIds],
+    creditedMilliseconds: value.creditedMilliseconds,
+    currentReward,
+    nextReward,
+  };
+}
+
+function getResponseStatus(error: unknown): number | undefined {
+  if (!isRecord(error) || !isRecord(error.context)) return undefined;
+  return error.context.status as number | undefined;
+}
+
+function pauseLabel(): ActivityStatus {
+  return navigator.onLine ? "paused" : "offline";
+}
+
+function ActivityProgressController({
+  client,
+  source,
+  session,
+  authReady,
+  onValue,
+}: {
+  client: SupabaseClient;
+  source: "site" | "launcher";
+  session: Session | null;
+  authReady: boolean;
+  onValue: Dispatch<SetStateAction<ActivityProgressValue>>;
+}) {
+  useEffect(() => {
+    if (!authReady) {
+      onValue({ status: "loading", progress: null });
+      return;
+    }
+    if (!session?.user.id) {
+      onValue({ status: "signed_out", progress: null });
+      return;
+    }
+
+    let disposed = false;
+    let focusGeneration = 0;
+    let sessionId: string | null = null;
+    let sequence = 0;
+    let starting = false;
+    let heartbeatRunning = false;
+    let pageHidden = false;
+    let closing: Promise<void> | null = null;
+    let heartbeatTimer: number | undefined;
+    let retryTimer: number | undefined;
+    let nativeFocused = document.hasFocus();
+
+    const setValue = (
+      status: ActivityStatus,
+      progress?: ActivityProgress | null,
+    ) => {
+      if (disposed) return;
+      onValue((previous) => ({
+        status,
+        progress: progress === undefined ? previous.progress : progress,
+      }));
+    };
+    const isPageActive = () =>
+      !pageHidden &&
+      navigator.onLine &&
+      document.visibilityState === "visible" &&
+      (source === "site" ? document.hasFocus() : nativeFocused);
+    const clearHeartbeat = () => {
+      if (heartbeatTimer !== undefined) {
+        window.clearInterval(heartbeatTimer);
+        heartbeatTimer = undefined;
+      }
+    };
+    const clearRetry = () => {
+      if (retryTimer !== undefined) {
+        window.clearTimeout(retryTimer);
+        retryTimer = undefined;
+      }
+    };
+    const closeRemoteSession = async (id: string) => {
+      const { error } = await client.functions.invoke("activity-progress", {
+        body: { action: "pause", session_id: id },
+      });
+      if (error) throw error;
+    };
+
+    const pauseSession = async () => {
+      clearHeartbeat();
+      clearRetry();
+      const id = sessionId;
+      sessionId = null;
+      sequence = 0;
+      setValue(pauseLabel());
+      if (!id) return;
+      if (!closing) {
+        closing = closeRemoteSession(id).catch(() => {
+          if (!disposed) setValue("offline");
+        });
+      }
+      try {
+        await closing;
+      } finally {
+        closing = null;
+      }
+      if (!disposed && isPageActive()) void ensureSession();
+    };
+
+    const heartbeat = async () => {
+      if (disposed || heartbeatRunning || !sessionId) return;
+      if (!isPageActive()) {
+        await pauseSession();
+        return;
+      }
+
+      heartbeatRunning = true;
+      const heartbeatSessionId = sessionId;
+      const nextSequence = sequence + 1;
+      try {
+        const { data, error } = await client.functions.invoke(
+          "activity-progress",
+          {
+            body: {
+              action: "heartbeat",
+              session_id: heartbeatSessionId,
+              seq: nextSequence,
+            },
+          },
+        );
+        if (disposed || sessionId !== heartbeatSessionId) return;
+        if (error) {
+          const status = getResponseStatus(error);
+          if (status === 404 || status === 409) {
+            sessionId = null;
+            sequence = 0;
+            clearHeartbeat();
+            setValue("offline");
+            if (isPageActive()) void ensureSession();
+          } else {
+            setValue("offline");
+          }
+          return;
+        }
+        const progress = parseActivityProgress(data);
+        if (!progress) {
+          setValue("offline");
+          return;
+        }
+        if (!isPageActive()) {
+          await pauseSession();
+          return;
+        }
+        sequence = nextSequence;
+        setValue("active", progress);
+      } catch {
+        if (!disposed) setValue("offline");
+      } finally {
+        heartbeatRunning = false;
+      }
+    };
+
+    async function ensureSession() {
+      if (disposed) return;
+      if (!isPageActive()) {
+        setValue(pauseLabel());
+        return;
+      }
+      if (sessionId || starting) return;
+      if (closing) {
+        void closing.then(() => ensureSession());
+        return;
+      }
+
+      starting = true;
+      clearRetry();
+      const requestGeneration = focusGeneration;
+      setValue("starting");
+      try {
+        const { data, error } = await client.functions.invoke(
+          "activity-progress",
+          {
+            body: { action: "start", source },
+          },
+        );
+        if (error) throw error;
+        if (
+          !isRecord(data) ||
+          typeof data.sessionId !== "string" ||
+          !SESSION_ID_PATTERN.test(data.sessionId)
+        ) {
+          throw new Error("Invalid activity session response");
+        }
+        if (disposed) {
+          await closeRemoteSession(data.sessionId);
+          return;
+        }
+        if (requestGeneration !== focusGeneration) {
+          await closeRemoteSession(data.sessionId);
+          if (isPageActive()) void ensureSession();
+          return;
+        }
+        sessionId = data.sessionId;
+        sequence = 0;
+        if (!isPageActive()) {
+          await pauseSession();
+          return;
+        }
+        setValue("active");
+        clearRetry();
+        clearHeartbeat();
+        heartbeatTimer = window.setInterval(
+          () => void heartbeat(),
+          ACTIVITY_HEARTBEAT_INTERVAL_MS,
+        );
+      } catch {
+        if (!disposed) {
+          setValue("offline");
+          clearRetry();
+          retryTimer = window.setTimeout(
+            () => void ensureSession(),
+            ACTIVITY_HEARTBEAT_INTERVAL_MS,
+          );
+        }
+      } finally {
+        starting = false;
+        if (
+          !disposed &&
+          isPageActive() &&
+          !sessionId &&
+          retryTimer === undefined
+        ) {
+          void ensureSession();
+        }
+      }
+    }
+
+    async function refreshProgress() {
+      try {
+        const { data, error } = await client.functions.invoke(
+          "activity-progress",
+          {
+            body: { action: "progress" },
+          },
+        );
+        if (disposed) return;
+        if (error) {
+          setValue("offline", null);
+          return;
+        }
+        const progress = parseActivityProgress(data);
+        if (!progress) {
+          setValue("offline", null);
+          return;
+        }
+        setValue(
+          isPageActive() ? (sessionId ? "active" : "starting") : pauseLabel(),
+          progress,
+        );
+      } catch {
+        if (!disposed) setValue("offline", null);
+      }
+    }
+
+    const reconcile = () => {
+      if (isPageActive()) void ensureSession();
+      else {
+        focusGeneration += 1;
+        void pauseSession();
+      }
+    };
+    const onNativeFocus = (event: Event) => {
+      if ("detail" in event && typeof event.detail === "boolean") {
+        nativeFocused = event.detail;
+      }
+      reconcile();
+    };
+    const onOffline = () => {
+      setValue("offline");
+      focusGeneration += 1;
+      void pauseSession();
+    };
+    const onPageHide = () => {
+      pageHidden = true;
+      focusGeneration += 1;
+      void pauseSession();
+    };
+    const onPageShow = () => {
+      pageHidden = false;
+      reconcile();
+    };
+
+    setValue("loading", null);
+    void refreshProgress();
+    reconcile();
+    document.addEventListener("visibilitychange", reconcile);
+    window.addEventListener("focus", reconcile);
+    window.addEventListener("blur", reconcile);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("online", reconcile);
+    window.addEventListener("offline", onOffline);
+    if (source === "launcher") {
+      window.addEventListener("minlauncher:window-focus", onNativeFocus);
+    }
+
+    return () => {
+      disposed = true;
+      clearHeartbeat();
+      clearRetry();
+      document.removeEventListener("visibilitychange", reconcile);
+      window.removeEventListener("focus", reconcile);
+      window.removeEventListener("blur", reconcile);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("online", reconcile);
+      window.removeEventListener("offline", onOffline);
+      if (source === "launcher") {
+        window.removeEventListener("minlauncher:window-focus", onNativeFocus);
+      }
+      if (sessionId) {
+        void closeRemoteSession(sessionId).catch(() => {
+          console.warn(
+            "–ù–µ —É–¥–∞–ª–æ—Å—å –∑–∞–∫—Ä—ã—Ç—å —Å–µ—Ä–≤–µ—Ä–Ω—É—é —Å–µ—Å—Å–∏—é –∞–∫—Ç–∏–≤–Ω–æ—Å—Ç–∏ –ø—Ä–∏ —Ä–∞–∑–º–æ–Ω—Ç–∏—Ä–æ–≤–∞–Ω–∏–∏.",
+          );
+        });
+        sessionId = null;
+      }
+    };
+  }, [authReady, client, onValue, session?.user.id, source]);
+
+  return null;
+}
+
+export function ActivityProgressProvider({
+  children,
+  client,
+  source,
+}: ActivityProgressProviderProps) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(!client);
+  const [value, setValue] = useState<ActivityProgressValue>({
+    status: client ? "loading" : "unavailable",
+    progress: null,
+  });
+
+  useEffect(() => {
+    if (!client) {
+      setSession(null);
+      setAuthReady(true);
+      setValue({ status: "unavailable", progress: null });
+      return;
+    }
+
+    let active = true;
+    let authEventSeen = false;
+    setAuthReady(false);
+    const {
+      data: { subscription },
+    } = client.auth.onAuthStateChange((_event, nextSession) => {
+      authEventSeen = true;
+      if (!active) return;
+      setSession(nextSession);
+      setAuthReady(true);
+    });
+    void client.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (!active || authEventSeen) return;
+        setSession(data.session);
+        setAuthReady(true);
+        if (error) setValue({ status: "offline", progress: null });
+      })
+      .catch(() => {
+        if (!active || authEventSeen) return;
+        setSession(null);
+        setAuthReady(true);
+        setValue({ status: "offline", progress: null });
+      });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [client]);
+
+  return (
+    <ActivityProgressContext.Provider
+      value={{ ...value, authReady, userId: session?.user.id ?? null }}
+    >
+      {client ? (
+        <ActivityProgressController
+          client={client}
+          source={source}
+          session={session}
+          authReady={authReady}
+          onValue={setValue}
+        />
+      ) : null}
+      {children}
+    </ActivityProgressContext.Provider>
+  );
+}
+
+export function useActivityProgress(): ActivityProgressView {
+  const { status, progress, userId } = useContext(ActivityProgressContext);
+  return { status, progress, userId };
+}
+
+const STATUS_TEXT: Record<ActivityStatus, string> = {
+  loading: "–ó–∞–≥—Ä—É–∂–∞–µ–º —Å–æ—Ö—Ä–∞–Ω—ë–Ω–Ω—ã–π –ø—Ä–æ–≥—Ä–µ—Å—Å‚Ä¶",
+  signed_out: "–í–æ–π–¥–∏—Ç–µ –≤ –∞–∫–∫–∞—É–Ω—Ç, —á—Ç–æ–±—ã —Å–æ—Ö—Ä–∞–Ω—è—Ç—å —É—Ä–æ–≤–µ–Ω—å.",
+  starting: "–ü—Ä–æ–≤–µ—Ä—è–µ–º –∞–∫—Ç–∏–≤–Ω—É—é —Å–µ—Å—Å–∏—é‚Ä¶",
+  active: "–ó–∞—á—ë—Ç –∏–¥—ë—Ç, –ø–æ–∫–∞ —ç—Ç–æ –æ–∫–Ω–æ –æ—Ç–∫—Ä—ã—Ç–æ –∏ –≤ —Ñ–æ–∫—É—Å–µ.",
+  paused: "–ü–∞—É–∑–∞. –í–µ—Ä–Ω–∏—Ç–µ—Å—å –≤ —ç—Ç–æ –æ–∫–Ω–æ, —á—Ç–æ–±—ã –ø—Ä–æ–¥–æ–ª–∂–∏—Ç—å.",
+  offline: "–ù–µ—Ç —Å–≤—è–∑–∏ —Å —Å–µ—Ä–≤–µ—Ä–æ–º. –í—Ä–µ–º—è —Å–µ–π—á–∞—Å –Ω–µ –Ω–∞—á–∏—Å–ª—è–µ—Ç—Å—è.",
+  unavailable: "–ü—Ä–æ–≥—Ä–µ—Å—Å —Å–µ–π—á–∞—Å –Ω–µ–¥–æ—Å—Ç—É–ø–µ–Ω.",
+};
+
+const COMPACT_STATUS_TEXT: Record<ActivityStatus, string> = {
+  loading: "–ó–∞–≥—Ä—É–∂–∞–µ–º —É—Ä–æ–≤–µ–Ω—å",
+  signed_out: "–í–æ–π–¥–∏—Ç–µ, —á—Ç–æ–±—ã –∫–æ–ø–∏—Ç—å",
+  starting: "–ó–∞–ø—É—Å–∫–∞–µ–º –∑–∞—á—ë—Ç",
+  active: "–í—Ä–µ–º—è –Ω–∞—á–∏—Å–ª—è–µ—Ç—Å—è",
+  paused: "–ü–∞—É–∑–∞: –≤–µ—Ä–Ω–∏—Ç–µ—Å—å —Å—é–¥–∞",
+  offline: "–ù–µ—Ç —Å–≤—è–∑–∏, –∑–∞—á—ë—Ç –æ—Å—Ç–∞–Ω–æ–≤–ª–µ–Ω",
+  unavailable: "–ü—Ä–æ–≥—Ä–µ—Å—Å –Ω–µ–¥–æ—Å—Ç—É–ø–µ–Ω",
+};
+
+export function ActivityProgressSummary({
+  compact = false,
+}: { compact?: boolean } = {}) {
+  const { status, progress } = useActivityProgress();
+  const hasProgress = progress !== null;
+  const level = hasProgress ? progress.level : null;
+  const atMaximum = level === 50;
+  const progressMaximum = progress?.requiredSeconds || 1;
+  const progressValue = atMaximum
+    ? 1
+    : Math.min(progressMaximum, progress?.secondsIntoLevel ?? 0);
+  const percent = Math.round((progressValue / progressMaximum) * 100);
+
+  return (
+    <section
+      className={
+        compact
+          ? "activity-progress activity-progress--compact"
+          : "activity-progress"
+      }
+      data-state={status}
+      aria-label="–ü—Ä–æ–≥—Ä–µ—Å—Å –ê—Ç–ª–∞—Å–∞ –º–∏—Ä–æ–≤"
+    >
+      <div className="activity-progress__head">
+        <div>
+          <span className="activity-progress__eyebrow">–ê–¢–õ–ê–° –ú–ò–†–û–í</span>
+          <strong>
+            {level === null ? "‚Äî" : level} <span>/ 50</span>
+          </strong>
+        </div>
+        <span className="activity-progress__time">
+          {hasProgress
+            ? formatActivityDuration(progress.confirmedSeconds)
+            : "‚Äî"}
+        </span>
+      </div>
+      <div
+        className="activity-progress__track"
+        role="progressbar"
+        aria-label="–ü—Ä–æ–≥—Ä–µ—Å—Å –¥–æ —Å–ª–µ–¥—É—é—â–µ–≥–æ —É—Ä–æ–≤–Ω—è"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        aria-valuetext={
+          atMaximum
+            ? "–ú–∞–∫—Å–∏–º–∞–ª—å–Ω—ã–π —É—Ä–æ–≤–µ–Ω—å"
+            : `${percent}% –¥–æ —Å–ª–µ–¥—É—é—â–µ–≥–æ —É—Ä–æ–≤–Ω—è`
+        }
+      >
+        <span style={{ width: `${percent}%` }} />
+      </div>
+      <p
+        className="activity-progress__status"
+        role={compact ? undefined : "status"}
+        aria-live={compact ? undefined : "polite"}
+      >
+        {compact ? COMPACT_STATUS_TEXT[status] : STATUS_TEXT[status]}
+      </p>
+      {hasProgress ? (
+        <>
+          {!compact && progress.currentReward ? (
+            <p className="activity-progress__reward">
+              –û—Ç–∫—Ä—ã—Ç–æ: {progress.currentReward.rewardLabel}
+            </p>
+          ) : null}
+          <p className="activity-progress__reward">
+            {atMaximum
+              ? "–í—Å–µ –Ω–∞–≥—Ä–∞–¥—ã –ê—Ç–ª–∞—Å–∞ –æ—Ç–∫—Ä—ã—Ç—ã."
+              : progress.nextReward
+                ? `–î–∞–ª—å—à–µ: ${progress.nextReward.rewardLabel} ¬∑ ${formatActivityDuration(progress.secondsRemaining)}`
+                : "–ù–∞—á–Ω–∏—Ç–µ –æ—Ç–∫—Ä—ã–≤–∞—Ç—å —Å—Ç—Ä–∞–Ω–∏—Ü—ã –ê—Ç–ª–∞—Å–∞."}
+          </p>
+        </>
+      ) : null}
+    </section>
+  );
+}
