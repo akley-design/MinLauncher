@@ -1,540 +1,17 @@
-/**
- * The screen the launcher opens on.
- *
- * It answers one question â€” "what do I play, and how do I start it" â€”
- * and it answers it without scrolling. The version that will be played
- * is chosen here, the account is chosen here, and the play button is
- * the only large thing on the screen.
- */
-
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-
-import { Button } from "../components/Button";
-import { Diorama } from "@minlauncher/visuals";
-import { EmptyState, ErrorState, LoadingState } from "../components/States";
-import {
-  addOfflineAccount,
-  clearNicknameClaim,
-  offlineAccountIdentity,
-  installVersion,
-  listAccounts,
-  listInstances,
-  listVersions,
-  removeAccount,
-  queueNicknameRelease,
-  selectAccount,
-  setNicknameClaimStatus,
-  stopGame,
-  toCommandError,
-} from "../ipc/client";
-import { launcherAuth } from "../auth";
-import { queryKeys, useLaunchGame } from "../ipc/queries";
-import type { AccountType } from "../ipc/types";
-import { LAUNCH_BUDGET_MS } from "../lib/launches";
-import { plural } from "../lib/plural";
-import { useGameStore } from "../stores/game";
-
-/** The screen the launcher opens on. */
-export function HomeRoute() {
-  const queryClient = useQueryClient();
-  const starting = useGameStore((state) => state.starting);
-  const running = useGameStore((state) => state.running);
-  const launches = useGameStore((state) => state.launches);
-
-  const [newAccount, setNewAccount] = useState("");
-  const [nicknameConflicts, setNicknameConflicts] = useState<Record<string, string>>({});
-  const reconciledAccounts = useRef(new Set<string>());
-  // The version the player picked on this screen. It is empty until the
-  // player picks one, and then the choice is theirs â€” the version the
-  // launcher would have picked on its own is only the default.
-  const [picked, setPicked] = useState<string | null>(null);
-  const [pickedInstance, setPickedInstance] = useState<string | null>(null);
-  // The field of the name of the player. The empty state of the
-  // account points at it, so that the player knows where to type.
-  const nameInput = useRef<HTMLInputElement>(null);
-
-  const versions = useQuery({
-    queryKey: queryKeys.versions(),
-    queryFn: listVersions,
-  });
-
-  const accounts = useQuery({
-    queryKey: queryKeys.accounts(),
-    queryFn: listAccounts,
-  });
-
-  useEffect(() => {
-    if (!launcherAuth || !accounts.data) return;
-    for (const claim of accounts.data.nickname_claims) {
-      if (
-        claim.status !== "release_pending" ||
-        reconciledAccounts.current.has(`release:${claim.account_id}`)
-      )
-        continue;
-      reconciledAccounts.current.add(`release:${claim.account_id}`);
-      void (async () => {
-        const key = `ml-nickname-${claim.account_id}`;
-        try {
-          const token = await invoke<string | null>("identity_storage_get", { key });
-          if (!token) throw new Error("ÐÐµ Ð½Ð°Ð¹Ð´ÐµÐ½ Ñ‚Ð¾ÐºÐµÐ½ Ð´Ð»Ñ Ð¾ÑÐ²Ð¾Ð±Ð¾Ð¶Ð´ÐµÐ½Ð¸Ñ Ð½Ð¸ÐºÐ°.");
-          const { error } = await launcherAuth.functions.invoke("launcher-nickname", {
-            body: { operation: "release_offline", claim_token: token },
-          });
-          if (error) throw error;
-          await invoke("identity_storage_remove", { key });
-          await clearNicknameClaim(claim.account_id);
-          void queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
-        } catch {
-          reconciledAccounts.current.delete(`release:${claim.account_id}`);
-        }
-      })();
-    }
-    for (const account of accounts.data.accounts) {
-      if (account.kind !== "offline" || reconciledAccounts.current.has(account.id)) continue;
-      reconciledAccounts.current.add(account.id);
-      void (async () => {
-        const key = `ml-nickname-${account.id}`;
-        try {
-          const storedToken = await invoke<string | null>("identity_storage_get", { key });
-          const { data, error } = await launcherAuth.functions.invoke("launcher-nickname", {
-            body: {
-              operation: "claim_offline",
-              nickname: account.username,
-              player_uuid: account.uuid,
-              ...(storedToken ? { claim_token: storedToken } : {}),
-            },
-          });
-          if (error) {
-            const status = (error as { context?: Response }).context?.status;
-            if (status === 409 || status === 400) {
-              setNicknameConflicts((current) => ({
-                ...current,
-                [account.id]: "ÐÐ¸Ðº Ð·Ð°Ð½ÑÑ‚. Ð¡Ð¾Ð·Ð´Ð°Ð¹Ñ‚Ðµ Ð°ÐºÐºÐ°ÑƒÐ½Ñ‚ Ñ Ð´Ñ€ÑƒÐ³Ð¸Ð¼ Ð½Ð¸ÐºÐ¾Ð¼.",
-              }));
-              await setNicknameClaimStatus(account.id, account.username, "conflict").catch(
-                () => undefined,
-              );
-            }
-            return;
-          }
-          await setNicknameClaimStatus(account.id, account.username, "reserved");
-          if (!storedToken && typeof data?.claim_token === "string") {
-            await invoke("identity_storage_set", { key, value: data.claim_token });
-          }
-          setNicknameConflicts((current) => {
-            const next = { ...current };
-            delete next[account.id];
-            return next;
-          });
-        } catch {
-          // Existing accounts stay playable if the network or registry is unavailable.
-        }
-      })();
-    }
-  }, [accounts.data, queryClient]);
-
-  const instances = useQuery({
-    queryKey: queryKeys.instances(),
-    queryFn: listInstances,
-  });
-
-  // The version that will be played. It is the one the player picked,
-  // or the newest release that is installed, or the newest version that
-  // is installed, or the latest release of Mojang.
-  const installed = versions.data?.versions.filter((version) => version.installed) ?? [];
-  const latestRelease = versions.data?.latest_release ?? "";
-  const fallback =
-    installed.find((version) => version.kind === "release")?.id ??
-    installed[0]?.id ??
-    latestRelease;
-  const chosenVersion =
-    picked && installed.some((version) => version.id === picked) ? picked : fallback;
-  const chosenInstance = pickedInstance
-    ? instances.data?.instances.find((instance) => instance.id === pickedInstance)
-    : picked
-      ? undefined
-      : instances.data?.instances[0];
-  const playVersion = chosenInstance?.version_id ?? chosenVersion;
-
-  // The last launch of the version that is picked. The number is read
-  // from the store and not from the answer of the button, so that it is
-  // still there when the player comes back to this screen.
-  const lastLaunch = launches.find((record) => record.versionId === playVersion);
-
-  const selected = accounts.data?.accounts.find(
-    (account) => account.id === accounts.data?.selected_id,
-  );
-  const heroStatus = running
-    ? "ÐœÐ˜Ð  Ð—ÐÐŸÐ£Ð©Ð•Ð"
-    : starting
-      ? "Ð˜Ð“Ð Ð Ð—ÐÐŸÐ£Ð¡ÐšÐÐ•Ð¢Ð¡Ð¯"
-      : accounts.isPending
-        ? "ÐŸÐ ÐžÐ’Ð•Ð ÐšÐ ÐÐšÐšÐÐ£ÐÐ¢Ð"
-        : accounts.isError
-          ? "ÐžÐ¨Ð˜Ð‘ÐšÐ ÐŸÐ ÐžÐ¤Ð˜Ð›Ð¯"
-          : !playVersion
-            ? "ÐÐ£Ð–ÐÐ Ð’Ð•Ð Ð¡Ð˜Ð¯"
-            : !selected
-              ? "ÐÐ£Ð–Ð•Ð ÐÐšÐšÐÐ£ÐÐ¢"
-              : "Ð“ÐžÐ¢ÐžÐ’ Ðš Ð—ÐÐŸÐ£Ð¡ÐšÐ£";
-
-  const launch = useLaunchGame();
-
-  const stop = useMutation({
-    mutationFn: stopGame,
-    onSuccess: () => useGameStore.setState({ running: null }),
-  });
-
-  const chooseAccount = useMutation({
-    mutationFn: selectAccount,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
-    },
-  });
-
-  const deleteAccount = useMutation({
-    mutationFn: removeAccount,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.accounts() }),
-  });
-
-  const addAccount = useMutation({
-    mutationFn: async (username: string) => {
-      if (!launcherAuth) throw new Error("ÐÐµ Ð½Ð°ÑÑ‚Ñ€Ð¾ÐµÐ½ ÑÐµÑ€Ð²ÐµÑ€ MinLauncher.");
-      const identity = await offlineAccountIdentity(username);
-      const { data, error } = await launcherAuth.functions.invoke("launcher-nickname", {
-        body: { operation: "claim_offline", nickname: username, player_uuid: identity.uuid },
-      });
-      if (error) throw error;
-      if (typeof data?.claim_token !== "string")
-        throw new Error("Ð¡ÐµÑ€Ð²ÐµÑ€ Ð½Ðµ Ð¿Ð¾Ð´Ñ‚Ð²ÐµÑ€Ð´Ð¸Ð» Ñ€ÐµÐ·ÐµÑ€Ð²Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¸Ðµ Ð½Ð¸ÐºÐ°.");
-      const key = `ml-nickname-${identity.id}`;
-      try {
-        await invoke("identity_storage_set", { key, value: data.claim_token });
-        return await addOfflineAccount(username, data.claim_token);
-      } catch (cause) {
-        const { error: releaseError } = await launcherAuth.functions.invoke("launcher-nickname", {
-          body: { operation: "release_offline", claim_token: data.claim_token },
-        });
-        if (releaseError) {
-          await queueNicknameRelease(identity.id, username).catch(() => undefined);
-        } else {
-          await invoke("identity_storage_remove", { key }).catch(() => undefined);
-        }
-        throw cause;
-      }
-    },
-    onSuccess: () => {
-      setNewAccount("");
-      void queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
-    },
-  });
-
-  // A launcher with nothing installed has nothing to play, and the
-  // player must not have to hunt for the screen that installs one.
-  const install = useMutation({
-    mutationFn: installVersion,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.versions() });
-    },
-  });
-
-  if (versions.isPending) {
-    return <LoadingState label="Ð§Ð¸Ñ‚Ð°ÐµÐ¼ ÑÐ¿Ð¸ÑÐ¾Ðº Ð²ÐµÑ€ÑÐ¸Ð¹â€¦" />;
-  }
-
-  if (versions.isError) {
-    return <ErrorState error={versions.error} />;
-  }
-
-  const canPlay = Boolean(playVersion) && Boolean(selected) && !running && !starting;
-
-  return (
-    <div className="screen home-screen">
-      <div className="screen__header home-screen__heading">
-        <div>
-          <div className="home-screen__kicker">Minecraft Java Edition</div>
-          <h1 className="screen__title">Ð˜Ð³Ñ€Ð°Ñ‚ÑŒ</h1>
-          <p className="screen__subtitle">
-            {installed.length > 0
-              ? `${installed.length} ${plural(installed.length, "Ð²ÐµÑ€ÑÐ¸Ñ", "Ð²ÐµÑ€ÑÐ¸Ð¸", "Ð²ÐµÑ€ÑÐ¸Ð¹")} ÑƒÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½Ð¾`
-              : "ÐÐ¸ Ð¾Ð´Ð½Ð° Ð²ÐµÑ€ÑÐ¸Ñ Ð½Ðµ ÑƒÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½Ð°"}
-          </p>
-        </div>
-      </div>
-
-      <section className="home-hero" aria-label="Ð—Ð°Ð¿ÑƒÑÐº Minecraft">
-        <div className="home-hero__content">
-          <div className="home-hero__status">
-            <span className="home-hero__status-dot" aria-hidden="true" />
-            {heroStatus}
-          </div>
-          <h2 className="home-hero__title">{chosenInstance?.name ?? "Minecraft"}</h2>
-          <p className="home-hero__description">
-            {selected
-              ? `ÐŸÑ€Ð¸Ð²ÐµÑ‚, ${selected.username}. Ð’Ñ‹Ð±ÐµÑ€Ð¸ Ð²ÐµÑ€ÑÐ¸ÑŽ Ð¸ Ð·Ð°Ð¿ÑƒÑÐºÐ°Ð¹ Ð¸Ð³Ñ€Ñƒ.`
-              : "Ð”Ð¾Ð±Ð°Ð²ÑŒ Ð¸Ð³Ñ€Ð¾Ð²Ð¾Ðµ Ð¸Ð¼Ñ Ð¸ Ð²Ñ‹Ð±ÐµÑ€Ð¸ Ð²ÐµÑ€ÑÐ¸ÑŽ."}
-          </p>
-
-          <div className="home-hero__controls">
-            <label className="home-hero__version">
-              <span>ÐÐšÐ¢Ð˜Ð’ÐÐÐ¯ Ð’Ð•Ð Ð¡Ð˜Ð¯</span>
-              {installed.length > 0 ? (
-                <select
-                  className="input"
-                  aria-label="Ð’ÐµÑ€ÑÐ¸Ñ"
-                  value={chosenInstance ? `instance:${chosenInstance.id}` : chosenVersion}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    if (value.startsWith("instance:")) {
-                      setPickedInstance(value.slice("instance:".length));
-                      setPicked(null);
-                    } else {
-                      setPicked(value);
-                      setPickedInstance(null);
-                    }
-                  }}
-                >
-                  {(instances.data?.instances ?? []).map((instance) => (
-                    <option key={instance.id} value={`instance:${instance.id}`}>
-                      {instance.name} Â· {instance.version_id}
-                    </option>
-                  ))}
-                  {installed.map((version) => (
-                    <option key={version.id} value={version.id}>
-                      {version.id}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <strong>{chosenVersion || "ÐÐµÑ‚ ÑƒÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½Ð½Ð¾Ð¹ Ð²ÐµÑ€ÑÐ¸Ð¸"}</strong>
-              )}
-            </label>
-            <section className="home-game-account">
-              <div className="card__title">Ð˜Ð³Ñ€Ð¾Ð²Ð¾Ð¹ Ð°ÐºÐºÐ°ÑƒÐ½Ñ‚</div>
-
-              {accounts.isPending ? (
-                <LoadingState label="Ð§Ð¸Ñ‚Ð°ÐµÐ¼ Ð°ÐºÐºÐ°ÑƒÐ½Ñ‚Ñ‹â€¦" />
-              ) : accounts.isError ? (
-                <ErrorState error={accounts.error} />
-              ) : (accounts.data?.accounts.length ?? 0) === 0 ? (
-                <EmptyState
-                  title="ÐÐºÐºÐ°ÑƒÐ½Ñ‚Ð° Ð½ÐµÑ‚"
-                  description="Ð”Ð¾Ð±Ð°Ð²ÑŒÑ‚Ðµ Ð¾Ñ„Ñ„Ð»Ð°Ð¹Ð½-Ð°ÐºÐºÐ°ÑƒÐ½Ñ‚, Ñ‡Ñ‚Ð¾Ð±Ñ‹ Ð¸Ð³Ñ€Ð°Ñ‚ÑŒ Ð±ÐµÐ· ÐºÑƒÐ¿Ð»ÐµÐ½Ð½Ð¾Ð¹ Java Ð½Ð° ÑÐµÑ€Ð²ÐµÑ€Ð°Ñ…, Ð³Ð´Ðµ Ñ€Ð°Ð·Ñ€ÐµÑˆÑ‘Ð½ Ð²Ñ…Ð¾Ð´ Ð±ÐµÐ· Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÐ¸ Ð»Ð¸Ñ†ÐµÐ½Ð·Ð¸Ð¸."
-                  action={
-                    <Button onClick={() => nameInput.current?.focus()}>Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ Ð°ÐºÐºÐ°ÑƒÐ½Ñ‚</Button>
-                  }
-                />
-              ) : (
-                <ul className="accounts">
-                  {accounts.data?.accounts.map((account) => (
-                    <li key={account.id} className="accounts__item">
-                      <button
-                        type="button"
-                        className={
-                          account.id === accounts.data?.selected_id
-                            ? "accounts__button accounts__button--active"
-                            : "accounts__button"
-                        }
-                        onClick={() => chooseAccount.mutate(account.id)}
-                      >
-                        <span className="accounts__avatar" aria-hidden="true">
-                          {account.username.slice(0, 1).toUpperCase()}
-                        </span>
-                        <span className="accounts__name">{account.username}</span>
-                        <span className={`badge badge--account badge--account-${account.kind}`}>
-                          {ACCOUNT_KIND_LABELS[account.kind]}
-                        </span>
-                      </button>
-                      <Button variant="ghost" onClick={() => deleteAccount.mutate(account.id)}>
-                        Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ
-                      </Button>
-                      {accounts.data?.nickname_claims.find(
-                        (claim) => claim.account_id === account.id,
-                      )?.status === "conflict" ? (
-                        <small className="field__error">
-                          ÐÐ¸Ðº Ð·Ð°Ð½ÑÑ‚. Ð£Ð´Ð°Ð»Ð¸Ñ‚Ðµ Ð¿Ñ€Ð¾Ñ„Ð¸Ð»ÑŒ Ð¸ ÑÐ¾Ð·Ð´Ð°Ð¹Ñ‚Ðµ Ð½Ð¾Ð²Ñ‹Ð¹ Ñ Ð´Ñ€ÑƒÐ³Ð¸Ð¼ Ð½Ð¸ÐºÐ¾Ð¼.
-                        </small>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {Object.entries(nicknameConflicts).map(([accountId, message]) => (
-                <p key={accountId} className="field__error" role="status">
-                  {message}
-                </p>
-              ))}
-
-              <form
-                className="accounts__add"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (newAccount.trim()) {
-                    addAccount.mutate(newAccount.trim());
-                  }
-                }}
-              >
-                <input
-                  ref={nameInput}
-                  name="playerName"
-                  aria-label="Ð˜Ð¼Ñ Ð¸Ð³Ñ€Ð¾ÐºÐ°"
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="input"
-                  placeholder="ÐÐ°Ð¿Ñ€Ð¸Ð¼ÐµÑ€, Steveâ€¦"
-                  value={newAccount}
-                  onChange={(event) => setNewAccount(event.target.value)}
-                  maxLength={16}
-                />
-                <Button type="submit" busy={addAccount.isPending} disabled={!newAccount.trim()}>
-                  Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ
-                </Button>
-              </form>
-              <p className="field__hint">
-                ÐÐ¾Ð²Ñ‹Ð¹ Ð½Ð¸Ðº Ñ€ÐµÐ·ÐµÑ€Ð²Ð¸Ñ€ÑƒÐµÑ‚ÑÑ Ð² MinLauncher Ñ‡ÐµÑ€ÐµÐ· Ð¸Ð½Ñ‚ÐµÑ€Ð½ÐµÑ‚. Ð£Ð¶Ðµ Ð´Ð¾Ð±Ð°Ð²Ð»ÐµÐ½Ð½Ñ‹Ðµ Ð°ÐºÐºÐ°ÑƒÐ½Ñ‚Ñ‹
-                Ð·Ð°Ð¿ÑƒÑÐºÐ°ÑŽÑ‚ÑÑ Ð±ÐµÐ· ÑÐµÑ‚Ð¸. Ð¡ÐµÑ€Ð²ÐµÑ€Ñ‹ Ñ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÐ¾Ð¹ Microsoft Ñ‚Ñ€ÐµÐ±ÑƒÑŽÑ‚ Ð»Ð¸Ñ†ÐµÐ½Ð·Ð¸ÑŽ Minecraft Java.
-              </p>
-
-              {addAccount.isError ? (
-                <p
-                  role="alert"
-                  aria-live="polite"
-                  className="field__error"
-                  style={{ marginTop: "var(--space-2)" }}
-                >
-                  {toCommandError(addAccount.error).message}
-                </p>
-              ) : null}
-            </section>
-            {installed.length === 0 ? (
-              <Button
-                variant="primary"
-                className="button--large home-hero__play"
-                busy={install.isPending}
-                disabled={!latestRelease}
-                onClick={() => install.mutate({ version_id: latestRelease })}
-              >
-                {latestRelease ? `Ð£ÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ ${latestRelease}` : "Ð£ÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ"}
-                <span aria-hidden="true">â†“</span>
-              </Button>
-            ) : running ? (
-              <Button
-                variant="danger"
-                className="button--large home-hero__play"
-                onClick={() => stop.mutate()}
-              >
-                ÐžÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ Ð¸Ð³Ñ€Ñƒ <span aria-hidden="true">â– </span>
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                className="button--large home-hero__play"
-                disabled={!canPlay}
-                busy={starting}
-                onClick={() =>
-                  launch.mutate(
-                    chosenInstance
-                      ? { version_id: chosenInstance.version_id, instance_id: chosenInstance.id }
-                      : chosenVersion,
-                  )
-                }
-              >
-                {starting ? "Ð—Ð°Ð¿ÑƒÑÐºâ€¦" : "Ð˜Ð³Ñ€Ð°Ñ‚ÑŒ"} <span aria-hidden="true">â†—</span>
-              </Button>
-            )}
-          </div>
-
-          {playVersion ? (
-            <div className="home-hero__specs">
-              <span>
-                <b>MC</b> {playVersion}
-              </span>
-              <span>
-                <b>JAVA</b>{" "}
-                {versions.data?.versions.find((version) => version.id === playVersion)
-                  ?.java_major ?? "AUTO"}
-              </span>
-              <span>
-                <b>Ð¡Ð¢ÐÐ¢Ð£Ð¡</b> {playVersion && selected ? "Ð“ÐžÐ¢ÐžÐ’" : "ÐÐ• Ð“ÐžÐ¢ÐžÐ’"}
-              </span>
-            </div>
-          ) : null}
-          {launch.isError ? (
-            <p role="alert" aria-live="polite" className="field__error home-hero__error">
-              {toCommandError(launch.error).message}
-            </p>
-          ) : null}
-          {lastLaunch ? (
-            <p className="home-hero__last-launch">
-              ÐŸÐ¾Ð´Ð³Ð¾Ñ‚Ð¾Ð²ÐºÐ° {lastLaunch.versionId} Ð·Ð°Ð½ÑÐ»Ð° {lastLaunch.prepareMs} Ð¼Ñ
-              {lastLaunch.prepareMs > LAUNCH_BUDGET_MS ? " Â· Ð´Ð¾Ð»ÑŒÑˆÐµ 5 Ñ" : ""}
-            </p>
-          ) : null}
-        </div>
-        <div className="home-hero__scene">
-          <div className="home-hero__scene-label">
-            <span>Ð’ÐµÑ€Ñ…Ð½Ð¸Ð¹ Ð¼Ð¸Ñ€</span>
-          </div>
-          <Diorama
-            variant="island"
-            mode="launcher"
-            motion={running || starting ? "paused" : "active"}
-          />
-          <div className="home-hero__caption">
-            <span>Ð”Ð¾Ð¼ Ñƒ Ñ€ÐµÐºÐ¸</span>
-          </div>
-        </div>
-      </section>
-
-      {installed.length === 0 ? (
-        <section className="card">
-          <EmptyState
-            title="Ð£ÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚Ðµ Ð²ÐµÑ€ÑÐ¸ÑŽ"
-            description="Ð›Ð°ÑƒÐ½Ñ‡ÐµÑ€ ÑÐºÐ°Ñ‡Ð°ÐµÑ‚ Ð¸Ð³Ñ€Ñƒ, Ð±Ð¸Ð±Ð»Ð¸Ð¾Ñ‚ÐµÐºÐ¸ Ð¸ Ð°ÑÑÐµÑ‚Ñ‹. ÐŸÐ¾ÑÐ»Ðµ ÑÑ‚Ð¾Ð³Ð¾ Ð²ÐµÑ€ÑÐ¸ÑŽ Ð¼Ð¾Ð¶Ð½Ð¾ Ð±ÑƒÐ´ÐµÑ‚ Ð·Ð°Ð¿ÑƒÑÑ‚Ð¸Ñ‚ÑŒ."
-          />
-        </section>
-      ) : null}
-
-      {install.isError ? (
-        <p role="alert" aria-live="polite" className="field__error">
-          {toCommandError(install.error).message}
-        </p>
-      ) : null}
-
-      <div
-        className={
-          instances.data && instances.data.instances.length > 0
-            ? "home-screen__lower"
-            : "home-screen__lower home-screen__lower--single"
-        }
-      >
-        {instances.data && instances.data.instances.length > 0 ? (
-          <section className="card">
-            <div className="card__title">Ð˜Ð½ÑÑ‚Ð°Ð½ÑÑ‹</div>
-            <ul className="accounts">
-              {instances.data.instances.map((instance) => (
-                <li key={instance.id} className="accounts__item">
-                  <div className="accounts__button accounts__button--static">
-                    <span className="accounts__name">{instance.name}</span>
-                    <span className="badge">{instance.version_id}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-const ACCOUNT_KIND_LABELS: Record<AccountType, string> = {
-  microsoft: "Microsoft",
-  mojang: "Mojang",
-  offline: "ÐžÑ„Ñ„Ð»Ð°Ð¹Ð½",
-  minlauncher: "MinLauncher",
-  third_party: "Ð”Ñ€ÑƒÐ³Ð¾Ð¹",
-};
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíï~|N‹Z–‹­¦ëeŠw¬Ô¼¨¨(€¨Q¡”ÍÉ••¸Ñ¡”±…Õ¹¡•È½Á•¹Ì½¸¸(€¨(€¨%Ð…¹ÍÝ•ÉÌ½¹”ÅÕ•ÍÑ¥½¸ƒŠP€‰Ý¡…Ð‘¼$Á±…ä°…¹¡½Ü‘¼$ÍÑ…ÉÐ¥ÐˆƒŠP(€¨…¹¥Ð…¹ÍÝ•ÉÌ¥ÐÝ¥Ñ¡½ÕÐÍÉ½±±¥¹œ¸Q¡”Ù•ÉÍ¥½¸Ñ¡…ÐÝ¥±°‰”Á±…å•(€¨¥Ì¡½Í•¸¡•É”°Ñ¡”…½Õ¹Ð¥Ì¡½Í•¸¡•É”°…¹Ñ¡”Á±…ä‰ÕÑÑ½¸¥Ì(€¨Ñ¡”½¹±ä±…É”Ñ¡¥¹œ½¸Ñ¡”ÍÉ••¸¸(€¨¼()¥µÁ½ÉÐìÕÍ•5ÕÑ…Ñ¥½¸°ÕÍ•EÕ•Éä°ÕÍ•EÕ•Éå±¥•¹Ðô™É½´€‰Ñ…¹ÍÑ…¬½É•…ÐµÅÕ•Éäˆì)¥µÁ½ÉÐìÕÍ•™™•Ð°ÕÍ•I•˜°ÕÍ•MÑ…Ñ”ô™É½´€‰É•…Ðˆì)¥µÁ½ÉÐì¥¹Ù½­”ô™É½´€‰Ñ…ÕÉ¤µ…ÁÁÌ½…Á¤½½É”ˆì)¥µÁ½ÉÐìÑ¥Ù¥ÑåAÉ½É•ÍÍMÕµµ…Éäô™É½´€‰µ¥¹±…Õ¹¡•È½…Ñ¥Ù¥ÑäµÁÉ½É•ÍÌˆì()¥µÁ½ÉÐìÑ¥Ù¥ÑåÑ±…Í1½…‘½ÕÐô™É½´€ˆ¸¸½½µÁ½¹•¹ÑÌ½Ñ¥Ù¥ÑåÑ±…Í1½…‘½ÕÐˆì)¥µÁ½ÉÐì	ÕÑÑ½¸ô™É½´€ˆ¸¸½½µÁ½¹•¹ÑÌ½	ÕÑÑ½¸ˆì)¥µÁ½ÉÐì¥½É…µ„ô™É½´€‰µ¥¹±…Õ¹¡•È½Ù¥ÍÕ…±Ìˆì)¥µÁ½ÉÐìµÁÑåMÑ…Ñ”°ÉÉ½ÉMÑ…Ñ”°1½…‘¥¹MÑ…Ñ”ô™É½´€ˆ¸¸½½µÁ½¹•¹ÑÌ½MÑ…Ñ•Ìˆì)¥µÁ½ÉÐì(€…‘‘=™™±¥¹•½Õ¹Ð°(€±•…É9¥­¹…µ•±…¥´°(€½™™±¥¹•½Õ¹Ñ%‘•¹Ñ¥Ñä°(€¥¹ÍÑ…±±Y•ÉÍ¥½¸°(€±¥ÍÑ½Õ¹ÑÌ°(€±¥ÍÑ%¹ÍÑ…¹•Ì°(€±¥ÍÑY•ÉÍ¥½¹Ì°(€É•µ½Ù•½Õ¹Ð°(€ÅÕ•Õ•9¥­¹…µ•I•±•…Í”°(€Í•±•Ñ½Õ¹Ð°(€Í•Ñ9¥­¹…µ•±…¥µMÑ…ÑÕÌ°(€ÍÑ½Á…µ”°(€Ñ½½µµ…¹‘ÉÉ½È°)ô™É½´€ˆ¸¸½¥ÁŒ½±¥•¹Ðˆì)¥µÁ½ÉÐì±…Õ¹¡•ÉÕÑ ô™É½´€ˆ¸¸½…ÕÑ ˆì)¥µÁ½ÉÐìÅÕ•Éå-•åÌ°ÕÍ•1…Õ¹¡…µ”ô™É½´€ˆ¸¸½¥ÁŒ½ÅÕ•É¥•Ìˆì)¥µÁ½ÉÐÑåÁ”ì½Õ¹ÑQåÁ”ô™É½´€ˆ¸¸½¥ÁŒ½ÑåÁ•Ìˆì)¥µÁ½ÉÐì1U9!}	UQ}5Lô™É½´€ˆ¸¸½±¥ˆ½±…Õ¹¡•Ìˆì)¥µÁ½ÉÐìÁ±ÕÉ…°ô™É½´€ˆ¸¸½±¥ˆ½Á±ÕÉ…°ˆì)¥µÁ½ÉÐìÕÍ•…µ•MÑ½É”ô™É½´€ˆ¸¸½ÍÑ½É•Ì½…µ”ˆì((¼¨¨Q¡”ÍÉ••¸Ñ¡”±…Õ¹¡•È½Á•¹Ì½¸¸€¨¼)•áÁ½ÉÐ™Õ¹Ñ¥½¸!½µ•I½ÕÑ” ¤ì(€½¹ÍÐÅÕ•Éå±¥•¹Ð€ôÕÍ•EÕ•Éå±¥•¹Ð ¤ì(€½¹ÍÐÍÑ…ÉÑ¥¹œ€ôÕÍ•…µ•MÑ½É” ¡ÍÑ…Ñ”¤€ôøÍÑ…Ñ”¹ÍÑ…ÉÑ¥¹œ¤ì(€½¹ÍÐÉÕ¹¹¥¹œ€ôÕÍ•…µ•MÑ½É” ¡ÍÑ…Ñ”¤€ôøÍÑ…Ñ”¹ÉÕ¹¹¥¹œ¤ì(€½¹ÍÐ±…Õ¹¡•Ì€ôÕÍ•…µ•MÑ½É” ¡ÍÑ…Ñ”¤€ôøÍÑ…Ñ”¹±…Õ¹¡•Ì¤ì((€½¹ÍÐm¹•Ý½Õ¹Ð°Í•Ñ9•Ý½Õ¹Ñt€ôÕÍ•MÑ…Ñ” ˆˆ¤ì(€½¹ÍÐm¹¥­¹…µ•½¹™±¥ÑÌ°Í•Ñ9¥­¹…µ•½¹™±¥ÑÍt€ôÕÍ•MÑ…Ñ”ñI•½ÉñÍÑÉ¥¹œ°ÍÑÉ¥¹œøø¡íô¤ì(€½¹ÍÐÉ•½¹¥±•‘½Õ¹ÑÌ€ôÕÍ•I•˜¡¹•ÜM•ÐñÍÑÉ¥¹œø ¤¤ì(€€¼¼Q¡”Ù•ÉÍ¥½¸Ñ¡”Á±…å•ÈÁ¥­•½¸Ñ¡¥ÌÍÉ••¸¸%Ð¥Ì•µÁÑäÕ¹Ñ¥°Ñ¡”(€€¼¼Á±…å•ÈÁ¥­Ì½¹”°…¹Ñ¡•¸Ñ¡”¡½¥”¥ÌÑ¡•¥ÉÌƒŠPÑ¡”Ù•ÉÍ¥½¸Ñ¡”(€€¼¼±…Õ¹¡•ÈÝ½Õ±¡…Ù”Á¥­•½¸¥ÑÌ½Ý¸¥Ì½¹±äÑ¡”‘•™…Õ±Ð¸(€½¹ÍÐmÁ¥­•°Í•ÑA¥­•‘t€ôÕÍ•MÑ…Ñ”ñÍÑÉ¥¹œð¹Õ±°ø¡¹Õ±°¤ì(€½¹ÍÐmÁ¥­•‘%¹ÍÑ…¹”°Í•ÑA¥­•‘%¹ÍÑ…¹•t€ôÕÍ•MÑ…Ñ”ñÍÑÉ¥¹œð¹Õ±°ø¡¹Õ±°¤ì(€€¼¼Q¡”™¥•±½˜Ñ¡”¹…µ”½˜Ñ¡”Á±…å•È¸Q¡”•µÁÑäÍÑ…Ñ”½˜Ñ¡”(€€¼¼…½Õ¹ÐÁ½¥¹ÑÌ…Ð¥Ð°Í¼Ñ¡…ÐÑ¡”Á±…å•È­¹½ÝÌÝ¡•É”Ñ¼ÑåÁ”¸(€½¹ÍÐ¹…µ•%¹ÁÕÐ€ôÕÍ•I•˜ñ!Q51%¹ÁÕÑ±•µ•¹Ðø¡¹Õ±°¤ì((€½¹ÍÐÙ•ÉÍ¥½¹Ì€ôÕÍ•EÕ•Éä¡ì(€€€ÅÕ•Éå-•äèÅÕ•Éå-•åÌ¹Ù•ÉÍ¥½¹Ì ¤°(€€€ÅÕ•Éå¸è±¥ÍÑY•ÉÍ¥½¹Ì°(€ô¤ì((€½¹ÍÐ…½Õ¹ÑÌ€ôÕÍ•EÕ•Éä¡ì(€€€ÅÕ•Éå-•äèÅÕ•Éå-•åÌ¹…½Õ¹ÑÌ ¤°(€€€ÅÕ•Éå¸è±¥ÍÑ½Õ¹ÑÌ°(€ô¤ì((€ÕÍ•™™•Ð  ¤€ôøì(€€€¥˜€ …±…Õ¹¡•ÉÕÑ ñð€……½Õ¹ÑÌ¹‘…Ñ„¤É•ÑÕÉ¸ì(€€€™½È€¡½¹ÍÐ±…¥´½˜…½Õ¹ÑÌ¹‘…Ñ„¹¹¥­¹…µ•}±…¥µÌ¤ì(€€€€€¥˜€ (€€€€€€€±…¥´¹ÍÑ…ÑÕÌ€„ôô€‰É•±•…Í•}Á•¹‘¥¹œˆñð(€€€€€€€É•½¹¥±•‘½Õ¹ÑÌ¹ÕÉÉ•¹Ð¹¡…Ì¡É•±•…Í”è‘í±…¥´¹…½Õ¹Ñ}¥‘õ€¤(€€€€€€¤(€€€€€€€½¹Ñ¥¹Õ”ì(€€€€€É•½¹¥±•‘½Õ¹ÑÌ¹ÕÉÉ•¹Ð¹…‘¡É•±•…Í”è‘í±…¥´¹…½Õ¹Ñ}¥‘õ€¤ì(€€€€€Ù½¥€¡…Íå¹Œ€ ¤€ôøì(€€€€€€€½¹ÍÐ­•ä€ôµ°µ¹¥­¹…µ”´‘í±…¥´¹…½Õ¹Ñ}¥‘õ€ì(€€€€€€€ÑÉäì(€€€€€€€€€½¹ÍÐÑ½­•¸€ô…Ý…¥Ð¥¹Ù½­”ñÍÑÉ¥¹œð¹Õ±°ø ‰¥‘•¹Ñ¥Ñå}ÍÑ½É…•}•Ðˆ°ì­•äô¤ì(€€€€€€€€€¥˜€ …Ñ½­•¸¤Ñ¡É½Ü¹•ÜÉÉ½È ‹BwBÔƒB÷BÃBçBÓB×BôƒFBûBëB×BôƒBÓBïF<ƒBûFBËBûBÇBûBÛBÓB×B÷BãF<ƒB÷BãBëBÀ¸ˆ¤ì(€€€€€€€€€½¹ÍÐì•ÉÉ½Èô€ô…Ý…¥Ð±…Õ¹¡•ÉÕÑ ¹™Õ¹Ñ¥½¹Ì¹¥¹Ù½­” ‰±…Õ¹¡•Èµ¹¥­¹…µ”ˆ°ì(€€€€€€€€€€€‰½‘äèì½Á•É…Ñ¥½¸è€‰É•±•…Í•}½™™±¥¹”ˆ°±…¥µ}Ñ½­•¸èÑ½­•¸ô°(€€€€€€€€€ô¤ì(€€€€€€€€€¥˜€¡•ÉÉ½È¤Ñ¡É½Ü•ÉÉ½Èì(€€€€€€€€€…Ý…¥Ð¥¹Ù½­” ‰¥‘•¹Ñ¥Ñå}ÍÑ½É…•}É•µ½Ù”ˆ°ì­•äô¤ì(€€€€€€€€€…Ý…¥Ð±•…É9¥­¹…µ•±…¥´¡±…¥´¹…½Õ¹Ñ}¥¤ì(€€€€€€€€€Ù½¥ÅÕ•Éå±¥•¹Ð¹¥¹Ù…±¥‘…Ñ•EÕ•É¥•Ì¡ìÅÕ•Éå-•äèÅÕ•Éå-•åÌ¹…½Õ¹ÑÌ ¤ô¤ì(€€€€€€€ô…Ñ ì(€€€€€€€€€É•½¹¥±•‘½Õ¹ÑÌ¹ÕÉÉ•¹Ð¹‘•±•Ñ”¡É•±•…Í”è‘í±…¥´¹…½Õ¹Ñ}¥‘õ€¤ì(€€€€€€€ô(€€€€€ô¤ ¤ì(€€€ô(€€€™½È€¡½¹ÍÐ…½Õ¹Ð½˜…½Õ¹ÑÌ¹‘…Ñ„¹…½Õ¹ÑÌ¤ì(€€€€€¥˜€¡…½Õ¹Ð¹­¥¹€„ôô€‰½™™±¥¹”ˆñðÉ•½¹¥±•‘½Õ¹ÑÌ¹ÕÉÉ•¹Ð¹¡…Ì¡…½Õ¹Ð¹¥¤¤½¹Ñ¥¹Õ”ì(€€€€€É•½¹¥±•‘½Õ¹ÑÌ¹ÕÉÉ•¹Ð¹…‘¡…½Õ¹Ð¹¥¤ì(€€€€€Ù½¥€¡…Íå¹Œ€ ¤€ôøì(€€€€€€€½¹ÍÐ­•ä€ôµ°µ¹¥­¹…µ”´‘í…½Õ¹Ð¹¥‘õ€ì(€€€€€€€ÑÉäì(€€€€€€€€€½¹ÍÐÍÑ½É•‘Q½­•¸€ô…Ý…¥Ð¥¹Ù½­”ñÍÑÉ¥¹œð¹Õ±°ø ‰¥‘•¹Ñ¥Ñå}ÍÑ½É…•}•Ðˆ°ì­•äô¤ì(€€€€€€€€€½¹ÍÐì‘…Ñ„°•ÉÉ½Èô€ô…Ý…¥Ð±…Õ¹¡•ÉÕÑ ¹™Õ¹Ñ¥½¹Ì¹¥¹Ù½­” ‰±…Õ¹¡•Èµ¹¥­¹…µ”ˆ°ì(€€€€€€€€€€€‰½‘äèì(€€€€€€€€€€€€€½Á•É…Ñ¥½¸è€‰±…¥µ}½™™±¥¹”ˆ°(€€€€€€€€€€€€€¹¥­¹…µ”è…½Õ¹Ð¹ÕÍ•É¹…µ”°(€€€€€€€€€€€€€Á±…å•É}ÕÕ¥è…½Õ¹Ð¹ÕÕ¥°(€€€€€€€€€€€€€€¸¸¸¡ÍÑ½É•‘Q½­•¸€üì±…¥µ}Ñ½­•¸èÍÑ½É•‘Q½­•¸ô€èíô¤°(€€€€€€€€€€€ô°(€€€€€€€€€ô¤ì(€€€€€€€€€¥˜€¡•ÉÉ½È¤ì(€€€€€€€€€€€½¹ÍÐÍÑ…ÑÕÌ€ô€¡•ÉÉ½È…Ìì½¹Ñ•áÐüèI•ÍÁ½¹Í”ô¤¹½¹Ñ•áÐü¹ÍÑ…ÑÕÌì(€€€€€€€€€€€¥˜€¡ÍÑ…ÑÕÌ€ôôô€ÐÀäñðÍÑ…ÑÕÌ€ôôô€ÐÀÀ¤ì(€€€€€€€€€€€€€Í•Ñ9¥­¹…µ•½¹™±¥ÑÌ ¡ÕÉÉ•¹Ð¤€ôø€¡ì(€€€€€€€€€€€€€€€€¸¸¹ÕÉÉ•¹Ð°(€€€€€€€€€€€€€€€m…½Õ¹Ð¹¥‘tè€‹BwBãBèƒBßBÃB÷F?F¸ƒB‡BûBßBÓBÃBçFBÔƒBÃBëBëBÃFB÷FƒFƒBÓFFBÏBãBðƒB÷BãBëBûBð¸ˆ°(€€€€€€€€€€€€€ô¤¤ì(€€€€€€€€€€€€€…Ý…¥ÐÍ•Ñ9¥­¹…µ•±…¥µMÑ…ÑÕÌ¡…½Õ¹Ð¹¥°…½Õ¹Ð¹ÕÍ•É¹…µ”°€‰½¹™±¥Ðˆ¤¹…Ñ  (€€€€€€€€€€€€€€€€ ¤€ôøÕ¹‘•™¥¹•°(€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€ô(€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€€€ô(€€€€€€€€€…Ý…¥ÐÍ•Ñ9¥­¹…µ•±…¥µMÑ…ÑÕÌ¡…½Õ¹Ð¹¥°…½Õ¹Ð¹ÕÍ•É¹…µ”°€‰É•Í•ÉÙ•ˆ¤ì(€€€€€€€€€¥˜€ …ÍÑ½É•‘Q½­•¸€˜˜ÑåÁ•½˜‘…Ñ„ü¹±…¥µ}Ñ½­•¸€ôôô€‰ÍÑÉ¥¹œˆ¤ì(€€€€€€€€€€€…Ý…¥Ð¥¹Ù½­” ‰¥‘•¹Ñ¥Ñå}ÍÑ½É…•}Í•Ðˆ°ì­•ä°Ù…±Õ”è‘…Ñ„¹±…¥µ}Ñ½­•¸ô¤ì(€€€€€€€€€ô(€€€€€€€€€Í•Ñ9¥­¹…µ•½¹™±¥ÑÌ ¡ÕÉÉ•¹Ð¤€ôøì(€€€€€€€€€€€½¹ÍÐ¹•áÐ€ôì€¸¸¹ÕÉÉ•¹Ðôì(€€€€€€€€€€€‘•±•Ñ”¹•áÑm…½Õ¹Ð¹¥‘tì(€€€€€€€€€€€É•ÑÕÉ¸¹•áÐì(€€€€€€€€€ô¤ì(€€€€€€€ô…Ñ ì(€€€€€€€€€€¼¼á¥ÍÑ¥¹œ…½Õ¹ÑÌÍÑ…äÁ±…å…‰±”¥˜Ñ¡”¹•ÑÝ½É¬½ÈÉ•¥ÍÑÉä¥ÌÕ¹…Ù…¥±…‰±”¸(€€€€€€€ô(€€€€€ô¤ ¤ì(€€€ô(€ô°m…½Õ¹ÑÌ¹‘…Ñ„°ÅÕ•Éå±¥•¹Ñt¤ì((€½¹ÍÐ¥¹ÍÑ…¹•Ì€ôÕÍ•EÕ•Éä¡ì(€€€ÅÕ•Éå-•äèÅÕ•Éå-•åÌ¹¥¹ÍÑ…¹•Ì ¤°(€€€ÅÕ•Éå¸è±¥ÍÑ%¹ÍÑ…¹•Ì°(€ô¤ì((€€¼¼Q¡”Ù•ÉÍ¥½¸Ñ¡…ÐÝ¥±°‰”Á±…å•¸%Ð¥ÌÑ¡”½¹”Ñ¡”Á±…å•ÈÁ¥­•°(€€¼¼½ÈÑ¡”¹•Ý•ÍÐÉ•±•…Í”Ñ¡…Ð¥Ì¥¹ÍÑ…±±•°½ÈÑ¡”¹•Ý•ÍÐÙ•ÉÍ¥½¸Ñ¡…Ð(€€¼¼¥Ì¥¹ÍÑ…±±•°½ÈÑ¡”±…Ñ•ÍÐÉ•±•…Í”½˜5½©…¹œ¸(€½¹ÍÐ¥¹ÍÑ…±±•€ôÙ•ÉÍ¥½¹Ì¹‘…Ñ„ü¹Ù•ÉÍ¥½¹Ì¹™¥±Ñ•È ¡Ù•ÉÍ¥½¸¤€ôøÙ•ÉÍ¥½¸¹¥¹ÍÑ…±±•¤€üümtì(€½¹ÍÐ±…Ñ•ÍÑI•±•…Í”€ôÙ•ÉÍ¥½¹Ì¹‘…Ñ„ü¹±…Ñ•ÍÑ}É•±•…Í”€üü€ˆˆì(€½¹ÍÐ™…±±‰…¬€ô(€€€¥¹ÍÑ…±±•¹™¥¹ ¡Ù•ÉÍ¥½¸¤€ôøÙ•ÉÍ¥½¸¹­¥¹€ôôô€‰É•±•…Í”ˆ¤ü¹¥€üü(€€€¥¹ÍÑ…±±•‘lÁtü¹¥€üü(€€€±…Ñ•ÍÑI•±•…Í”ì(€½¹ÍÐ¡½Í•¹Y•ÉÍ¥½¸€ô(€€€Á¥­•€˜˜¥¹ÍÑ…±±•¹Í½µ” ¡Ù•ÉÍ¥½¸¤€ôøÙ•ÉÍ¥½¸¹¥€ôôôÁ¥­•¤€üÁ¥­•€è™…±±‰…¬ì(€½¹ÍÐ¡½Í•¹%¹ÍÑ…¹”€ôÁ¥­•‘%¹ÍÑ…¹”(€€€€ü¥¹ÍÑ…¹•Ì¹‘…Ñ„ü¹¥¹ÍÑ…¹•Ì¹™¥¹ ¡¥¹ÍÑ…¹”¤€ôø¥¹ÍÑ…¹”¹¥€ôôôÁ¥­•‘%¹ÍÑ…¹”¤(€€€€èÁ¥­•(€€€€€€üÕ¹‘•™¥¹•(€€€€€€è¥¹ÍÑ…¹•Ì¹‘…Ñ„ü¹¥¹ÍÑ…¹•ÍlÁtì(€½¹ÍÐÁ±…åY•ÉÍ¥½¸€ô¡½Í•¹%¹ÍÑ…¹”ü¹Ù•ÉÍ¥½¹}¥€üü¡½Í•¹Y•ÉÍ¥½¸ì((€€¼¼Q¡”±…ÍÐ±…Õ¹ ½˜Ñ¡”Ù•ÉÍ¥½¸Ñ¡…Ð¥ÌÁ¥­•¸Q¡”¹Õµ‰•È¥ÌÉ•…(€€¼¼™É½´Ñ¡”ÍÑ½É”…¹¹½Ð™É½´Ñ¡”…¹ÍÝ•È½˜Ñ¡”‰ÕÑÑ½¸°Í¼Ñ¡…Ð¥Ð¥Ì(€€¼¼ÍÑ¥±°Ñ¡•É”Ý¡•¸Ñ¡”Á±…å•È½µ•Ì‰…¬Ñ¼Ñ¡¥ÌÍÉ••¸¸(€½¹ÍÐ±…ÍÑ1…Õ¹ €ô±…Õ¹¡•Ì¹™¥¹ ¡É•½É¤€ôøÉ•½É¹Ù•ÉÍ¥½¹%€ôôôÁ±…åY•ÉÍ¥½¸¤ì((€½¹ÍÐÍ•±•Ñ•€ô…½Õ¹ÑÌ¹‘…Ñ„ü¹…½Õ¹ÑÌ¹™¥¹ (€€€€¡…½Õ¹Ð¤€ôø…½Õ¹Ð¹¥€ôôô…½Õ¹ÑÌ¹‘…Ñ„ü¹Í•±•Ñ•‘}¥°(€€¤ì(€½¹ÍÐ¡•É½MÑ…ÑÕÌ€ôÉÕ¹¹¥¹œ(€€€€ü€‹BsBcB€ƒB_BCBBB§BWBtˆ(€€€€èÍÑ…ÉÑ¥¹œ(€€€€€€ü€‹BcBOBƒB@ƒB_BCBBB‡BkBCBWB‹B‡B¼ˆ(€€€€€€è…½Õ¹ÑÌ¹¥ÍA•¹‘¥¹œ(€€€€€€€€ü€‹BBƒB{BKBWBƒBkB@ƒBCBkBkBCBBwB‹B@ˆ(€€€€€€€€è…½Õ¹ÑÌ¹¥ÍÉÉ½È(€€€€€€€€€€ü€‹B{B£BcBGBkB@ƒBBƒB{B“BcBoB¼ˆ(€€€€€€€€€€è€…Á±…åY•ÉÍ¥½¸(€€€€€€€€€€€€ü€‹BwBB[BwB@ƒBKBWBƒB‡BcB¼ˆ(€€€€€€€€€€€€è€…Í•±•Ñ•(€€€€€€€€€€€€€€ü€‹BwBB[BWBtƒBCBkBkBCBBwBˆˆ(€€€€€€€€€€€€€€è€‹BOB{B‹B{BHƒBhƒB_BCBBB‡BkBŒˆì((€½¹ÍÐ±…Õ¹ €ôÕÍ•1…Õ¹¡…µ” ¤ì((€½¹ÍÐÍÑ½À€ôÕÍ•5ÕÑ…Ñ¥½¸¡ì(€€€µÕÑ…Ñ¥½¹¸èÍÑ½Á…µ”°(€€€½¹MÕmùòÚ$z{-®éÜj×ô´”äEôÄ$TÅ5¶66÷VçBæ¶–æE×Ð¢Â÷7ãà¢Âö'WGFöãà¢Ä'WGFöâf&–çCÒ&v†÷7B"öä6Æ–6³×²‚’ÓâFVÆWFT66÷VçBæ×WFFR†66÷VçBæ–B—Óà¢
+=M½-À¢Âô'WGFöãà¢¶66÷VçG2æFFòææ–6¶æÖUö6Æ–×2æf–æB€¢†6Æ–Ò’Óâ6Æ–Òæ66÷VçEö–BÓÓÒ66÷VçBæ–BÀ¢“òç7FGW2ÓÓÒ&6öæfÆ–7B"ò€¢Ç6ÖÆÂ6Æ74æÖSÒ&f–VÆEõöW'&÷"#à¢	Ý¢}Ýý"â
+=M½-RýíM½Â‚í}M-RÝí-½’M==ÂÝ­íÂà¢Â÷6ÖÆÃà¢’¢çVÆÇÐ¢ÂöÆ“à¢’—Ð¢Â÷VÃà¢—Ð ¢´ö&¦V7BæVçG&–W2†æ–6¶æÖT6öæfÆ–7G2’æÖ‚…¶66÷VçD–BÂÖW76vUÒ’Óâ€¢Ç¶W“×¶66÷VçD–GÒ6Æ74æÖSÒ&f–VÆEõöW'&÷""&öÆSÒ'7FGW2#à¢¶ÖW76vWÐ¢Â÷à¢’—Ð ¢Æf÷&Ð¢6Æ74æÖSÒ&66÷VçG5õöFB ¢öå7V&Ö—C×²†WfVçB’Óâ°¢WfVçBç&WfVçDFVfVÇB‚“°¢–b†æWt66÷VçBçG&–Ò‚’’°¢FD66÷VçBæ×WFFR†æWt66÷VçBçG&–Ò‚’“°¢Ð¢×Ð¢à¢Æ–çW@¢&Vc×¶æÖT–çWGÐ¢æÖSÒ'Æ–W$æÖR ¢&–ÖÆ&VÃÒ-	Íò=í­ ¢WFô6ö×ÆWFSÒ&öfb ¢7VÆÄ6†V6³×¶fÇ6WÐ¢6Æ74æÖSÒ&–çWB ¢Æ6V†öÆFW#Ò-	ÝýÍ]Â7FWf^(
+b ¢fÇVS×¶æWt66÷VçGÐ¢öä6†ævS×²†WfVçB’Óâ6WDæWt66÷VçB†WfVçBçF&vWBçfÇVR—Ð¢Ö„ÆVæwFƒ×³gÐ¢óà¢Ä'WGFöâG—SÒ'7V&Ö—B"'W7“×¶FD66÷VçBæ—5VæF–æwÒF—6&ÆVC×²æWt66÷VçBçG&–Ò‚—Óà¢	Mí--À¢Âô'WGFöãà¢Âöf÷&Óà¢Ç6Æ74æÖSÒ&f–VÆEõö†–çB#à¢	Ýí-½’Ý¢]}]-=]-ò"Ö–äÆVæ6†W"}]]rÝ-]Ý]"â
+=mRMí-½]ÝÝ½R­­=Ý-°¢}ý=­í-ò]r]-‚â
+]-]²ýí-]­í’Ö–7&÷6ögB-]=í"½m]Ý}âÖ–æV7&gB¦fà¢Â÷à ¢¶FD66÷VçBæ—4W'&÷"ò€¢Ç ¢&öÆSÒ&ÆW'B ¢&–ÖÆ—fSÒ'öÆ—FR ¢6Æ74æÖSÒ&f–VÆEõöW'&÷" ¢7G–ÆS×·²Ö&v–åF÷¢'f"‚Ò×76RÓ"’"×Ð¢à¢·Fô6öÖÖæDW'&÷"†FD66÷VçBæW'&÷"’æÖW76vWÐ¢Â÷à¢’¢çVÆÇÐ¢Â÷6V7F–öãà¢¶–ç7FÆÆVBæÆVæwF‚ÓÓÒò€¢Ä'WGFöà¢f&–çCÒ'&–Ö'’ ¢6Æ74æÖSÒ&'WGFöâÒÖÆ&vR†öÖRÖ†W&õõ÷Æ’ ¢'W7“×¶–ç7FÆÂæ—5VæF–æwÐ¢F—6&ÆVC×²ÆFW7E&VÆV6WÐ¢öä6Æ–6³×²‚’Óâ–ç7FÆÂæ×WFFR‡²fW'6–öåö–C¢ÆFW7E&VÆV6RÒ—Ð¢à¢¶ÆFW7E&VÆV6Rò
+=-Ýí--ÂG¶ÆFW7E&VÆV6WÖ¢-
+=-Ýí--Â'Ð¢Ç7â&–Ö†–FFVãÒ'G'VR#î(i3Â÷7ãà¢Âô'WGFöãà¢’¢'Vææ–ærò€¢Ä'WGFöà¢f&–çCÒ&FævW" ¢6Æ74æÖSÒ&'WGFöâÒÖÆ&vR†öÖRÖ†W&õõ÷Æ’ ¢öä6Æ–6³×²‚’Óâ7F÷æ×WFFR‚—Ð¢à¢	í-Ýí--Â=2Ç7â&–Ö†–FFVãÒ'G'VR#î)jÂ÷7ãà¢Âô'WGFöãà¢’¢€¢Ä'WGFöà¢f&–çCÒ'&–Ö'’ ¢6Æ74æÖSÒ&'WGFöâÒÖÆ&vR†öÖRÖ†W&õõ÷Æ’ ¢F—6&ÆVC×²6åÆ—Ð¢'W7“×·7F'F–æwÐ¢öä6Æ–6³×²‚’Óà¢ÆVæ6‚æ×WFFR€¢6†÷6Vä–ç7Fæ6P¢ò²fW'6–öåö–C¢6†÷6Vä–ç7Fæ6RçfW'6–öåö–BÂ–ç7Fæ6Uö–C¢6†÷6Vä–ç7Fæ6Ræ–BÐ¢¢6†÷6VåfW'6–öâÀ¢¢Ð¢à¢·7F'F–ærò-	}ý=®(
+b"¢-	=-Â'ÒÇ7â&–Ö†–FFVãÒ'G'VR#î(isÂ÷7ãà¢Âô'WGFöãà¢—Ð¢ÂöF—cà ¢·Æ•fW'6–öâò€¢ÆF—b6Æ74æÖSÒ&†öÖRÖ†W&õõ÷7V72#à¢Ç7ãà¢Æ#äÔ3Âö#â·Æ•fW'6–öçÐ¢Â÷7ãà¢Ç7ãà¢Æ#ä¤dÂö#ç²"'Ð¢·fW'6–öç2æFFòçfW'6–öç2æf–æB‚‡fW'6–öâ’ÓâfW'6–öâæ–BÓÓÒÆ•fW'6–öâ¢òæ¦föÖ¦÷"óò$UDò'Ð¢Â÷7ãà¢Ç7ãà¢Æ#í
+
+-	
+-
+=
+Âö#â·Æ•fW'6–öâbb6VÆV7FVBò-	=	í
+-	í	""¢-	Ý	R	=	í
+-	í	"'Ð¢Â÷7ãà¢ÂöF—cà¢’¢çVÆÇÐ¢¶ÆVæ6‚æ—4W'&÷"ò€¢Ç&öÆSÒ&ÆW'B"&–ÖÆ—fSÒ'öÆ—FR"6Æ74æÖSÒ&f–VÆEõöW'&÷"†öÖRÖ†W&õõöW'&÷"#à¢·Fô6öÖÖæDW'&÷"†ÆVæ6‚æW'&÷"’æÖW76vWÐ¢Â÷à¢’¢çVÆÇÐ¢¶Æ7DÆVæ6‚ò€¢Ç6Æ74æÖSÒ&†öÖRÖ†W&õõöÆ7BÖÆVæ6‚#à¢	ýíM=í-í-­¶Æ7DÆVæ6‚çfW'6–öä–GÒ}Ýý½¶Æ7DÆVæ6‚ç&W&T×7ÒÍ¢¶Æ7DÆVæ6‚ç&W&T×2âÄTä4…ô%TDtUEôÕ2ò"+rMí½ÍRR"¢"'Ð¢Â÷à¢’¢çVÆÇÐ¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&†öÖRÖ†W&õõ÷66VæR#à¢ÆF—b6Æ74æÖSÒ&†öÖRÖ†W&õõ÷66VæRÖÆ&VÂ#à¢Ç7ãí	-]]Ý’ÍÂ÷7ãà¢ÂöF—cà¢ÄF–÷&Ö¢f&–çCÒ&—6ÆæB ¢ÖöFSÒ&ÆVæ6†W" ¢Ö÷F–öã×·'Vææ–ærÇÂ7F'F–ærò'W6VB"¢&7F—fR'Ð¢óà¢Ä7F—f—G”FÆ4ÆöF÷WBóà¢ÆF—b6Æ74æÖSÒ&†öÖRÖ†W&õõ÷&öw&W72#à¢Ä7F—f—G•&öw&W757VÖÖ'’6ö×7Bóà¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&†öÖRÖ†W&õõö6F–öâ#à¢Ç7ãí	MíÂ2]­ƒÂ÷7ãà¢ÂöF—cà¢ÂöF—cà¢Â÷6V7F–öãà ¢¶–ç7FÆÆVBæÆVæwF‚ÓÓÒò€¢Ç6V7F–öâ6Æ74æÖSÒ&6&B#à¢ÄV×G•7FFP¢F—FÆSÒ-
+=-Ýí--R-]â ¢FW67&—F–öãÒ-	½=Ý}]­}]"=2Â½í-]­‚‚]-²â	ýí½RÝ-í=â-]âÍímÝâ=M]"}ý=--Ââ ¢óà¢Â÷6V7F–öãà¢’¢çVÆÇÐ ¢¶–ç7FÆÂæ—4W'&÷"ò€¢Ç&öÆSÒ&ÆW'B"&–ÖÆ—fSÒ'öÆ—FR"6Æ74æÖSÒ&f–VÆEõöW'&÷"#à¢·Fô6öÖÖæDW'&÷"†–ç7FÆÂæW'&÷"’æÖW76vWÐ¢Â÷à¢’¢çVÆÇÐ ¢ÆF—`¢6Æ74æÖS×°¢–ç7Fæ6W2æFFbb–ç7Fæ6W2æFFæ–ç7Fæ6W2æÆVæwF‚â ¢ò&†öÖR×67&VVåõöÆ÷vW" ¢¢&†öÖR×67&VVåõöÆ÷vW"†öÖR×67&VVåõöÆ÷vW"Ò×6–ævÆR ¢Ð¢à¢¶–ç7Fæ6W2æFFbb–ç7Fæ6W2æFFæ–ç7Fæ6W2æÆVæwF‚âò€¢Ç6V7F–öâ6Æ74æÖSÒ&6&B#à¢ÆF—b6Æ74æÖSÒ&6&Eõ÷F—FÆR#í	Ý-Ý³ÂöF—cà¢ÇVÂ6Æ74æÖSÒ&66÷VçG2#à¢¶–ç7Fæ6W2æFFæ–ç7Fæ6W2æÖ‚†–ç7Fæ6R’Óâ€¢ÆÆ’¶W“×¶–ç7Fæ6Ræ–GÒ6Æ74æÖSÒ&66÷VçG5õö—FVÒ#à¢ÆF—b6Æ74æÖSÒ&66÷VçG5õö'WGFöâ66÷VçG5õö'WGFöâÒ×7FF–2#à¢Ç7â6Æ74æÖSÒ&66÷VçG5õöæÖR#ç¶–ç7Fæ6RææÖWÓÂ÷7ãà¢Ç7â6Æ74æÖSÒ&&FvR#ç¶–ç7Fæ6RçfW'6–öåö–GÓÂ÷7ãà¢ÂöF—cà¢ÂöÆ“à¢’—Ð¢Â÷VÃà¢Â÷6V7F–öãà¢’¢çVÆÇÐ¢ÂöF—cà¢ÂöF—cà¢“°§Ð ¦6öç7B44õTåEô´”äEôÄ$TÅ3¢&V6÷&CÄ66÷VçEG—RÂ7G&–æsâÒ°¢Ö–7&÷6ögC¢$Ö–7&÷6ögB"À¢Öö¦æs¢$Öö¦ær"À¢öffÆ–æS¢-	íMM½Ò"À¢Ö–æÆVæ6†W#¢$Ö–äÆVæ6†W""À¢F†—&E÷'G“¢-	M==í’"À§Ó°

@@ -2,15 +2,18 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
+import { ActivityProgressProvider } from "@minlauncher/activity-progress";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { router } from "./router";
+import { launcherAuth } from "./auth";
 import "@minlauncher/visuals/tokens.css";
 import "./styles/global.css";
 import "./styles/shell.css";
 import "./styles/components.css";
 import "./styles/screens.css";
+import "./styles/activity-progress.css";
 
 /** Short stale time: the backend is local, and versions disappear between clicks. */
 const queryClient = new QueryClient({
@@ -30,8 +33,10 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <ActivityProgressProvider client={launcherAuth} source="launcher">
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ActivityProgressProvider>
   </StrictMode>,
 );

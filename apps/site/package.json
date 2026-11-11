@@ -11,6 +11,7 @@
     "test": "vitest run src && node --test server.test.mjs"
   },
   "dependencies": {
+    "@minlauncher/activity-progress": "*",
     "@supabase/supabase-js": "2.99.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

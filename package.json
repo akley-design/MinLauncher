@@ -6,7 +6,8 @@
   "workspaces": [
     "apps/ui",
     "apps/site",
-    "packages/visuals"
+    "packages/visuals",
+    "packages/activity-progress"
   ],
   "scripts": {
     "dev": "npm run dev --workspace @minlaucher/ui",

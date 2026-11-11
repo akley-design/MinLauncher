@@ -1,0 +1,16 @@
+{
+  "name": "@minlauncher/activity-progress",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.tsx",
+      "import": "./src/index.tsx"
+    }
+  },
+  "peerDependencies": {
+    "@supabase/supabase-js": "^2.99.0",
+    "react": "^19.3.1"
+  }
+}
